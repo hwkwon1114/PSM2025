@@ -206,7 +206,7 @@ protected:
     void vtu_to_stl();
     
     void runSwelling(const FilamentLayerConfig<bottom> & botlayer, const FilamentLayerConfig<top> & toplayer, const std::vector<Real> & swellrates, const bool swellThickness = false, const bool simulatePlane = false);
-    Real minimizePlateEnergy(const EnergyOperator<tMesh> & engOp, const bool simulatePlane, const bool planeFlip, const Real planePenalizationFac);
+    Real minimizePlateEnergy(const EnergyOperator<tMesh> & engOp, const bool simulatePlane, const bool planeFlip, const Real planePenalizationFac, const int maxIterations = 1000000000, const Real solverTolerance = std::numeric_limits<Real>::epsilon());
     void dumpAll(const FilamentLayerConfig<bottom> & botlayer, const FilamentLayerConfig<top> & toplayer, const std::string filename);
     
     void dumpBilayerEnergyDecomposition(const int idx, const Real swelling_fac, const MaterialProperties_Iso_Array & matprop_bot, const MaterialProperties_Iso_Array & matprop_top, const CombinedOperator_Parametric<tMesh, Material_Isotropic, bottom> & engOp_bot, const CombinedOperator_Parametric<tMesh, Material_Isotropic, top> & engOp_top, const bool overWrite, const std::string filename);

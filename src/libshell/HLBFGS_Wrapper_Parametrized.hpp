@@ -44,7 +44,9 @@ namespace HLBFGS_Methods
         
         std::string outFileName;
         Real last_gnorm;
-        
+        int last_retcode;
+        int last_iterations;
+
     public:
         HLBFGS_Energy_Parametrized(tMesh & mesh, const tMeshOperator & engop, tParametrizer<tMesh> & parametrizer_in):
         mesh(mesh),
@@ -53,18 +55,21 @@ namespace HLBFGS_Methods
         nVariables_engop(op.getNumberOfVariables(mesh)),
         nVariables_prms(parametrizer.getNumberOfVariables()),
         outFileName("hlbfgs_output.dat"),
-        last_gnorm(-1)
+        last_gnorm(-1),
+        last_retcode(-1),
+        last_iterations(0)
         {
             gradient_container.resize(nVariables_engop);
         }
-        
-        int minimize(const std::string outFileName_in, const Real eps = 1e-5, const int Mval = 10)
+
+        int minimize(const std::string outFileName_in, const Real eps = 1e-5, const int Mval = 10,
+                     const int maxIterations = 1000000000)
         {
             this->outFileName = outFileName_in;
-            return minimize(eps, Mval);
+            return minimize(eps, Mval, maxIterations);
         }
-        
-        int minimize(const Real eps = 1e-5, const int Mval = 10)
+
+        int minimize(const Real eps = 1e-5, const int Mval = 10, const int maxIterations = 1000000000)
         {
             mesh.updateDeformedConfiguration();
             const Real energy0 = op.compute(mesh) + parametrizer.computeEnergyContribution();
@@ -75,10 +80,15 @@ namespace HLBFGS_Methods
             // init HLBFGS
             double parameter[20];
             int info[20];
-            default_setup(parameter, info, eps, verbose);
-            
+            default_setup(parameter, info, eps, verbose, maxIterations);
+
             const int ret = HLBFGS(nVariables_prms, Mval, x, HLBFGS_Methods::evaluate, 0, HLBFGS_UPDATE_Hessian, HLBFGS_Methods::newiteration, this, parameter, info);
-            
+
+            // keep the raw termination code and iteration count : the coarse return value
+            // below collapses distinct outcomes (notably a stagnated line-search) into 'success'
+            last_retcode = ret;
+            last_iterations = info[2];
+
             if(verbose) std::cout << "HLBFGS return value = " << ret << std::endl;
             parametrizer.updateSolution();
             const Real energy1 = op.compute(mesh) + parametrizer.computeEnergyContribution();
@@ -142,6 +152,18 @@ namespace HLBFGS_Methods
         Real get_lastnorm() const
         {
             return last_gnorm;
+        }
+
+        /// Raw HLBFGS termination code : 1 line-search failure, 2/3 tolerance met,
+        /// 4 step out of [stpmin,stpmax] (stagnation), 5 iteration cap exceeded.
+        int get_lastreturncode() const
+        {
+            return last_retcode;
+        }
+
+        int get_lastiterations() const
+        {
+            return last_iterations;
         }
         
     };

@@ -596,6 +596,21 @@ void Sim_Bilayer_4DFilaments::runSwelling(const FilamentLayerConfig<bottom> &bot
         mesh.updateDeformedConfiguration();
     }
     
+    // Convergence bookkeeping, mirroring run_basic_disk. The gradient norm is dimensional,
+    // so -gradtol has no defensible default : left unset a stage is only rejected when it was
+    // truncated by -maxiterations. Calibrate from the <basetag>_convergence.dat of a known-good
+    // run before setting it (and optionally -requireconvergence) for production.
+    const int maxIterations = parser.parse<int>("-maxiterations", 1000000000);
+    if(maxIterations <= 0)
+        throw std::invalid_argument("-maxiterations must be positive");
+    const Real gradientTolerance = parser.parse<Real>("-gradtol", -1.0);
+    // Stopping tolerance handed to HLBFGS (PARAMETER[5]). Default is machine epsilon,
+    // which is unreachable, so historically the solver only stopped on line-search
+    // stagnation; set this to something attainable to stop earlier.
+    const Real solverTolerance = parser.parse<Real>("-solvertol", std::numeric_limits<Real>::epsilon());
+    const bool requireConvergence = parser.parse<bool>("-requireconvergence", false);
+    const std::string convergenceFile = basetag+"_"+subtag+"_convergence.dat";
+
     const int nGrowth = (int)swellrates.size();
     for(int g=0;g<nGrowth;++g)
     {
@@ -620,8 +635,8 @@ void Sim_Bilayer_4DFilaments::runSwelling(const FilamentLayerConfig<bottom> &bot
             CombinedOperator_Parametric<tMesh, Material_Isotropic, top> combined_top(material_top);
             EnergyOperatorList<tMesh> engOp({&combined_bot, &combined_top});
             
-            eps = minimizePlateEnergy(engOp, simulatePlane, planeFlip, planePenalizationFac);
-            
+            eps = minimizePlateEnergy(engOp, simulatePlane, planeFlip, planePenalizationFac, maxIterations, solverTolerance);
+
             dumpBilayerEnergyDecomposition(g, swellrates[g], material_bot, material_top, combined_bot, combined_top, (g==0 ? true : false), basetag+"_"+subtag+"_energies_"+helpers::ToString(g+1, 3));
         }
         else
@@ -634,9 +649,31 @@ void Sim_Bilayer_4DFilaments::runSwelling(const FilamentLayerConfig<bottom> &bot
             CombinedOperator_Parametric<tMesh, Material_Orthotropic, top> combined_top(material_top);
             EnergyOperatorList<tMesh> engOp({&combined_bot, &combined_top});
             
-            eps = minimizePlateEnergy(engOp, simulatePlane, planeFlip, planePenalizationFac);
+            eps = minimizePlateEnergy(engOp, simulatePlane, planeFlip, planePenalizationFac, maxIterations, solverTolerance);
         }
-        
+
+        // Record how the solve terminated. Without this a stage truncated by -maxiterations,
+        // or one whose line-search failed outright, is indistinguishable from an equilibrium
+        // both in the dumps and as the starting guess for the next swelling stage.
+        {
+            const bool converged = lastMinimization.converged(gradientTolerance);
+            FILE * f = fopen(convergenceFile.c_str(), g==0 ? "w" : "a");
+            if(g==0) fprintf(f, "# stage \t swelling \t hlbfgs code \t iterations \t grad norm \t converged\n");
+            fprintf(f, "%d \t %10.10e \t %d \t %d \t %10.10e \t %d\n",
+                    g, swellrates[g], lastMinimization.code, lastMinimization.iterations,
+                    lastMinimization.gradientNorm, converged ? 1 : 0);
+            fclose(f);
+
+            if(not converged)
+            {
+                printf("WARNING : swelling stage %d (rate %10.10e) did not reach equilibrium -- HLBFGS code %d after %d iterations, |g| = %10.10e\n",
+                       g, swellrates[g], lastMinimization.code, lastMinimization.iterations,
+                       lastMinimization.gradientNorm);
+                if(requireConvergence)
+                    helpers::catastrophe("Swelling stage did not converge and -requireconvergence was set\n", __FILE__, __LINE__);
+            }
+        }
+
         // dump result
         dumpAll(botlayer, toplayer, tag);
         {
@@ -797,27 +834,33 @@ void Sim_Bilayer_4DFilaments::dumpBilayerEnergyDecomposition(const int idx, cons
     }
 }
 
-Real Sim_Bilayer_4DFilaments::minimizePlateEnergy(const EnergyOperator<tMesh> & engOp, const bool simulatePlane, const bool planeFlip, const Real planePenalizationFac)
+Real Sim_Bilayer_4DFilaments::minimizePlateEnergy(const EnergyOperator<tMesh> & engOp, const bool simulatePlane, const bool planeFlip, const Real planePenalizationFac, const int maxIterations, const Real solverTolerance)
 {
     Real eps = 1e-2;
     if(simulatePlane)
     {
         Parametrizer_FixedZPlane<tMesh> parametrizer(mesh, planePenalizationFac , 0.1, (planeFlip ? +1 : -1)*0.1, planeFlip);
-        
+
         // create the energy minimizer
         HLBFGS_Methods::HLBFGS_EnergyOp_Parametrized<tMesh, Parametrizer_FixedZPlane, true> hlbfgs_wrapper(mesh, engOp, parametrizer);
-        
+
         // minimize
-        const Real epsMin = std::numeric_limits<Real>::epsilon();
-        hlbfgs_wrapper.minimize(tag+"_diagnostics.dat", epsMin);
+        hlbfgs_wrapper.minimize(tag+"_diagnostics.dat", solverTolerance, 10, maxIterations);
         eps = hlbfgs_wrapper.get_lastnorm();
+
+        // this branch drives HLBFGS directly rather than going through Sim::minimizeEnergy,
+        // so fill in the report by hand
+        lastMinimization = MinimizationReport();
+        lastMinimization.code = hlbfgs_wrapper.get_lastreturncode();
+        lastMinimization.iterations = hlbfgs_wrapper.get_lastiterations();
+        lastMinimization.gradientNorm = hlbfgs_wrapper.get_lastnorm();
     }
     else
     {
-        // minimize energy using default method
-        minimizeEnergy(engOp, eps);
+        // minimize energy using default method (this fills lastMinimization itself)
+        minimizeEnergy(engOp, eps, solverTolerance, false, maxIterations);
     }
-    
+
     return eps;
 }
 

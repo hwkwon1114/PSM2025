@@ -171,7 +171,27 @@ SET(BUILD_GMOCK OFF)
 enable_testing()
 add_executable(testshell ${SOURCES_TEST})
 target_include_directories(testshell PUBLIC "${SRC_DIR}/libshell/")
+target_include_directories(testshell PUBLIC "${SRC_DIR}/simulations/")
 target_link_libraries(testshell gtest gmock_main libshell)
 add_test(NAME test1 COMMAND testshell)
 
+# ------------------------------------------------------------
+# Python bindings (optional : -DBUILD_PYTHON_BINDINGS=ON)
+# ------------------------------------------------------------
+option(BUILD_PYTHON_BINDINGS "Build the pyshell Python module" OFF)
+
+if(BUILD_PYTHON_BINDINGS)
+  FetchContent_Declare(
+    pybind11
+    GIT_REPOSITORY https://github.com/pybind/pybind11.git
+    GIT_TAG v2.13.6
+  )
+  FetchContent_MakeAvailable(pybind11)
+
+  pybind11_add_module(pyshell "${SRC_DIR}/python/pyshell.cpp")
+  target_include_directories(pyshell PUBLIC "${SRC_DIR}/libshell/")
+  target_link_libraries(pyshell PRIVATE libshell)
+  set_target_properties(pyshell PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python")
+endif()
 

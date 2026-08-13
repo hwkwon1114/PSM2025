@@ -70,7 +70,8 @@ namespace HLBFGS_Methods
          * @param [in] verbose a flag to specify whether we are verbose or not
          */
         
-        void default_setup(double parameter[20], int info[20], const Real eps, const bool verbose)
+        void default_setup(double parameter[20], int info[20], const Real eps,
+                           const bool verbose, const int maxIterations = 1000000000)
         {
             //initialize
             INIT_HLBFGS(parameter, info);
@@ -82,7 +83,7 @@ namespace HLBFGS_Methods
             parameter[6] = 1e-16; // dim accuracy : ||G||
             
             info[3] = 1;
-            info[4] = 1e9;
+            info[4] = maxIterations;
             info[5] = verbose ? 1 : 0;
             info[6] = 0;
             info[7] = 0;
@@ -165,14 +166,18 @@ namespace HLBFGS_Methods
         const int nVariables;
         std::string outFileName;
         Real last_gnorm;
-        
+        int last_retcode;
+        int last_iterations;
+
     public:
         HLBFGS_Energy(tMesh & mesh, const tMeshOperator & engop):
         mesh(mesh),
         op(engop),
         nVariables(op.getNumberOfVariables(mesh)),
         outFileName("hlbfgs_output.dat"),
-        last_gnorm(-1)
+        last_gnorm(-1),
+        last_retcode(-1),
+        last_iterations(0)
         {}
         
         /**
@@ -181,7 +186,8 @@ namespace HLBFGS_Methods
          * @param [in] eps the relative accuracy at which to stop
          * @return a bool that indicates whether the minimization was successful or not (if verbose, it will also print a message with the return value)
          */
-        int minimize(const std::string outFileName_in, const Real eps = 1e-5, const int Mval = 10)
+        int minimize(const std::string outFileName_in, const Real eps = 1e-5,
+                     const int Mval = 10, const int maxIterations = 1000000000)
         {
             this->outFileName = outFileName_in;
             
@@ -194,10 +200,15 @@ namespace HLBFGS_Methods
             // init HLBFGS
             double parameter[20];
             int info[20];
-            default_setup(parameter, info, eps, verbose);
+            default_setup(parameter, info, eps, verbose, maxIterations);
             
             const int ret = HLBFGS(nVariables, Mval, x, HLBFGS_Methods::evaluate, 0, HLBFGS_UPDATE_Hessian, HLBFGS_Methods::newiteration, this, parameter, info);
-            
+
+            // keep the raw termination code and iteration count : the coarse return value below
+            // collapses several distinct outcomes (in particular a stagnated line-search) into 'success'
+            last_retcode = ret;
+            last_iterations = info[2];
+
             if(verbose) std::cout << "HLBFGS return value = " << ret << std::endl;
             const Real energy1 = op.compute(mesh);
             if(verbose) printf("Energy went from %10.10e to %10.10e, using epsilon = %e, final eps = %e \n", energy0, energy1, eps, last_gnorm);
@@ -271,7 +282,29 @@ namespace HLBFGS_Methods
         {
             return last_gnorm;
         }
-        
+
+        /**
+         * Exposes the raw HLBFGS termination code of the last minimize() call
+         *
+         * 1 : line-search failure
+         * 2 : ||G||/max(1,||X||) <= PARAMETER[5]
+         * 3 : ||G|| <= PARAMETER[6]
+         * 4 : line-search step outside [stpmin, stpmax] (stagnation, not a tolerance)
+         * 5 : iteration cap INFO[4] exceeded
+         */
+        int get_lastreturncode() const
+        {
+            return last_retcode;
+        }
+
+        /**
+         * Exposes the number of iterations taken by the last minimize() call
+         */
+        int get_lastiterations() const
+        {
+            return last_iterations;
+        }
+
     };
 }
 #endif

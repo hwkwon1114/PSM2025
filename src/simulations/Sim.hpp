@@ -233,10 +233,10 @@ protected:
     }
     
     template<int component>
-    void addNoiseToVertices_c(const Real ampl)
+    void addNoiseToVertices_c(const Real ampl, const unsigned int seed = 42)
     {
         std::mt19937 gen;
-        gen.seed(42);
+        gen.seed(seed);
         std::uniform_real_distribution<Real> distV(-ampl, ampl);
         auto perturb_v = [&](Eigen::Vector3d in)
         {
@@ -248,10 +248,10 @@ protected:
         mesh.changeVertices(perturb_v);
     }
     
-    void addNoiseToVertices(const Real ampl)
+    void addNoiseToVertices(const Real ampl, const unsigned int seed = 42)
     {
         std::mt19937 gen;
-        gen.seed(42);
+        gen.seed(seed);
         std::uniform_real_distribution<Real> distV(-ampl, ampl);
         auto perturb_v = [&](Eigen::Vector3d in)
         {
@@ -262,10 +262,10 @@ protected:
         mesh.changeVertices(perturb_v);
     }
     
-    void addNoiseToEdgeDirectors(const Real ampl)
+    void addNoiseToEdgeDirectors(const Real ampl, const unsigned int seed = 42)
     {
         std::mt19937 gen;
-        gen.seed(42);
+        gen.seed(seed);
         std::uniform_real_distribution<Real> distE(-ampl, ampl);
         auto perturb_e = [&](Real in)
         {
@@ -275,9 +275,51 @@ protected:
         mesh.changeEdgeDirectors(perturb_e);
     }
     
-    template<typename tMeshOperator, bool verbose = true>
-    int minimizeEnergy(const tMeshOperator & op, Real & eps, const Real epsMin=std::numeric_limits<Real>::epsilon(), const bool stepWise = false)
+    /*! \struct MinimizationReport
+     * \brief Outcome of the last minimizeEnergy call.
+     *
+     * The coarse int returned by minimizeEnergy only distinguishes 'HLBFGS was happy' from
+     * 'it was not', and counts a stagnated line-search (code 4) as success. Callers that need
+     * to know whether a stage actually reached equilibrium should inspect this instead.
+     */
+    struct MinimizationReport
     {
+        int code = -1;              //!< raw HLBFGS termination code, see HLBFGS_Energy::get_lastreturncode
+        int iterations = 0;         //!< iterations taken
+        Real gradientNorm = -1.0;   //!< L2 norm of the gradient at termination (dimensional)
+
+        /**
+         * Whether the stage may be treated as an equilibrium.
+         *
+         * Code 5 (iteration cap) is a truncated solve and never qualifies -- this is the case
+         * -maxiterations makes reachable. Codes 2 and 3 are genuine tolerance hits, but note
+         * that minimizeEnergy hands HLBFGS a tolerance at machine epsilon, so in practice they
+         * never fire. The normal outcome is code 1 or 4 : the line search stopped making
+         * progress. That is how a converged run actually terminates here, so it is accepted,
+         * and -gradtol is what turns it into a real check by requiring the achieved gradient
+         * norm to meet a threshold. The norm is dimensional, so that threshold has to be
+         * calibrated to the material parameters and mesh resolution at hand.
+         */
+        bool converged(const Real gradientTolerance = -1.0) const
+        {
+            if(code == 5) return false;
+            if(code == 2 or code == 3) return true;
+            if(code != 1 and code != 4) return false; // never ran, or an outcome we do not model
+            if(gradientTolerance <= 0.0) return true;
+            return (gradientNorm >= 0.0 and gradientNorm <= gradientTolerance);
+        }
+    };
+
+    MinimizationReport lastMinimization;
+
+    template<typename tMeshOperator, bool verbose = true>
+    int minimizeEnergy(const tMeshOperator & op, Real & eps,
+                       const Real epsMin=std::numeric_limits<Real>::epsilon(),
+                       const bool stepWise = false,
+                       const int maxIterations = 1000000000)
+    {
+        lastMinimization = MinimizationReport();
+
 #ifdef USELIBLBFGS
         // use the LBFGS_Energy class to directly minimize the energy on the mesh with these operators
         // LBFGS does not use the hessian
@@ -298,14 +340,18 @@ protected:
             while(retval == 0 && eps > epsMin)
             {
                 eps *= 0.1;
-                retval = hlbfgs_wrapper.minimize(tag+"_diagnostics.dat", eps);
+                retval = hlbfgs_wrapper.minimize(tag+"_diagnostics.dat", eps, 10, maxIterations);
             }
         }
         else
         {
-            retval = hlbfgs_wrapper.minimize(tag+"_diagnostics.dat", epsMin);
+            retval = hlbfgs_wrapper.minimize(tag+"_diagnostics.dat", epsMin, 10, maxIterations);
             eps = hlbfgs_wrapper.get_lastnorm();
         }
+
+        lastMinimization.code = hlbfgs_wrapper.get_lastreturncode();
+        lastMinimization.iterations = hlbfgs_wrapper.get_lastiterations();
+        lastMinimization.gradientNorm = hlbfgs_wrapper.get_lastnorm();
 #else
         std::cout << "should use liblbfgs or hlbfgs\n";
 #endif

@@ -10,6 +10,7 @@
 #include "Geometry.hpp"
 #include "GrowthHelper.hpp"
 #include "CombinedOperator_Parametric.hpp"
+#include "InitialShapePerturbation.hpp"
 #include "MaterialProperties.hpp"
 
 #include <igl/edge_topology.h>
@@ -45,7 +46,7 @@ void Sim_MonoLayer_Growth::runCone()
     
     // set the growth profile
     const int nFaces = mesh.getNumberOfFaces();
-    std::vector<GrowthState> growth;
+    std::vector<MetricContinuation> growth;
     growth.reserve(nFaces);
     
     {
@@ -82,7 +83,7 @@ void Sim_MonoLayer_Growth::runCone()
             
             const Eigen::Matrix2d a_final = growth_state.computeMetric(rxy_base);
             //growth.emplace_back(rxy_base, a_final);
-            GrowthState growthState(rxy_base, a_final);
+            MetricContinuation growthState(rxy_base, a_final);
             growth.push_back(growthState);
 
         }
@@ -123,13 +124,34 @@ void Sim_MonoLayer_Growth::runCone()
     }
 }
 
-void Sim_MonoLayer_Growth::assignGrowthToMetric(const std::vector<GrowthState> & growth, const Real t, const bool interp_logeucl)
+void Sim_MonoLayer_Growth::assignGrowthToMetric(const std::vector<MetricContinuation> & growth, const Real t, const bool interp_logeucl)
 {
     const int nFaces = mesh.getNumberOfFaces();
     tVecMat2d & firstFF = mesh.getRestConfiguration().getFirstFundamentalForms();
     
     for(int i=0;i<nFaces;++i)
         firstFF[i] = (interp_logeucl ? growth[i].interpolateLogEucl(t) : growth[i].interpolate(t));
+}
+
+void Sim_MonoLayer_Growth::applyInitialShape(const std::string & mode,
+                                             const unsigned int seed,
+                                             const Real amplitude,
+                                             const int waves,
+                                             const Real radius,
+                                             const Real edgeNoiseAmplitude)
+{
+    std::mt19937 generator(seed);
+    std::uniform_real_distribution<Real> randomSample(-1.0, 1.0);
+    auto perturbVertex = [&](Eigen::Vector3d vertex)
+    {
+        vertex(2) += initial_shape::height(
+            mode, vertex(0), vertex(1), radius, amplitude, waves, randomSample(generator));
+        return vertex;
+    };
+
+    mesh.changeVertices(perturbVertex);
+    if(edgeNoiseAmplitude > 0.0)
+        addNoiseToEdgeDirectors(edgeNoiseAmplitude, seed + 1U);
 }
 
 
@@ -255,7 +277,7 @@ void Sim_MonoLayer_Growth::run_basic_disk()
     // now we create the abar
     const int nFaces = mesh.getNumberOfFaces();
     
-    std::vector<GrowthState> growth;
+    std::vector<MetricContinuation> growth;
     growth.reserve(nFaces);
     
     const std::string growthCase = parser.parse<std::string>("-growthcase", "ortho");
@@ -296,7 +318,7 @@ void Sim_MonoLayer_Growth::run_basic_disk()
                 
                 const Eigen::Matrix2d a_final = growth_state.computeMetric(rxy_base);
 		//                growth.emplace_back(rxy_base, a_final);
-	    GrowthState growthState(rxy_base, a_final);
+            MetricContinuation growthState(rxy_base, a_final);
             growth.push_back(growthState);
 		
             }
@@ -326,7 +348,7 @@ void Sim_MonoLayer_Growth::run_basic_disk()
             rxy_base << rinfo.e1, rinfo.e2;
             
             const Eigen::Matrix2d a_final = growth_state.computeMetric(rxy_base);
-	    GrowthState growthState(rxy_base, a_final);
+            MetricContinuation growthState(rxy_base, a_final);
             growth.push_back(growthState);
         }
     }
@@ -365,7 +387,7 @@ void Sim_MonoLayer_Growth::run_basic_disk()
                 
                 const Eigen::Matrix2d a_final = growth_state.computeMetric(rxy_base);
                 //growth.emplace_back(rxy_base, a_final);
-		GrowthState growthState(rxy_base, a_final);
+                MetricContinuation growthState(rxy_base, a_final);
 		growth.push_back(growthState);
 		
             }
@@ -390,39 +412,123 @@ void Sim_MonoLayer_Growth::run_basic_disk()
     const Real h = parser.parse<Real>("-h", 0.01);
     MaterialProperties_Iso_Constant matprop(E, nu, h);
     CombinedOperator_Parametric<tMesh> engOp(matprop);
+
+    const std::string initializationMode = parser.parse<std::string>("-initmode", "legacy");
+    const int initializationSeedArgument = parser.parse<int>("-initseed", 42);
+    if(initializationSeedArgument < 0)
+        throw std::invalid_argument("-initseed must be non-negative");
+    const unsigned int initializationSeed = static_cast<unsigned int>(initializationSeedArgument);
+    const Real initializationAmplitude = parser.parse<Real>("-initamp", 0.01*h);
+    const int initializationWaves = parser.parse<int>("-initwaves", 4);
+    const Real initializationEdgeNoise = parser.parse<Real>("-initedgenoise", 0.0);
+
+    if(initializationMode != "legacy")
+    {
+        applyInitialShape(initializationMode, initializationSeed, initializationAmplitude,
+                          initializationWaves, radius, initializationEdgeNoise);
+        dumpOrthoNew(growth, tag+"_initialization");
+    }
     
     dumpOrthoNew(growth, tag+"_final_"+helpers::ToString(0,2));
-    
+
+    const Real stepNoiseDefault = (initializationMode == "legacy" ? 0.01*h : 0.0);
+    const Real stepEdgeNoiseDefault =
+        (initializationMode == "legacy" && growthCase != "validation" ? 0.01*M_PI : 0.0);
+    const Real stepNoise = parser.parse<Real>("-stepnoise", stepNoiseDefault);
+    const Real stepEdgeNoise = parser.parse<Real>("-stepedgenoise", stepEdgeNoiseDefault);
+    const int maxIterations = parser.parse<int>("-maxiterations", 1000000000);
+    if(maxIterations <= 0)
+        throw std::invalid_argument("-maxiterations must be positive");
+
+    // Convergence bookkeeping. The gradient norm is dimensional (it scales with E, h and the
+    // mesh), so -gradtol has no defensible default : left unset, a stage is rejected only when
+    // it was truncated by -maxiterations, and the run is otherwise recorded but not judged.
+    // Calibrate the threshold from the <tag>_convergence.dat of a known-good run, then set it
+    // (and optionally -requireconvergence) for production.
+    const Real gradientTolerance = parser.parse<Real>("-gradtol", -1.0);
+    const bool requireConvergence = parser.parse<bool>("-requireconvergence", false);
+    bool finalStageConverged = false;
+
+    // Stopping tolerance actually handed to HLBFGS (its PARAMETER[5], the test on
+    // ||g||/max(1,||x||)). The historical value is machine epsilon, which is unreachable,
+    // so the solver only ever stopped on line-search stagnation. Keeping that as the
+    // default preserves existing behaviour; set it to something attainable to stop early.
+    const Real solverTolerance = parser.parse<Real>("-solvertol", std::numeric_limits<Real>::epsilon());
+
     std::vector<Real> swellingRates = {0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0};
-    const size_t nSwellingRates = swellingRates.size();
+    const int maxStages = parser.parse<int>("-maxstages", static_cast<int>(swellingRates.size()));
+    if(maxStages < 0)
+        throw std::invalid_argument("-maxstages must be non-negative");
+    const size_t nSwellingRates = std::min(swellingRates.size(), static_cast<size_t>(maxStages));
     for(size_t i=0;i<nSwellingRates;++i)
     {
         // set growth
         assignGrowthToMetric(growth, swellingRates[i], interpolate_logeucl);
         
-        // add noise
-        addNoiseToVertices_c<2>(0.01*h);
-        if(growthCase != "validation") addNoiseToEdgeDirectors(0.01*M_PI);
+        // Optional continuation noise. Explicit initialization modes default to
+        // zero so that the sampled starting shape remains the controlled variable.
+        const unsigned int stepSeed =
+            (initializationMode == "legacy" ? 42U : initializationSeed + static_cast<unsigned int>(i) + 1U);
+        if(stepNoise > 0.0)
+            addNoiseToVertices_c<2>(stepNoise, stepSeed);
+        if(stepEdgeNoise > 0.0)
+            addNoiseToEdgeDirectors(stepEdgeNoise, stepSeed);
         
         // solve minimum
         Real eps = 1e-2;
-        minimizeEnergy(engOp, eps);
-        
+        minimizeEnergy(engOp, eps, solverTolerance, false, maxIterations);
+
+        // record how the solve terminated : a truncated or stalled stage is otherwise
+        // indistinguishable from an equilibrium, both in the dumps and as the starting guess
+        // for the next swelling stage
+        finalStageConverged = lastMinimization.converged(gradientTolerance);
+        {
+            FILE * f = fopen((tag+"_convergence.dat").c_str(), i==0 ? "w" : "a");
+            if(i==0) fprintf(f, "# stage \t swelling \t hlbfgs code \t iterations \t grad norm \t converged\n");
+            fprintf(f, "%d \t %10.10e \t %d \t %d \t %10.10e \t %d\n",
+                    (int)i, swellingRates[i], lastMinimization.code, lastMinimization.iterations,
+                    lastMinimization.gradientNorm, finalStageConverged ? 1 : 0);
+            fclose(f);
+        }
+        if(not finalStageConverged)
+        {
+            printf("WARNING : swelling stage %d (rate %10.10e) did not reach equilibrium -- HLBFGS code %d after %d iterations, |g| = %10.10e\n",
+                   (int)i, swellingRates[i], lastMinimization.code, lastMinimization.iterations,
+                   lastMinimization.gradientNorm);
+            if(requireConvergence)
+                helpers::catastrophe("Swelling stage did not converge and -requireconvergence was set\n", __FILE__, __LINE__);
+        }
+
         // dump
         dumpOrthoNew(growth, tag+"_final_"+helpers::ToString((int)i+1,2)); // i+1 since we already dumped 0
     }
-    
+
     if(growthCase == "validation")
     {
-        // store the final solution stretching and bending energies
-        const Real eng_stretch = engOp.getLastStretchingEnergy();
-        const Real eng_bend = engOp.getLastBendingEnergy();
+        // Only a fully swollen, converged final stage is a valid data point for the thickness
+        // scaling. Writing the file unconditionally would emit the constructor-initialized zeros
+        // when no stage ran at all, or the energies of a partially swollen state when -maxstages
+        // truncated the continuation -- both indistinguishable from a genuine measurement.
+        const bool ranAllStages = (nSwellingRates == swellingRates.size());
+        if(not ranAllStages)
+            printf("Skipping validation energies : only %d of %d swelling stages ran (-maxstages %d)\n",
+                   (int)nSwellingRates, (int)swellingRates.size(), maxStages);
+        else if(not finalStageConverged)
+            printf("Skipping validation energies : final stage did not reach equilibrium -- HLBFGS code %d, |g| = %10.10e\n",
+                   lastMinimization.code, lastMinimization.gradientNorm);
+        else
+        {
+            // store the final solution stretching and bending energies
+            const Real eng_stretch = engOp.getLastStretchingEnergy();
+            const Real eng_bend = engOp.getLastBendingEnergy();
 
-        const Real Eref =  4.0*(1 - nu*nu) / M_PI;
-        FILE * f = fopen((tag+"_final_energies.dat").c_str(), "w");
-        fprintf(f, "# thickness \t stretch eng \t bend eng \n");
-        fprintf(f, "%10.10e \t %10.10e \t %10.10e\n", h, eng_stretch * Eref / E, eng_bend * Eref / E);
-        fclose(f);
+            const Real Eref =  4.0*(1 - nu*nu) / M_PI;
+            FILE * f = fopen((tag+"_final_energies.dat").c_str(), "w");
+            fprintf(f, "# thickness \t stretch eng \t bend eng \t grad norm \t iterations \n");
+            fprintf(f, "%10.10e \t %10.10e \t %10.10e \t %10.10e \t %d\n", h, eng_stretch * Eref / E,
+                    eng_bend * Eref / E, lastMinimization.gradientNorm, lastMinimization.iterations);
+            fclose(f);
+        }
     }
 }
 
@@ -449,7 +555,7 @@ void Sim_MonoLayer_Growth::dumpWithGrowthRates(const Eigen::Ref<const Eigen::Vec
 
 
 
-void Sim_MonoLayer_Growth::dumpOrthoNew(const std::vector<GrowthState> & growth, const std::string filename, const bool restConfig)
+void Sim_MonoLayer_Growth::dumpOrthoNew(const std::vector<MetricContinuation> & growth, const std::string filename, const bool restConfig)
 {
     const auto cvertices = restConfig ? mesh.getRestConfiguration().getVertices() : mesh.getCurrentConfiguration().getVertices();
     const auto cface2vertices = mesh.getTopology().getFace2Vertices();
@@ -460,7 +566,7 @@ void Sim_MonoLayer_Growth::dumpOrthoNew(const std::vector<GrowthState> & growth,
     Eigen::MatrixXd growthDirs_1(nFaces, 3), growthDirs_2(nFaces, 3);
     for(int i=0;i<nFaces;++i)
     {
-        const DecomposedGrowthState & decomposed = restConfig ? growth[i].getDecomposedInitState() : growth[i].getDecomposedFinalState();
+        const DecomposedGrowthState & decomposed = restConfig ? growth[i].getInitialDecomposition() : growth[i].getTargetDecomposition();
         
         growthFacs_1(i) = decomposed.get_s1();
         growthFacs_2(i) = decomposed.get_s2();
@@ -489,4 +595,3 @@ void Sim_MonoLayer_Growth::dumpOrthoNew(const std::vector<GrowthState> & growth,
 void Sim_MonoLayer_Growth::init()
 {
 }
-

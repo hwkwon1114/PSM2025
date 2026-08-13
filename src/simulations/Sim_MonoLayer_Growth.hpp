@@ -11,7 +11,7 @@
 
 #include "Sim.hpp"
 #include "Mesh.hpp"
-#include "GrowthHelper.hpp"
+#include "GrowthContinuation.hpp"
 
 class Sim_MonoLayer_Growth : public Sim<Mesh>
 {
@@ -24,8 +24,11 @@ protected:
     
     void dumpWithGrowthRates(const Eigen::Ref<const Eigen::VectorXd> growthRates, const std::string filename, const bool addCurvature = false);
     
-    void dumpOrthoNew(const std::vector<GrowthState> & growth, const std::string filename, const bool restConfig = false);
-    void assignGrowthToMetric(const std::vector<GrowthState> & growth, const Real t, const bool interp_logeucl);
+    void dumpOrthoNew(const std::vector<MetricContinuation> & growth, const std::string filename, const bool restConfig = false);
+    void assignGrowthToMetric(const std::vector<MetricContinuation> & growth, const Real t, const bool interp_logeucl);
+    void applyInitialShape(const std::string & mode, const unsigned int seed,
+                           const Real amplitude, const int waves, const Real radius,
+                           const Real edgeNoiseAmplitude);
 
 public:
     
