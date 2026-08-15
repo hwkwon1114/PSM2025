@@ -190,6 +190,7 @@ if(BUILD_PYTHON_BINDINGS)
 
   pybind11_add_module(pyshell "${SRC_DIR}/python/pyshell.cpp")
   target_include_directories(pyshell PUBLIC "${SRC_DIR}/libshell/")
+  target_include_directories(pyshell PRIVATE "${CMAKE_SOURCE_DIR}/external/tinyad/include")
   target_link_libraries(pyshell PRIVATE libshell)
   set_target_properties(pyshell PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/python")

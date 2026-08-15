@@ -1,0 +1,8 @@
+*~
+.vs
+.vscode
+build
+build-*/
+build_times.csv
+CMakeSettings.json
+CMakeLists.txt.user

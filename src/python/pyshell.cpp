@@ -26,7 +26,10 @@
 #include "CombinedOperator_Parametric.hpp"
 #include "GrowthHelper.hpp"
 
+#include <TinyAD/Scalar.hh>
+
 #include <stdexcept>
+#include <cmath>
 
 namespace py = pybind11;
 
@@ -265,6 +268,109 @@ public:
         return formsToArray(mesh.getRestConfiguration().getFirstFundamentalForms());
     }
 
+    /**
+     * STAGE 2a: per-face Saint-Venant STRETCHING energy and its gradient, computed via
+     * TinyAD forward-mode autodiff over the 9 vertex DOFs of each face.
+     *
+     * This reproduces the production stretching term (SaintVenantEnergy<...,single>, the
+     * `stretching_aa` contribution) independently, purely from the deformed vertex
+     * positions and the per-face rest first fundamental form (abar). It does NOT touch
+     * bending or the existing gradient code; it exists to seed an exact-Hessian effort.
+     *
+     * Formula (all verified against the C++ energy):
+     *   e1 = v2 - v1,  e2 = v0 - v2                (CreateExtendedTriangleInfos.hpp:87-88)
+     *   firstFF = [[e1.e1, e1.e2],[e1.e2, e2.e2]]  (ExtendedTriangleInfo.hpp:221-227)
+     *   E    = abar_inv * firstFF - I              (EnergyHelper_Parametric.hpp:75)
+     *   norm = (c1*tr(E)^2 + c2*tr(E*E)) * area    (EnergyHelper_Parametric.hpp:148)
+     *   E_face = (h/4) * norm                      (SaintVenantEnergy compute_h_aa :429, compute :477)
+     * with c1 = getStVenantFactor1() = 0.5*E*nu/(1-nu^2)  (MaterialProperties.hpp:45),
+     *      c2 = getStVenantFactor2() = 0.5*E/(1+nu)       (MaterialProperties.hpp:50),
+     *      area = 0.5*sqrt(det(abar))                     (EnergyHelper_Parametric.hpp:33).
+     *
+     * Returns (total_stretching_energy, full_gradient) with the gradient scattered into a
+     * length-(3*nV+nE) vector in the column-major vertex layout [x|y|z|theta]; the theta
+     * block is left zero because stretching does not depend on the directors.
+     */
+    py::tuple stretchingEnergyAndGradientTinyAD()
+    {
+        requireMesh();
+        mesh.updateDeformedConfiguration();
+
+        const int nV = mesh.getNumberOfVertices();
+        const int nF = mesh.getNumberOfFaces();
+        const int nD = nDofs();
+
+        const Eigen::MatrixXi F = mesh.getTopology().getFace2Vertices();
+        const Eigen::MatrixXd V = mesh.getCurrentConfiguration().getVertices();
+        const tVecMat2d & abars = mesh.getRestConfiguration().getFirstFundamentalForms();
+
+        // Isotropic Saint-Venant material factors, matching Material_Isotropic.
+        const Real c1 = 0.5 * E * nu / (1.0 - nu * nu); // getStVenantFactor1()
+        const Real c2 = 0.5 * E / (1.0 + nu);           // getStVenantFactor2()
+        const Real h_aa = h / 4.0;                       // single-layer compute_h_aa
+
+        Eigen::VectorXd grad = Eigen::VectorXd::Zero(nD);
+        Real total = 0.0;
+
+        // 9 active variables per face: [v0(xyz) v1(xyz) v2(xyz)]. Gradient only (no Hessian).
+        using ADouble = TinyAD::Double<9, false>;
+
+        for(int f = 0; f < nF; ++f)
+        {
+            const int i0 = F(f, 0), i1 = F(f, 1), i2 = F(f, 2);
+
+            Eigen::Matrix<double, 9, 1> x0;
+            x0 << V(i0, 0), V(i0, 1), V(i0, 2),
+                  V(i1, 0), V(i1, 1), V(i1, 2),
+                  V(i2, 0), V(i2, 1), V(i2, 2);
+
+            const Eigen::Matrix<ADouble, 9, 1> x = ADouble::make_active(x0);
+
+            const Eigen::Matrix<ADouble, 3, 1> v0 = x.segment<3>(0);
+            const Eigen::Matrix<ADouble, 3, 1> v1 = x.segment<3>(3);
+            const Eigen::Matrix<ADouble, 3, 1> v2 = x.segment<3>(6);
+
+            const Eigen::Matrix<ADouble, 3, 1> e1 = v2 - v1;
+            const Eigen::Matrix<ADouble, 3, 1> e2 = v0 - v2;
+
+            const ADouble F11 = e1.dot(e1);
+            const ADouble F12 = e1.dot(e2);
+            const ADouble F22 = e2.dot(e2);
+
+            const Eigen::Matrix2d & abar = abars[f];
+            const Eigen::Matrix2d abar_inv = abar.inverse();
+            const double ai11 = abar_inv(0, 0);
+            const double ai12 = abar_inv(0, 1);
+            const double ai22 = abar_inv(1, 1);
+            const double area = 0.5 * std::sqrt(abar.determinant());
+
+            // strain E = abar_inv * firstFF - I  (row-major 2x2, generally non-symmetric)
+            const ADouble E11 = ai11 * F11 + ai12 * F12 - 1.0;
+            const ADouble E12 = ai11 * F12 + ai12 * F22;
+            const ADouble E21 = ai12 * F11 + ai22 * F12;
+            const ADouble E22 = ai12 * F12 + ai22 * F22 - 1.0;
+
+            const ADouble trace = E11 + E22;
+            const ADouble trace_sq = E11 * E11 + 2.0 * E12 * E21 + E22 * E22; // tr(E*E)
+
+            const ADouble material_norm = (c1 * trace * trace + c2 * trace_sq) * area;
+            const ADouble energy = h_aa * material_norm;
+
+            total += energy.val;
+
+            const Eigen::Matrix<double, 9, 1> & g = energy.grad;
+            const int idx[3] = {i0, i1, i2};
+            for(int a = 0; a < 3; ++a)
+            {
+                grad(0 * nV + idx[a]) += g(3 * a + 0);
+                grad(1 * nV + idx[a]) += g(3 * a + 1);
+                grad(2 * nV + idx[a]) += g(3 * a + 2);
+            }
+        }
+
+        return py::make_tuple(total, grad);
+    }
+
     void setAbars(const Eigen::MatrixXd & arr)
     {
         requireMesh();
@@ -409,6 +515,10 @@ PYBIND11_MODULE(pyshell, m)
              "Returns (energy, gradient) with the gradient over the full DOF vector.")
         .def("energy_terms", &MonolayerShell::energyTerms,
              "Returns the stretching and bending contributions separately.")
+        .def("stretching_energy_and_gradient_tinyad",
+             &MonolayerShell::stretchingEnergyAndGradientTinyAD,
+             "Per-face Saint-Venant stretching energy and its full-DOF gradient via TinyAD "
+             "autodiff. Returns (energy, gradient); matches energy_terms()['stretching_aa'].")
         .def("get_abars", &MonolayerShell::getAbars,
              "Prescribed first fundamental forms as an (n_faces, 3) array of (a11, a12, a22).")
         .def("set_abars", &MonolayerShell::setAbars, py::arg("abars"))
