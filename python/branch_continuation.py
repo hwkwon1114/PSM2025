@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.optimize import minimize
+from scipy.sparse.linalg import ArpackNoConvergence, ArpackError
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pyshell  # noqa: E402
@@ -128,9 +129,10 @@ def branch_continuation(build, schedule, E, h, rel_curv=1e-6, seed_amp=None,
     E, h : float
         Material parameters, for the non-dimensional gradient norm.
     seed_amp : float or None
-        Absolute amplitude of the (unit-norm) eigenvector perturbation used to step onto a
-        branch. Defaults to 20*h. Under-seeding is the classic failure; over-seeding only
-        costs a few extra solve iterations.
+        Physical out-of-plane (max|z|) amplitude of the eigenvector seed used to step onto a
+        branch; the mode is normalized to unit max|z| first, so this is mesh-independent and
+        does not mix the vertex/director units of the raw eigenvector. Defaults to 20*h.
+        Under-seeding is the classic failure; over-seeding only costs a few extra iterations.
 
     Returns a :class:`ContinuationResult` with the final DOFs and a per-stage log.
     """
@@ -145,62 +147,90 @@ def branch_continuation(build, schedule, E, h, rel_curv=1e-6, seed_amp=None,
         x0 = shell.get_dofs().copy() if warm is None else warm
         x, _ = minimize_energy(shell, x0)
 
-        v = assess_stage(shell, x, E=E, h=h, grad_tol_nd=grad_tol_nd,
-                         rel_curv=rel_curv, mode="auto")
+        # Spectral certification can fail (ARPACK non-convergence, non-finite operator).
+        # Treat that as an uncertifiable stage rather than letting it abort the whole run
+        # and discard the last certified result.
+        spectral_error = None
+        try:
+            v = assess_stage(shell, x, E=E, h=h, grad_tol_nd=grad_tol_nd,
+                             rel_curv=rel_curv, mode="auto")
+        except (ArpackNoConvergence, ArpackError, RuntimeError) as err:
+            v, spectral_error = None, type(err).__name__
         branched = 0
 
-        if not v.second_order_ok:
-            # saddle : step onto a branch along the initiating eigenvector, try both signs.
+        # Branch-switch ONLY at a genuine first-order equilibrium that is a saddle. If the
+        # gradient has not converged the state is not an equilibrium, its lowest Hessian
+        # vector is not a bifurcating mode, and seeding from it would just mask a failed
+        # minimization -- fall through to stop-on-fail instead.
+        if v is not None and v.first_order_ok and not v.second_order_ok:
             shell.set_dofs(x)
             E_pre = float(shell.energy())
-            vals, vecs, idx = hessian_lowest_eig(shell, x, k=1, mode="auto",
-                                                 want_vectors=True)
-            mode = np.zeros(shell.n_dofs)
-            mode[idx] = vecs[:, 0]
-            nrm = np.linalg.norm(mode)
-            if nrm > 0:
-                mode /= nrm
+            try:
+                _, vecs, idx = hessian_lowest_eig(shell, x, k=1, mode="auto",
+                                                  want_vectors=True)
+            except (ArpackNoConvergence, ArpackError, RuntimeError):
+                vecs = None
 
-            # keep the incoming state as a fallback : a switch is accepted only if it lands
-            # on a *certified* minimum with energy no higher than where we started. This
-            # prevents a spurious trigger or a runaway seed from replacing a good state
-            # with garbage (e.g. a lam_min = -1e2 blow-up).
-            best_x, best_v, best_E, branched = x, v, E_pre, 0
-            for sign in (+1, -1):
-                xs, _ = minimize_energy(shell, x + sign * seed_amp * mode)
-                vs = assess_stage(shell, xs, E=E, h=h, grad_tol_nd=grad_tol_nd,
-                                  rel_curv=rel_curv, mode="full")
-                shell.set_dofs(xs)
-                Es = float(shell.energy())
-                if vs.accepted and Es <= best_E + 1e-12:
-                    best_x, best_v, best_E, branched = xs, vs, Es, sign
-            x, v = best_x, best_v
+            if vecs is not None:
+                mode = np.zeros(shell.n_dofs)
+                mode[idx] = vecs[:, 0]
+                # normalize to unit *physical* out-of-plane amplitude, so seed_amp is a real
+                # max-|z| perturbation independent of mesh resolution and of the mixed
+                # vertex(length)/director(angle) units in the raw eigenvector.
+                nV = shell.n_vertices
+                zmax = float(np.abs(mode[2 * nV:3 * nV]).max())
+                scale = zmax if zmax > 1e-12 else float(np.linalg.norm(mode))
+                if scale > 0:
+                    mode /= scale
+
+                # keep the incoming state as a fallback : accept a switch only if it lands on
+                # a *certified* minimum with energy no higher than where we started, so a
+                # spurious trigger or runaway seed cannot replace a good state with garbage.
+                best_x, best_v, best_E, branched = x, v, E_pre, 0
+                for sign in (+1, -1):
+                    xs, _ = minimize_energy(shell, x + sign * seed_amp * mode)
+                    try:
+                        vs = assess_stage(shell, xs, E=E, h=h, grad_tol_nd=grad_tol_nd,
+                                          rel_curv=rel_curv, mode="full")
+                    except (ArpackNoConvergence, ArpackError, RuntimeError):
+                        continue
+                    shell.set_dofs(xs)
+                    Es = float(shell.energy())
+                    if vs.accepted and Es <= best_E + 1e-12:
+                        best_x, best_v, best_E, branched = xs, vs, Es, sign
+                x, v = best_x, best_v
 
         shell.set_dofs(x)
+        accepted = bool(v.accepted) if v is not None else False
         rec = StageRecord(t=float(t), energy=float(shell.energy()),
                           max_z=float(np.abs(shell.vertices()[:, 2]).max()),
-                          lam_min=float(v.lam_min), branched=int(branched),
-                          accepted=bool(v.accepted))
+                          lam_min=(float(v.lam_min) if v is not None else float("nan")),
+                          branched=int(branched), accepted=accepted)
         out.records.append(rec)
         if verbose:
             tag = "switch %+d" % branched if branched else "carry   "
-            ok = "min " if v.accepted else "!MIN"
-            print(f"  t={rec.t:6.3f}  E={rec.energy:.6e}  max|z|={rec.max_z:.3e}  "
-                  f"lam_min={rec.lam_min:+.3e}  [{tag}] {ok}")
+            if v is None:
+                print(f"  t={rec.t:6.3f}  E={rec.energy:.6e}  max|z|={rec.max_z:.3e}  "
+                      f"spectral check FAILED ({spectral_error})")
+            else:
+                ok = "min " if v.accepted else "!MIN"
+                print(f"  t={rec.t:6.3f}  E={rec.energy:.6e}  max|z|={rec.max_z:.3e}  "
+                      f"lam_min={rec.lam_min:+.3e}  [{tag}] {ok}")
 
-        if v.accepted:
+        if accepted:
             warm = x            # only certified minima are carried forward
             out.x = x
         elif stop_on_fail:
-            # Neither a plain relax nor a branch switch reached a certified minimum. Rather
-            # than propagate an uncertified state (which corrupts every later stage), stop
-            # and report. This is the signature of a genuine instability the first-order
-            # solver cannot cross (e.g. the high-swelling snap-through of the one-sided
-            # bilayer) -- the regime that needs the Phase 2 curvature-aware/preconditioned
-            # solver.
+            # Neither a plain relax nor a branch switch reached a certified minimum (or the
+            # spectral check failed). Rather than propagate an uncertified state -- which
+            # corrupts every later stage -- stop and report. This is the signature of a
+            # genuine instability the first-order solver cannot cross (e.g. the high-swelling
+            # snap-through of the one-sided bilayer), the regime that needs the Phase 2
+            # curvature-aware/preconditioned solver.
             if verbose:
-                print(f"  -> stage t={t:.3f} not certifiable "
-                      f"(lam_min={v.lam_min:+.3e}, ||g||_nd={v.grad_norm_nd:.2e}); "
+                why = (f"spectral check failed ({spectral_error})" if v is None else
+                       f"lam_min={v.lam_min:+.3e}, ||g||_nd={v.grad_norm_nd:.2e}")
+                print(f"  -> stage t={t:.3f} not certifiable ({why}); "
                       "stopping continuation at the last certified minimum.")
             out.stopped_at = float(t)
             break
@@ -213,6 +243,9 @@ def branch_continuation(build, schedule, E, h, rel_curv=1e-6, seed_amp=None,
 # ----------------------------------------------------------------------------------
 
 def _save(result, name):
+    if result.x is None:
+        print("   no certified minimum -- nothing saved")
+        return
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
     np.save(path, result.x)
     print(f"   final DOFs saved to python/{name}")

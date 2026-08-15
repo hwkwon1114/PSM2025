@@ -849,11 +849,14 @@ Real Sim_Bilayer_4DFilaments::minimizePlateEnergy(const EnergyOperator<tMesh> & 
         eps = hlbfgs_wrapper.get_lastnorm();
 
         // this branch drives HLBFGS directly rather than going through Sim::minimizeEnergy,
-        // so fill in the report by hand
+        // so fill in the report by hand -- including nVariables, so gradientNormPerDof()
+        // (and hence -gradtol) means the same per-DOF RMS here as on the ordinary path
+        // rather than silently falling back to the raw norm.
         lastMinimization = MinimizationReport();
         lastMinimization.code = hlbfgs_wrapper.get_lastreturncode();
         lastMinimization.iterations = hlbfgs_wrapper.get_lastiterations();
         lastMinimization.gradientNorm = hlbfgs_wrapper.get_lastnorm();
+        lastMinimization.nVariables = parametrizer.getNumberOfVariables();
     }
     else
     {

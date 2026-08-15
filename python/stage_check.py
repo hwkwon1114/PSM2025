@@ -46,18 +46,22 @@ from verify_bindings import (  # noqa: E402
 
 def nondim_gradient_norm(g, E, h, n_dofs):
     """
-    A mesh- and material-consistent gradient norm.
+    An empirical, roughly mesh-scaling-robust gradient indicator.
 
-    The raw ``||g||`` handed to -gradtol is dimensional : it scales with E, h and, under
-    refinement, with sqrt(N) (more residual entries to sum). A fixed threshold on it is
-    therefore a *different* tightness on every mesh, which is exactly why the artifact's
-    curl only appears when the tolerance is cranked "a million times harder" and why it
-    is mesh sensitive.
+    The raw ``||g||`` grows like sqrt(N) under refinement (more residual entries to sum)
+    and scales with E, h -- so a fixed threshold on it is a different tightness on every
+    mesh, which is why the artifact's curl only appears once the tolerance is cranked "a
+    million times harder". Reducing to a per-DOF RMS removes the leading sqrt(N) growth and
+    dividing by E*h removes the dominant material scale, which is enough to make a single
+    -gradtol usable across the fixed unit-radius, fixed-material studies here.
 
-    Reducing to a per-DOF RMS removes the sqrt(N) growth; dividing by the membrane
-    stiffness E*h removes the material scale. A single threshold on the result then means
-    the same thing at res 24 and res 48, and across E/h. This is the pragmatic scale from
-    the spec -- calibrate the *value* once, per problem, not per mesh.
+    Caveats (do not over-read this as a true non-dimensional norm): the full gradient mixes
+    force-like vertex derivatives with moment-like director derivatives, so dividing the
+    combined norm by E*h alone does not make it dimensionless, and there is no reference
+    length (it assumes radius ~ 1). Per-DOF RMS is also not the area-weighted residual norm
+    that is strictly mesh-independent for an FE discretisation. For a rigorous cross-mesh /
+    cross-geometry criterion, use block scaling with a reference length, or a mass/area-
+    weighted dual norm. Calibrate the *value* once per problem.
     """
     g = np.asarray(g, dtype=float).ravel()
     rms = np.linalg.norm(g) / np.sqrt(max(1, n_dofs))
@@ -117,14 +121,24 @@ def hessian_lowest_eig(shell, x, k=1, mode="auto", deflate_shift=1.0,
     n = H.shape[0]
     k = min(k, n - 2)   # eigsh needs k < n-1
 
-    # ARPACK which="SA" (smallest algebraic) is unreliable on this operator : the
-    # biharmonic bending block gives a huge spectral spread, and ARPACK converges the
-    # *largest* eigenvalues far more robustly than the smallest. So we shift : find the
-    # largest eigenvalues of (c*I - H), which are c minus the smallest of H. c is an
-    # upper bound on the spectrum, estimated from the (reliable) largest-algebraic solve.
-    lam_max = float(eigsh(H, k=1, which="LA", tol=1e-3, maxiter=maxiter,
+    # Physical spectral scale for a *relative* curvature tolerance : take lam_max from the
+    # UN-deflated operator, where the rigid modes sit at their physical ~0 and cannot
+    # inflate the maximum. On the deflated operator the rigid modes are lifted to
+    # deflate_shift, which would masquerade as lam_max whenever the physical spectrum is
+    # softer than that shift (e.g. the soft out-of-plane bending block, where the physical
+    # max is ~1e-3 but the shift is 1.0). That would silently turn the relative floor into
+    # a fixed absolute one.
+    H_phys = hessian_operator(shell, x, idx=idx, deflate=None)
+    lam_max = float(eigsh(H_phys, k=1, which="LA", tol=1e-3, maxiter=maxiter,
                           return_eigenvectors=False)[0])
-    c = lam_max + abs(lam_max) + 1.0
+
+    # Smallest eigenvalue via a spectral shift on the DEFLATED operator (rigid modes parked
+    # at deflate_shift stay clear of the smallest). ARPACK converges the largest algebraic
+    # eigenvalues of (c*I - H) far more robustly than the smallest of H directly; they map
+    # back as lam = c - g. c must exceed every eigenvalue of the deflated operator : both
+    # the physical max and the rigid shift.
+    spec_top = max(lam_max, deflate_shift)
+    c = spec_top + abs(spec_top) + 1.0
     shifted = LinearOperator(
         (n, n), matvec=lambda v: c * np.asarray(v, float).ravel() - H.matvec(v),
         dtype=float)

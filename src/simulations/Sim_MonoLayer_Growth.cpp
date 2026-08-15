@@ -441,8 +441,9 @@ void Sim_MonoLayer_Growth::run_basic_disk()
         throw std::invalid_argument("-maxiterations must be positive");
 
     // Convergence bookkeeping. -gradtol is now tested against the *per-DOF RMS* gradient
-    // (MinimizationReport::gradientNormPerDof), which is mesh-consistent : the same threshold
-    // means the same tightness at res 24 and res 48, unlike the bare ||g|| it replaces. It is
+    // (MinimizationReport::gradientNormPerDof), which is roughly mesh-scaling robust : it
+    // removes the leading sqrt(N) growth of the bare ||g|| it replaces (it is not a rigorous
+    // area-weighted residual norm -- see python/stage_check.nondim_gradient_norm). It is
     // still material-dependent (scales with E, h), so it has no universal default : left unset,
     // a stage is rejected only when truncated by -maxiterations, and is otherwise recorded but
     // not judged. Calibrate once from the <tag>_convergence.dat of a known-good run (use the

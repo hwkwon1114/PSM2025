@@ -307,15 +307,16 @@ protected:
          * Whether the stage may be treated as an equilibrium.
          *
          * Code 5 (iteration cap) is a truncated solve and never qualifies -- this is the case
-         * -maxiterations makes reachable. Codes 2 and 3 are genuine tolerance hits, but note
-         * that minimizeEnergy hands HLBFGS a tolerance at machine epsilon, so in practice they
-         * never fire. The normal outcome is code 1 or 4 : the line search stopped making
-         * progress. That is how a converged run actually terminates here, so it is accepted,
-         * and -gradtol is what turns it into a real check by requiring the achieved gradient
-         * to meet a threshold.
+         * -maxiterations makes reachable. Codes 1-4 are all "HLBFGS stopped" outcomes : 1/4
+         * are line-search failure/stagnation (the normal termination here, since minimizeEnergy
+         * hands HLBFGS a machine-epsilon tolerance), and 2/3 are the ||g|| tolerance hits that
+         * fire only if -solvertol is made attainable. When -gradtol is set it is applied
+         * *uniformly* to every one of these success codes, so a stricter -gradtol cannot be
+         * silently bypassed by an attainable -solvertol (which would otherwise return code 2/3
+         * before the check).
          *
-         * The threshold is now applied to the *per-DOF RMS* gradient (gradientNormPerDof),
-         * which is mesh-consistent : calibrate -gradtol once, not per resolution. It stays
+         * The threshold is applied to the *per-DOF RMS* gradient (gradientNormPerDof), which is
+         * roughly mesh-scaling robust : calibrate -gradtol once, not per resolution. It stays
          * material-dependent (it scales with E, h), so recalibrate if those change.
          *
          * NOTE : this is a first-order test. It cannot distinguish a minimum from a saddle,
@@ -326,9 +327,8 @@ protected:
          */
         bool converged(const Real gradientTolerance = -1.0) const
         {
-            if(code == 5) return false;
-            if(code == 2 or code == 3) return true;
-            if(code != 1 and code != 4) return false; // never ran, or an outcome we do not model
+            if(code == 5) return false;            // truncated by the iteration cap
+            if(code < 1 or code > 4) return false; // never ran, or an outcome we do not model
             if(gradientTolerance <= 0.0) return true;
             return (gradientNorm >= 0.0 and gradientNormPerDof() <= gradientTolerance);
         }
