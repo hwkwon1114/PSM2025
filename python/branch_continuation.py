@@ -95,6 +95,17 @@ def minimize_energy(shell, x0, gtol=1e-8, ftol=1e-15, maxiter=4000):
     return res.x, res
 
 
+# Note on curvature-aware solvers : a trust-region Newton (scipy trust-krylov/trust-ncg)
+# with a matrix-free Hessian-vector product was tried here and did NOT help. The HvP is a
+# central difference of the analytic gradient, so it is noisy, and trust-region methods
+# build a quadratic *model* from it -- the noise collapses the trust region ("bad
+# approximation caused failure to predict improvement"), and it converged worse than
+# L-BFGS. The high-swelling one-sided bilayer is also multistable / path dependent rather
+# than gated by one clean barrier. What does help is a negative-curvature escape that uses
+# only the eigen*vector* (from the robust shifted eigensolver) plus an exact-energy solve,
+# not a Hessian model -- that is what the adaptive branch switch below does.
+
+
 # ----------------------------------------------------------------------------------
 # the continuation with branch switching
 # ----------------------------------------------------------------------------------
@@ -117,7 +128,8 @@ class ContinuationResult:
 
 
 def branch_continuation(build, schedule, E, h, rel_curv=1e-6, seed_amp=None,
-                        grad_tol_nd=1e-4, stop_on_fail=True, verbose=True):
+                        seed_factors=(0.25, 1.0, 2.5), grad_tol_nd=1e-4,
+                        stop_on_fail=True, verbose=True):
     """
     Parameters
     ----------
@@ -132,7 +144,10 @@ def branch_continuation(build, schedule, E, h, rel_curv=1e-6, seed_amp=None,
         Physical out-of-plane (max|z|) amplitude of the eigenvector seed used to step onto a
         branch; the mode is normalized to unit max|z| first, so this is mesh-independent and
         does not mix the vertex/director units of the raw eigenvector. Defaults to 20*h.
-        Under-seeding is the classic failure; over-seeding only costs a few extra iterations.
+    seed_factors : sequence of float
+        Multipliers on seed_amp tried in order during an adaptive escape (smallest first);
+        the sweep stops at the first amplitude that reaches a certified minimum. A single
+        amplitude is unreliable in the rugged high-swelling regime, so several are probed.
 
     Returns a :class:`ContinuationResult` with the final DOFs and a per-stage log.
     """
@@ -186,18 +201,27 @@ def branch_continuation(build, schedule, E, h, rel_curv=1e-6, seed_amp=None,
                 # keep the incoming state as a fallback : accept a switch only if it lands on
                 # a *certified* minimum with energy no higher than where we started, so a
                 # spurious trigger or runaway seed cannot replace a good state with garbage.
+                # Adaptive escape : sweep several seed amplitudes x both signs and keep the
+                # best certified, lower-energy candidate. A single amplitude is unreliable in
+                # the rugged high-swelling region -- the same saddle escapes at one amplitude
+                # but lands on another saddle at a larger one -- so we probe a range. Stop at
+                # the first amplitude that yields a certified minimum on either sign (smaller
+                # perturbations are preferred, staying closer to the incoming branch).
                 best_x, best_v, best_E, branched = x, v, E_pre, 0
-                for sign in (+1, -1):
-                    xs, _ = minimize_energy(shell, x + sign * seed_amp * mode)
-                    try:
-                        vs = assess_stage(shell, xs, E=E, h=h, grad_tol_nd=grad_tol_nd,
-                                          rel_curv=rel_curv, mode="full")
-                    except (ArpackNoConvergence, ArpackError, RuntimeError):
-                        continue
-                    shell.set_dofs(xs)
-                    Es = float(shell.energy())
-                    if vs.accepted and Es <= best_E + 1e-12:
-                        best_x, best_v, best_E, branched = xs, vs, Es, sign
+                for factor in seed_factors:
+                    for sign in (+1, -1):
+                        xs, _ = minimize_energy(shell, x + sign * factor * seed_amp * mode)
+                        try:
+                            vs = assess_stage(shell, xs, E=E, h=h, grad_tol_nd=grad_tol_nd,
+                                              rel_curv=rel_curv, mode="full")
+                        except (ArpackNoConvergence, ArpackError, RuntimeError):
+                            continue
+                        shell.set_dofs(xs)
+                        Es = float(shell.energy())
+                        if vs.accepted and Es <= best_E + 1e-12:
+                            best_x, best_v, best_E, branched = xs, vs, Es, sign
+                    if branched != 0:
+                        break   # certified at this amplitude; do not perturb harder
                 x, v = best_x, best_v
 
         shell.set_dofs(x)
