@@ -28,8 +28,11 @@
 
 #include <TinyAD/Scalar.hh>
 
+#include <Eigen/Sparse>
+
 #include <stdexcept>
 #include <cmath>
+#include <vector>
 
 namespace py = pybind11;
 
@@ -610,6 +613,303 @@ public:
         return py::make_tuple(total, grad);
     }
 
+private:
+    /**
+     * STAGE 3 helper: build the per-face TinyAD scalar (val + grad + Hessian) for face `f`,
+     * using EXACTLY the same 21-DOF stencil, geometry and energy expression as
+     * energyAndGradientTinyAD() above. Templated on the TinyAD scalar type so it can be
+     * instantiated with the Hessian-carrying TinyAD::Double<21> (default with_hessian=true).
+     *
+     * On return, gidx[21] holds the global DOF index of each of the 21 local slots, in the
+     * order [v0 v1 v2 | v_opp_e0 v_opp_e1 v_opp_e2 | phi0 phi1 phi2] with the global scatter
+     *   vertex k  -> (0*nV+k, 1*nV+k, 2*nV+k)
+     *   director e-> 3*nV+e
+     * Boundary-edge opposite-vertex slots get gidx = -1 (inactive: theta=0 there, so those
+     * slots never enter the energy and their grad/Hess rows are exactly zero anyway).
+     */
+    template<typename ADouble>
+    ADouble computeFaceEnergyAD(
+        const int f,
+        const Eigen::MatrixXi & F, const Eigen::MatrixXi & F2E, const Eigen::MatrixXi & E2F,
+        const Eigen::MatrixXd & V, const Eigen::VectorXd & phi, const tVecMat2d & abars,
+        const int nV, int gidx[21])
+    {
+        typedef Eigen::Matrix<ADouble, 3, 1> Vec3A;
+
+        const Real c1   = 0.5 * E * nu / (1.0 - nu * nu); // getStVenantFactor1()
+        const Real c2   = 0.5 * E / (1.0 + nu);           // getStVenantFactor2()
+        const Real h_aa = h / 4.0;                         // single-layer compute_h_aa
+        const Real h_bb = h * h * h / 12.0;                // single-layer compute_h_bb
+
+        const int i0 = F(f, 0), i1 = F(f, 1), i2 = F(f, 2);
+        const int ownIdx[3] = {i0, i1, i2};
+
+        bool interior[3];
+        int  sgn[3];
+        int  eIdx[3];
+        int  oppGlobal[3];
+        int  nbrMap[3][3];
+
+        for(int i = 0; i < 3; ++i)
+        {
+            const int e = F2E(f, i);
+            eIdx[i] = e;
+            const int fA = E2F(e, 0), fB = E2F(e, 1);
+            sgn[i] = (fA == f ? +1 : -1);
+            oppGlobal[i] = -1;
+            if(fA < 0 || fB < 0) { interior[i] = false; continue; }
+            interior[i] = true;
+            const int nbr = (fA == f ? fB : fA);
+            const int nv[3] = {F(nbr, 0), F(nbr, 1), F(nbr, 2)};
+            for(int k = 0; k < 3; ++k)
+            {
+                const int gg = nv[k];
+                if(gg == i0)      nbrMap[i][k] = 0;
+                else if(gg == i1) nbrMap[i][k] = 1;
+                else if(gg == i2) nbrMap[i][k] = 2;
+                else { nbrMap[i][k] = 3; oppGlobal[i] = gg; }
+            }
+        }
+
+        // global scatter indices for the 21 local slots
+        for(int a = 0; a < 3; ++a)
+        {
+            gidx[3 * a + 0] = 0 * nV + ownIdx[a];
+            gidx[3 * a + 1] = 1 * nV + ownIdx[a];
+            gidx[3 * a + 2] = 2 * nV + ownIdx[a];
+        }
+        for(int i = 0; i < 3; ++i)
+        {
+            if(interior[i])
+            {
+                gidx[9 + 3 * i + 0] = 0 * nV + oppGlobal[i];
+                gidx[9 + 3 * i + 1] = 1 * nV + oppGlobal[i];
+                gidx[9 + 3 * i + 2] = 2 * nV + oppGlobal[i];
+            }
+            else
+            {
+                gidx[9 + 3 * i + 0] = -1;
+                gidx[9 + 3 * i + 1] = -1;
+                gidx[9 + 3 * i + 2] = -1;
+            }
+        }
+        gidx[18] = 3 * nV + eIdx[0];
+        gidx[19] = 3 * nV + eIdx[1];
+        gidx[20] = 3 * nV + eIdx[2];
+
+        Eigen::Matrix<double, 21, 1> x0;
+        x0.setZero();
+        x0.segment<3>(0) = V.row(i0).transpose();
+        x0.segment<3>(3) = V.row(i1).transpose();
+        x0.segment<3>(6) = V.row(i2).transpose();
+        for(int i = 0; i < 3; ++i)
+            if(interior[i]) x0.segment<3>(9 + 3 * i) = V.row(oppGlobal[i]).transpose();
+        x0(18) = phi(eIdx[0]);
+        x0(19) = phi(eIdx[1]);
+        x0(20) = phi(eIdx[2]);
+
+        const Eigen::Matrix<ADouble, 21, 1> x = ADouble::make_active(x0);
+
+        const Vec3A v0 = x.template segment<3>(0);
+        const Vec3A v1 = x.template segment<3>(3);
+        const Vec3A v2 = x.template segment<3>(6);
+
+        const Vec3A e0 = v1 - v0;
+        const Vec3A e1 = v2 - v1;
+        const Vec3A e2 = v0 - v2;
+
+        const Vec3A fn_unnorm = e2.cross(e0);
+        const ADouble dbl_area = fn_unnorm.norm();
+        const Vec3A n_own = fn_unnorm / dbl_area;
+
+        const ADouble height0 = dbl_area / e0.norm();
+        const ADouble height1 = dbl_area / e1.norm();
+        const ADouble height2 = dbl_area / e2.norm();
+
+        const Eigen::Matrix2d & abar = abars[f];
+        const Eigen::Matrix2d abar_inv = abar.inverse();
+        const double ai11 = abar_inv(0, 0);
+        const double ai12 = abar_inv(0, 1);
+        const double ai22 = abar_inv(1, 1);
+        const double area = 0.5 * std::sqrt(abar.determinant());
+
+        const ADouble aF11 = e1.dot(e1);
+        const ADouble aF12 = e1.dot(e2);
+        const ADouble aF22 = e2.dot(e2);
+
+        const ADouble Est11 = ai11 * aF11 + ai12 * aF12 - 1.0;
+        const ADouble Est12 = ai11 * aF12 + ai12 * aF22;
+        const ADouble Est21 = ai12 * aF11 + ai22 * aF12;
+        const ADouble Est22 = ai12 * aF12 + ai22 * aF22 - 1.0;
+
+        const ADouble tr_st   = Est11 + Est22;
+        const ADouble trsq_st = Est11 * Est11 + 2.0 * Est12 * Est21 + Est22 * Est22;
+        const ADouble stretch_energy = h_aa * (c1 * tr_st * tr_st + c2 * trsq_st) * area;
+
+        const Vec3A eLocal[3] = {e0, e1, e2};
+        ADouble theta[3];
+        for(int i = 0; i < 3; ++i)
+        {
+            if(!interior[i]) { theta[i] = ADouble(0.0); continue; }
+
+            auto pick = [&](int k) -> Vec3A {
+                const int tag = nbrMap[i][k];
+                if(tag == 0) return v0;
+                if(tag == 1) return v1;
+                if(tag == 2) return v2;
+                return Vec3A(x.template segment<3>(9 + 3 * i));
+            };
+            const Vec3A nb0 = pick(0);
+            const Vec3A nb1 = pick(1);
+            const Vec3A nb2 = pick(2);
+            const Vec3A nbn_unnorm = (nb0 - nb2).cross(nb1 - nb0);
+            const Vec3A n_nbr = nbn_unnorm / nbn_unnorm.norm();
+
+            // Signed dihedral angle, SMOOTH form:  theta = atan2( (n_own x n_nbr).e_hat , n_own.n_nbr ).
+            // This is mathematically identical to the 2b form 2*s*atan2(|n0-n1|,|n0+n1|) with
+            // s = sign((n_own x n_nbr).e_i) -- both equal the signed dihedral in (-pi,pi) -- but
+            // it avoids the 0/0 in d/dx ||n_own - n_nbr|| at the exactly flat (coplanar) state,
+            // where the 2b form's frozen sign reintroduces a non-differentiable kink and TinyAD
+            // returns NaN derivatives. At any curved state the two forms give identical value AND
+            // gradient (verified: Stage-3 gates 1-3 compare against the production analytic gradient).
+            const Vec3A e_hat = eLocal[i] / eLocal[i].norm();
+            const ADouble sinComp = (n_own.cross(n_nbr)).dot(e_hat);
+            const ADouble cosComp = n_own.dot(n_nbr);
+            theta[i] = atan2(sinComp, cosComp);
+        }
+
+        const ADouble alpha0 = 0.5 * theta[0] + double(sgn[0]) * x(18);
+        const ADouble alpha1 = 0.5 * theta[1] + double(sgn[1]) * x(19);
+        const ADouble alpha2 = 0.5 * theta[2] + double(sgn[2]) * x(20);
+
+        const ADouble n2_dot_e1 =  height2 * sin(alpha2);
+        const ADouble n0_dot_e1 = -height0 * sin(alpha0);
+        const ADouble n0_dot_e2 = -n0_dot_e1;
+        const ADouble n1_dot_e2 = -height1 * sin(alpha1);
+
+        const ADouble b11 =  2.0 * (n0_dot_e1 - n2_dot_e1);
+        const ADouble b12 = -2.0 * n0_dot_e1;
+        const ADouble b22 =  2.0 * (n1_dot_e2 - n0_dot_e2);
+
+        const Eigen::Matrix2d bbar = mesh.getRestConfiguration().getSecondFundamentalForm(f);
+        const double bb11 = bbar(0, 0), bb12 = bbar(0, 1), bb22 = bbar(1, 1);
+
+        const ADouble d11 = b11 - bb11;
+        const ADouble d12 = b12 - bb12;
+        const ADouble d22 = b22 - bb22;
+
+        const ADouble Sb11 = ai11 * d11 + ai12 * d12;
+        const ADouble Sb12 = ai11 * d12 + ai12 * d22;
+        const ADouble Sb21 = ai12 * d11 + ai22 * d12;
+        const ADouble Sb22 = ai12 * d12 + ai22 * d22;
+
+        const ADouble tr_b   = Sb11 + Sb22;
+        const ADouble trsq_b = Sb11 * Sb11 + 2.0 * Sb12 * Sb21 + Sb22 * Sb22;
+        const ADouble bend_energy = h_bb * (c1 * tr_b * tr_b + c2 * trsq_b) * area;
+
+        return stretch_energy + bend_energy;
+    }
+
+public:
+    /**
+     * STAGE 3: exact Hessian-vector product H*v at the CURRENT dofs, assembled from the
+     * per-face exact 21x21 Hessians that TinyAD produces in the same pass as the (verified)
+     * energy and gradient. For each face: gather v at the 21 global slot indices, apply the
+     * local 21x21 Hessian, scatter the result back. Returns the full-length (3*nV+nE) vector.
+     */
+    Eigen::VectorXd hessianVectorProductTinyAD(const Eigen::VectorXd & v)
+    {
+        requireMesh();
+        mesh.updateDeformedConfiguration();
+
+        const int nV = mesh.getNumberOfVertices();
+        const int nF = mesh.getNumberOfFaces();
+        const int nD = nDofs();
+        if(v.size() != nD)
+            throw std::invalid_argument("hessian_vector_product_tinyad: vector has the wrong length");
+
+        const auto & topo = mesh.getTopology();
+        const Eigen::MatrixXi F   = topo.getFace2Vertices();
+        const Eigen::MatrixXi F2E = topo.getFace2Edges();
+        const Eigen::MatrixXi E2F = topo.getEdge2Faces();
+        const Eigen::MatrixXd V   = mesh.getCurrentConfiguration().getVertices();
+        const Eigen::VectorXd phi = mesh.getCurrentConfiguration().getEdgeDirectors();
+        const tVecMat2d & abars   = mesh.getRestConfiguration().getFirstFundamentalForms();
+
+        using ADouble = TinyAD::Double<21>; // with_hessian = true
+
+        Eigen::VectorXd out = Eigen::VectorXd::Zero(nD);
+
+        for(int f = 0; f < nF; ++f)
+        {
+            int gidx[21];
+            const ADouble energy = computeFaceEnergyAD<ADouble>(
+                f, F, F2E, E2F, V, phi, abars, nV, gidx);
+
+            Eigen::Matrix<double, 21, 1> v_local;
+            v_local.setZero();
+            for(int j = 0; j < 21; ++j)
+                if(gidx[j] >= 0) v_local(j) = v(gidx[j]);
+
+            const Eigen::Matrix<double, 21, 1> hv = energy.Hess * v_local;
+
+            for(int j = 0; j < 21; ++j)
+                if(gidx[j] >= 0) out(gidx[j]) += hv(j);
+        }
+
+        return out;
+    }
+
+    /**
+     * STAGE 3: assemble the full sparse exact Hessian at the CURRENT dofs by scattering each
+     * per-face 21x21 block (TinyAD) into global (row, col) triplets, then setFromTriplets.
+     * pybind11/eigen maps Eigen::SparseMatrix<double> to scipy.sparse.csc automatically.
+     */
+    Eigen::SparseMatrix<double> hessianTinyAD()
+    {
+        requireMesh();
+        mesh.updateDeformedConfiguration();
+
+        const int nV = mesh.getNumberOfVertices();
+        const int nF = mesh.getNumberOfFaces();
+        const int nD = nDofs();
+
+        const auto & topo = mesh.getTopology();
+        const Eigen::MatrixXi F   = topo.getFace2Vertices();
+        const Eigen::MatrixXi F2E = topo.getFace2Edges();
+        const Eigen::MatrixXi E2F = topo.getEdge2Faces();
+        const Eigen::MatrixXd V   = mesh.getCurrentConfiguration().getVertices();
+        const Eigen::VectorXd phi = mesh.getCurrentConfiguration().getEdgeDirectors();
+        const tVecMat2d & abars   = mesh.getRestConfiguration().getFirstFundamentalForms();
+
+        using ADouble = TinyAD::Double<21>; // with_hessian = true
+
+        std::vector<Eigen::Triplet<double>> trips;
+        trips.reserve(nF * 21 * 21);
+
+        for(int f = 0; f < nF; ++f)
+        {
+            int gidx[21];
+            const ADouble energy = computeFaceEnergyAD<ADouble>(
+                f, F, F2E, E2F, V, phi, abars, nV, gidx);
+
+            const Eigen::Matrix<double, 21, 21> & Hloc = energy.Hess;
+            for(int r = 0; r < 21; ++r)
+            {
+                if(gidx[r] < 0) continue;
+                for(int c = 0; c < 21; ++c)
+                {
+                    if(gidx[c] < 0) continue;
+                    trips.emplace_back(gidx[r], gidx[c], Hloc(r, c));
+                }
+            }
+        }
+
+        Eigen::SparseMatrix<double> H(nD, nD);
+        H.setFromTriplets(trips.begin(), trips.end());
+        return H;
+    }
+
     void setAbars(const Eigen::MatrixXd & arr)
     {
         requireMesh();
@@ -763,6 +1063,14 @@ PYBIND11_MODULE(pyshell, m)
              "FULL Saint-Venant energy (stretching + bending) and its full-DOF gradient via "
              "TinyAD autodiff over all 21 per-face DOFs. Returns (energy, gradient); matches "
              "energy() and the analytic energy_and_gradient()[1] over all dofs. Monolayer only.")
+        .def("hessian_vector_product_tinyad",
+             &MonolayerShell::hessianVectorProductTinyAD, py::arg("v"),
+             "Exact Hessian-vector product H*v at the current dofs, assembled from the per-face "
+             "exact 21x21 TinyAD Hessians. Returns a length-(3*nV+nE) vector. Monolayer only.")
+        .def("hessian_tinyad",
+             &MonolayerShell::hessianTinyAD,
+             "Exact full sparse Hessian (scipy.sparse.csc) at the current dofs, assembled from the "
+             "per-face exact 21x21 TinyAD Hessian blocks. Monolayer only.")
         .def("get_abars", &MonolayerShell::getAbars,
              "Prescribed first fundamental forms as an (n_faces, 3) array of (a11, a12, a22).")
         .def("set_abars", &MonolayerShell::setAbars, py::arg("abars"))
