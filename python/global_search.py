@@ -39,8 +39,10 @@ import numpy as np
 from scipy.sparse.linalg import ArpackNoConvergence, ArpackError
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from scipy.optimize import minimize                                     # noqa: E402
 from verify_bindings import build_validation_disk                       # noqa: E402
-from branch_continuation import build_bilayer_onesided, minimize_energy  # noqa: E402
+from branch_continuation import (build_bilayer_onesided, minimize_energy,  # noqa: E402
+                                 minimize_energy_newton, _rigid_projector)
 from stage_check import assess_stage, hessian_lowest_eig                 # noqa: E402
 
 
@@ -90,13 +92,21 @@ def _eigen_seeds(shell, x_flat, n_modes, amps, rng_seed):
 
 
 def enumerate_minima(build, t, E, h, n_modes=4, amps=None, n_random=3, rng_seed=0,
-                     dedupe_rtol=1e-3, grad_tol_nd=1e-4, rel_curv=1e-6, verbose=True):
+                     dedupe_rtol=1e-3, grad_tol_nd=1e-4, rel_curv=1e-6,
+                     minimizer=minimize_energy, verbose=True):
     """
     Enumerate the distinct certified minima of the shell at swelling ``t`` by multi-start.
 
     Returns a :class:`SearchResult`; ``minima`` is sorted by energy (element 0 is the
     lowest-energy shape *found among the sampled seeds* -- not a proven global minimum).
     ``amps`` are physical max|z| seed amplitudes (default (10*h, 30*h)).
+
+    ``minimizer`` is the per-seed relaxation. Pass ``minimize_energy_newton`` for the
+    curvature-aware (trust-ncg) solve -- it converges more reliably and is drawn off saddles
+    rather than stalling on them, at higher cost per seed; ``minimize_energy`` (L-BFGS) is
+    the cheaper default. In this near-degenerate regime multi-start with random seeds gives
+    better coverage of the coexisting shallow minima than directed penalty-deflation (see
+    :func:`deflated_search`), so this is the recommended enumerator.
 
     Deduping is on ENERGY (rigid-invariant): distinct energy => distinct shape. Two genuinely
     distinct but energy-degenerate branches (e.g. mirror images of a symmetric design) would
@@ -142,7 +152,7 @@ def enumerate_minima(build, t, E, h, n_modes=4, amps=None, n_random=3, rng_seed=
     found = []
     for name, s in seeds:
         try:
-            x, _ = minimize_energy(shell, s)
+            x, _ = minimizer(shell, s)
         except Exception as err:                       # one bad seed must not kill the search
             tally["relax_fail"] += 1
             if verbose:
@@ -181,6 +191,138 @@ def enumerate_minima(build, t, E, h, n_modes=4, amps=None, n_random=3, rng_seed=
             continue
         distinct.append(m)
     return SearchResult(minima=distinct, tally=tally, n_seeds=len(seeds))
+
+
+def deflated_search(build, t, E, h, max_solutions=6, penalty_w=None, penalty_sigma=None,
+                    grad_tol_nd=1e-4, rel_curv=1e-6, escape_maxiter=3000, verbose=True):
+    """
+    Penalty-deflation global search (more systematic than random multi-start).
+
+    Find a minimum, add a repulsive Gaussian penalty around it, then re-minimize from the
+    same flat start (the penalty repels the solver out of the found basin), clean up the
+    escaped point on the TRUE energy with the curvature-aware Newton solver, and certify.
+    Repeat, accumulating a penalty at every found minimum. Because the search is driven
+    away from what it has already found -- rather than sampled at random -- it discovers new
+    basins deterministically for a given (penalty_w, penalty_sigma).
+
+    The penalty acts only to escape a basin; the reported minima are re-minimized on the
+    unpenalized energy and second-order certified, so they are genuine minima of E.
+
+    LIMITATION (measured): in the near-degenerate high-swelling bilayer regime this does
+    NOT out-enumerate multi-start. It reliably finds the dominant minimum and avoids
+    re-finding it, but the kicked, penalized restarts tend to land on the saddles *between*
+    the shallow secondary minima (correctly curvature-rejected) rather than in them, so it
+    recovers fewer distinct minima than random multi-start does. Penalty/kick calibration is
+    the finicky part. Prefer :func:`enumerate_minima` (multi-start, optionally with
+    minimize_energy_newton) as the practical enumerator; this routine is kept for
+    well-separated landscapes and as a documented baseline.
+
+    penalty_sigma : width of the repulsion in DOF distance (default 0.4*||x_flat perturbation
+        scale||); penalty_w : height, scaled to the energy so it can lift out of a basin.
+    Both are the deflation tuning knobs; distances are measured in the rigid-projected
+    subspace so rigid offsets do not spuriously separate shapes.
+    """
+    shell = build(t)
+    nV = shell.n_vertices
+    x_flat = shell.get_dofs().copy()
+    shell.set_dofs(x_flat)
+    Q = _rigid_projector(shell, x_flat)
+
+    def proj(v):
+        v = np.asarray(v, float).ravel()
+        return v - Q @ (Q.T @ v)
+
+    # defaults : sigma ~ a fraction of a unit-amplitude out-of-plane perturbation's norm;
+    # w scaled to the energy so the bump can exceed a basin's depth.
+    if penalty_sigma is None:
+        penalty_sigma = 0.4 * np.sqrt(nV) * (20.0 * h)
+    if penalty_w is None:
+        shell.set_dofs(x_flat)
+        penalty_w = 50.0 * abs(shell.energy()) + 1e-9
+
+    found = []
+    tally = dict(relax_fail=0, first_order_reject=0, curv_reject=0,
+                 spectral_fail=0, duplicate=0, certified=0)
+    inv_2s2 = 1.0 / (2.0 * penalty_sigma ** 2)
+    rng = np.random.default_rng(0)
+    kick_amp = 20.0 * h
+    consecutive_dupes = 0
+    max_dupes = 4          # give up after this many consecutive re-finds
+
+    for k in range(max_solutions):
+        # Restart from a found minimum kicked off-center (the penalty is exactly zero at its
+        # own center, so it only repels once we step off it); the accumulated penalties then
+        # bias the solve into a neighbouring basin. Restarting from flat instead just drains
+        # back into the dominant basin, which the penalty cannot prevent from far away.
+        if found:
+            kick = np.zeros(shell.n_dofs)
+            kick[2 * nV:3 * nV] = rng.standard_normal(nV)
+            kick = proj(kick)
+            kn = float(np.abs(kick[2 * nV:3 * nV]).max())
+            if kn > 0:
+                kick /= kn
+            x_start = found[-1].x + kick_amp * kick
+        else:
+            x_start = x_flat
+
+        def pen_fg(x):
+            shell.set_dofs(x)
+            Ev, g = shell.energy_and_gradient()
+            g = proj(g)
+            for m in found:
+                dp = proj(x - m.x)
+                b = penalty_w * np.exp(-float(dp @ dp) * inv_2s2)
+                Ev += b
+                g = g - b * dp / penalty_sigma ** 2      # repel : grad of +bump
+            return Ev, g
+
+        try:
+            esc = minimize(pen_fg, x_start, jac=True, method="L-BFGS-B",
+                           options={"maxiter": escape_maxiter, "ftol": 1e-14, "gtol": 1e-9})
+            x_min, _ = minimize_energy_newton(shell, esc.x)   # clean up on the TRUE energy
+        except Exception as err:
+            tally["relax_fail"] += 1
+            if verbose:
+                print(f"  iter {k}: relaxation failed ({type(err).__name__})")
+            continue
+        try:
+            v = assess_stage(shell, x_min, E=E, h=h, grad_tol_nd=grad_tol_nd,
+                             rel_curv=rel_curv, mode="full")
+        except (ArpackNoConvergence, ArpackError, RuntimeError):
+            tally["spectral_fail"] += 1
+            continue
+        if not v.first_order_ok:
+            tally["first_order_reject"] += 1
+            continue
+        if not v.second_order_ok:
+            tally["curv_reject"] += 1
+            continue
+
+        shell.set_dofs(x_min)
+        Ev = float(shell.energy())
+        if any(abs(Ev - m.energy) <= 1e-3 * max(abs(m.energy), 1e-30) for m in found):
+            tally["duplicate"] += 1
+            consecutive_dupes += 1
+            if verbose:
+                print(f"  iter {k}: re-found an existing minimum (E={Ev:.6e})")
+            if consecutive_dupes >= max_dupes:
+                if verbose:
+                    print(f"  {max_dupes} consecutive re-finds -- deflation exhausted "
+                          "(or needs larger penalty_w/penalty_sigma); stopping")
+                break
+            continue
+        consecutive_dupes = 0
+        tally["certified"] += 1
+        z = shell.vertices()[:, 2]
+        found.append(Minimum(energy=Ev, max_z=float(np.abs(z).max()),
+                             z_rms=float(np.sqrt(np.mean((z - z.mean()) ** 2))),
+                             lam_min=float(v.lam_min), seed=f"deflate{k}", x=x_min.copy()))
+        if verbose:
+            print(f"  iter {k}: NEW minimum E={Ev:.6e}  max|z|={found[-1].max_z:.3e}  "
+                  f"lam_min={v.lam_min:+.3e}")
+
+    found.sort(key=lambda m: m.energy)
+    return SearchResult(minima=found, tally=tally, n_seeds=max_solutions)
 
 
 # ----------------------------------------------------------------------------------
