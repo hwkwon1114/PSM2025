@@ -325,6 +325,187 @@ def deflated_search(build, t, E, h, max_solutions=6, penalty_w=None, penalty_sig
     return SearchResult(minima=found, tally=tally, n_seeds=max_solutions)
 
 
+def _bordered_solve(H, Q, rhs):
+    """
+    Solve the constrained Newton system [[H, Q],[Q^T, 0]] [dx; mu] = [rhs; 0], return dx.
+
+    Pins the rigid components (Q^T dx = 0) while using the EXACT sparse Hessian H for the
+    physical directions, via a direct sparse LU (spsolve) -- so the biharmonic
+    ill-conditioning that defeats an unpreconditioned Krylov root-finder is handled exactly.
+    """
+    import scipy.sparse as sp
+    from scipy.sparse.linalg import spsolve
+    n, m = H.shape[0], Q.shape[1]
+    Qs = sp.csr_matrix(Q)
+    K = sp.bmat([[H, Qs], [Qs.T, None]], format="csc")
+    b = np.concatenate([np.asarray(rhs, float).ravel(), np.zeros(m)])
+    return spsolve(K, b)[:n]
+
+
+def farrell_deflation(build, t, E, h, max_solutions=10, power=2.0, shift=1.0,
+                      f_tol=1e-9, newton_maxiter=80, grad_tol_nd=1e-4, rel_curv=1e-6,
+                      verbose=True):
+    """
+    Farrell residual-deflation : systematically enumerate the distinct CRITICAL POINTS of
+    the shell energy (roots of the gradient) and report the certified-minimum subset.
+
+    Unlike penalty-deflation (deflated_search) and random multi-start, this is a
+    deterministic root-finding method : find a root of the residual, multiply the residual by
+    a deflation factor that makes that root a repeller, and re-solve from the SAME start; the
+    solver is forced to a DIFFERENT root. It finds saddles too (deflated but not reported) --
+    it maps the bifurcation structure, of which the minima are the multistable shapes.
+
+    Solver (this is where the exact Hessian is essential -- a matrix-free newton_krylov fails
+    on the biharmonic conditioning):
+      * physical residual r(x) = P grad(x), P = I - Q Q^T; the rigid components are pinned by
+        the bordered constraint Q^T dx = 0, so the solution set is isolated.
+      * exact-Hessian Newton via _bordered_solve (direct sparse LU of [[H,Q],[Q^T,0]]).
+      * deflation M(x) = prod_i (||P(x-x_i)||^-power + shift) is applied EXACTLY through
+        Sherman-Morrison on the bordered solve: the deflated Newton step is a/(1 - u^T a)
+        where a solves the base bordered system and u = grad log M -- so it costs one extra
+        matvec, no re-factorisation. Backtracking line search on the deflated residual.
+      * certification uses the exact TinyAD Hessian (assess_stage), so near-critical minima
+        are classified cleanly.
+
+    Returns a SearchResult; minima are energy-sorted (element 0 = lowest found).
+
+    LIMITATION (measured on the english-wheel bilayer, res 12, t=0.4): the exact-Hessian
+    deflated Newton is a real improvement over newton_krylov (which fails to converge at all
+    on this biharmonic conditioning) -- it converges and correctly finds+classifies a genuine
+    saddle. But it does NOT robustly enumerate the minima here : Newton root-finding lands on
+    critical points indiscriminately (a saddle from the flat start), and the deflated restarts
+    stall on near-singular Jacobians because the critical points are closely spaced and the
+    regime is near-critical. For the multistable MINIMA on this problem use enumerate_minima
+    (Newton multi-start), which is robust; a deflated *continuation* over t (deflate at the
+    bifurcations tracked in swelling_scan, rather than isolated-t deflation) would be the more
+    robust route to the full branch structure and is the recommended next step for it.
+    """
+    shell = build(t)
+    x_flat = shell.get_dofs().copy()
+    shell.set_dofs(x_flat)
+    Q = shell.rigid_body_modes()
+
+    def P(v):
+        v = np.asarray(v, float).ravel()
+        return v - Q @ (Q.T @ v)
+
+    def residual(x):
+        shell.set_dofs(np.asarray(x, float))
+        return P(shell.energy_and_gradient()[1])
+
+    crit = []          # all found critical points, used to deflate
+    tally = dict(newton_fail=0, minimum=0, saddle=0, not_converged=0)
+
+    def defl_factor(x):
+        m = 1.0
+        for xc in crit:
+            nrm = max(float(np.linalg.norm(P(x - xc))), 1e-14)
+            m *= (nrm ** (-power) + shift)
+        return m
+
+    def defl_dir(x):                                     # u = grad log M
+        u = np.zeros(len(x))
+        for xc in crit:
+            d = P(x - xc)
+            nrm = max(float(np.linalg.norm(d)), 1e-14)
+            u += (-power * nrm ** (-power - 2) * d) / (nrm ** (-power) + shift)
+        return u
+
+    def deflated_newton(x0):
+        x = np.asarray(x0, float).copy()
+        for _ in range(newton_maxiter):
+            r = residual(x)
+            Rn = defl_factor(x) * float(np.linalg.norm(r))
+            if Rn < f_tol:
+                return x, True
+            shell.set_dofs(x)
+            try:
+                a = _bordered_solve(shell.hessian_tinyad(), Q, -r)   # J a = -r
+            except Exception:
+                return x, False
+            u = defl_dir(x)
+            denom = 1.0 - float(u @ a)                    # Sherman-Morrison: dx = a/(1 - u^T a)
+            if abs(denom) < 1e-12:
+                denom = 1e-12 if denom >= 0 else -1e-12
+            dx = a / denom
+            alpha, improved = 1.0, False
+            for _ in range(40):                          # backtracking on the deflated residual
+                Rt = defl_factor(x + alpha * dx) * float(np.linalg.norm(residual(x + alpha * dx)))
+                if Rt < (1.0 - 1e-4 * alpha) * Rn:
+                    improved = True
+                    break
+                alpha *= 0.5
+            if not improved:
+                return x, False
+            x = x + alpha * dx
+        return x, False
+
+    minima = []
+    rng = np.random.default_rng(0)
+    nV = shell.n_vertices
+    consec_fail, max_fail = 0, 4
+    for k in range(max_solutions):
+        # First solve from flat; later solves restart from the last found critical point plus
+        # a rigid-projected out-of-plane kick, so Newton explores ADJACENT critical points
+        # (from flat it just re-heads to the same nearby one, which deflation alone cannot
+        # redirect in this near-degenerate landscape).
+        if crit:
+            kick = np.zeros(shell.n_dofs)
+            kick[2 * nV:3 * nV] = rng.standard_normal(nV)
+            kick = P(kick)
+            kn = float(np.abs(kick[2 * nV:3 * nV]).max())
+            if kn > 0:
+                kick /= kn
+            x_start = crit[-1] + (30.0 * h) * kick
+        else:
+            x_start = x_flat
+        xk, ok = deflated_newton(x_start)
+        if not ok:
+            tally["newton_fail"] += 1
+            consec_fail += 1
+            if verbose:
+                print(f"  iter {k}: deflated Newton did not converge")
+            if consec_fail >= max_fail:
+                if verbose:
+                    print(f"  {max_fail} consecutive failures -- stopping")
+                break
+            continue
+        consec_fail = 0
+        crit.append(xk.copy())
+        v = assess_stage(shell, xk, E=E, h=h, grad_tol_nd=grad_tol_nd,
+                         rel_curv=rel_curv, mode="full")
+        if not v.first_order_ok:
+            tally["not_converged"] += 1
+            if verbose:
+                print(f"  iter {k}: converged root fails first-order gate "
+                      f"(||g||_nd={v.grad_norm_nd:.2e})")
+            continue
+        shell.set_dofs(xk)
+        z = shell.vertices()[:, 2]
+        Ek = float(shell.energy())
+        if v.second_order_ok:
+            tally["minimum"] += 1
+            minima.append(Minimum(energy=Ek, max_z=float(np.abs(z).max()),
+                                  z_rms=float(np.sqrt(np.mean((z - z.mean()) ** 2))),
+                                  lam_min=float(v.lam_min), seed=f"farrell{k}", x=xk.copy()))
+            if verbose:
+                print(f"  iter {k}: MINIMUM  E={Ek:.6e}  max|z|={np.abs(z).max():.3e}  "
+                      f"lam_min={v.lam_min:+.3e}")
+        else:
+            tally["saddle"] += 1
+            if verbose:
+                print(f"  iter {k}: saddle   E={Ek:.6e}  lam_min={v.lam_min:+.3e}  "
+                      "(deflated, not reported)")
+
+    minima.sort(key=lambda m: m.energy)
+    distinct = []
+    for m in minima:
+        if any(abs(m.energy - d.energy) <= 1e-3 * max(abs(d.energy), 1e-30) for d in distinct):
+            continue
+        distinct.append(m)
+    return SearchResult(minima=distinct, tally=tally, n_seeds=len(crit))
+
+
 # ----------------------------------------------------------------------------------
 # demonstration
 # ----------------------------------------------------------------------------------
