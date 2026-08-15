@@ -440,11 +440,15 @@ void Sim_MonoLayer_Growth::run_basic_disk()
     if(maxIterations <= 0)
         throw std::invalid_argument("-maxiterations must be positive");
 
-    // Convergence bookkeeping. The gradient norm is dimensional (it scales with E, h and the
-    // mesh), so -gradtol has no defensible default : left unset, a stage is rejected only when
-    // it was truncated by -maxiterations, and the run is otherwise recorded but not judged.
-    // Calibrate the threshold from the <tag>_convergence.dat of a known-good run, then set it
-    // (and optionally -requireconvergence) for production.
+    // Convergence bookkeeping. -gradtol is now tested against the *per-DOF RMS* gradient
+    // (MinimizationReport::gradientNormPerDof), which is mesh-consistent : the same threshold
+    // means the same tightness at res 24 and res 48, unlike the bare ||g|| it replaces. It is
+    // still material-dependent (scales with E, h), so it has no universal default : left unset,
+    // a stage is rejected only when truncated by -maxiterations, and is otherwise recorded but
+    // not judged. Calibrate once from the <tag>_convergence.dat of a known-good run (use the
+    // 'grad norm/dof' column), then set it (and optionally -requireconvergence) for production.
+    // NB : this is a first-order test and cannot detect a saddle -- see the second-order gate
+    // in python/stage_check.py (Phase 0 of docs/robust_optimization_spec).
     const Real gradientTolerance = parser.parse<Real>("-gradtol", -1.0);
     const bool requireConvergence = parser.parse<bool>("-requireconvergence", false);
     bool finalStageConverged = false;
@@ -484,10 +488,10 @@ void Sim_MonoLayer_Growth::run_basic_disk()
         finalStageConverged = lastMinimization.converged(gradientTolerance);
         {
             FILE * f = fopen((tag+"_convergence.dat").c_str(), i==0 ? "w" : "a");
-            if(i==0) fprintf(f, "# stage \t swelling \t hlbfgs code \t iterations \t grad norm \t converged\n");
-            fprintf(f, "%d \t %10.10e \t %d \t %d \t %10.10e \t %d\n",
+            if(i==0) fprintf(f, "# stage \t swelling \t hlbfgs code \t iterations \t grad norm \t grad norm/dof \t converged\n");
+            fprintf(f, "%d \t %10.10e \t %d \t %d \t %10.10e \t %10.10e \t %d\n",
                     (int)i, swellingRates[i], lastMinimization.code, lastMinimization.iterations,
-                    lastMinimization.gradientNorm, finalStageConverged ? 1 : 0);
+                    lastMinimization.gradientNorm, lastMinimization.gradientNormPerDof(), finalStageConverged ? 1 : 0);
             fclose(f);
         }
         if(not finalStageConverged)

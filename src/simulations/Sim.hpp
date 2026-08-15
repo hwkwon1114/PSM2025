@@ -287,6 +287,21 @@ protected:
         int code = -1;              //!< raw HLBFGS termination code, see HLBFGS_Energy::get_lastreturncode
         int iterations = 0;         //!< iterations taken
         Real gradientNorm = -1.0;   //!< L2 norm of the gradient at termination (dimensional)
+        int nVariables = 0;         //!< number of active DOFs, for the per-DOF (mesh-consistent) norm
+
+        /**
+         * Per-DOF RMS gradient : ||g|| / sqrt(N).
+         *
+         * The bare ||g|| grows like sqrt(N) under refinement (more residual entries to sum),
+         * so a threshold on it is a different tightness on every mesh. Dividing by sqrt(N)
+         * removes that growth, so a single -gradtol means the same thing across resolutions.
+         * Falls back to the dimensional norm when N is unknown.
+         */
+        Real gradientNormPerDof() const
+        {
+            if(nVariables <= 0 or gradientNorm < 0.0) return gradientNorm;
+            return gradientNorm / std::sqrt(static_cast<Real>(nVariables));
+        }
 
         /**
          * Whether the stage may be treated as an equilibrium.
@@ -297,8 +312,17 @@ protected:
          * never fire. The normal outcome is code 1 or 4 : the line search stopped making
          * progress. That is how a converged run actually terminates here, so it is accepted,
          * and -gradtol is what turns it into a real check by requiring the achieved gradient
-         * norm to meet a threshold. The norm is dimensional, so that threshold has to be
-         * calibrated to the material parameters and mesh resolution at hand.
+         * to meet a threshold.
+         *
+         * The threshold is now applied to the *per-DOF RMS* gradient (gradientNormPerDof),
+         * which is mesh-consistent : calibrate -gradtol once, not per resolution. It stays
+         * material-dependent (it scales with E, h), so recalibrate if those change.
+         *
+         * NOTE : this is a first-order test. It cannot distinguish a minimum from a saddle,
+         * which is exactly how the flat, pre-buckled state slips through as "converged".
+         * The second-order (Hessian-eigenvalue) gate that closes that gap lives in the
+         * Python driver (python/stage_check.py, assess_stage); a native C++ port is Phase 0
+         * of docs/robust_optimization_spec.
          */
         bool converged(const Real gradientTolerance = -1.0) const
         {
@@ -306,7 +330,7 @@ protected:
             if(code == 2 or code == 3) return true;
             if(code != 1 and code != 4) return false; // never ran, or an outcome we do not model
             if(gradientTolerance <= 0.0) return true;
-            return (gradientNorm >= 0.0 and gradientNorm <= gradientTolerance);
+            return (gradientNorm >= 0.0 and gradientNormPerDof() <= gradientTolerance);
         }
     };
 
@@ -352,6 +376,7 @@ protected:
         lastMinimization.code = hlbfgs_wrapper.get_lastreturncode();
         lastMinimization.iterations = hlbfgs_wrapper.get_lastiterations();
         lastMinimization.gradientNorm = hlbfgs_wrapper.get_lastnorm();
+        lastMinimization.nVariables = op.getNumberOfVariables(mesh);
 #else
         std::cout << "should use liblbfgs or hlbfgs\n";
 #endif
