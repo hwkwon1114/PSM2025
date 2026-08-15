@@ -95,15 +95,58 @@ def minimize_energy(shell, x0, gtol=1e-8, ftol=1e-15, maxiter=4000):
     return res.x, res
 
 
-# Note on curvature-aware solvers : a trust-region Newton (scipy trust-krylov/trust-ncg)
-# with a matrix-free Hessian-vector product was tried here and did NOT help. The HvP is a
-# central difference of the analytic gradient, so it is noisy, and trust-region methods
-# build a quadratic *model* from it -- the noise collapses the trust region ("bad
-# approximation caused failure to predict improvement"), and it converged worse than
-# L-BFGS. The high-swelling one-sided bilayer is also multistable / path dependent rather
-# than gated by one clean barrier. What does help is a negative-curvature escape that uses
-# only the eigen*vector* (from the robust shifted eigensolver) plus an exact-energy solve,
-# not a Hessian model -- that is what the adaptive branch switch below does.
+def minimize_energy_newton(shell, x0, gtol=1e-8, maxiter=2000, fd_root=1.0 / 3.0):
+    """
+    Curvature-aware relaxation : trust-region Newton-CG (Steihaug) with a matrix-free
+    Hessian-vector product (central difference of the analytic gradient at the *current*
+    iterate), rigid modes projected out of gradient and HvP.
+
+    Unlike L-BFGS the inner CG detects negative curvature and steps along it, so this
+    descends off a saddle and across the high-swelling snap-through where the first-order
+    solver stalls. It converged cleanly (`trust-ncg`) at the t=0.4 bilayer snap-through
+    where plain relaxation gave up.
+
+    IMPORTANT : method is `trust-ncg`, NOT `trust-krylov`. trust-krylov builds a more
+    aggressive Lanczos model that is tripped by the (mildly inexact) finite-difference HvP
+    -- it stalls with "bad approximation caused failure to predict improvement". Steihaug's
+    trust-ncg is robust to the same HvP. (An analytic C++ Hessian would let either work and
+    would be the way to make this faster/tighter, but is not required.)
+    """
+    Q = _rigid_projector(shell, x0)
+
+    def proj(v):
+        v = np.asarray(v, float).ravel()
+        return v - Q @ (Q.T @ v)
+
+    def fun(x):
+        shell.set_dofs(x)
+        Ev, g = shell.energy_and_gradient()
+        return Ev, proj(g)
+
+    hstepc = np.finfo(float).eps ** fd_root
+
+    def hessp(x, p):
+        p = proj(p)
+        pn = np.linalg.norm(p)
+        if pn == 0.0:
+            return np.zeros_like(p)
+        hs = hstepc * max(1.0, np.linalg.norm(x)) / pn
+        shell.set_dofs(x + hs * p)
+        g_plus = shell.energy_and_gradient()[1]
+        shell.set_dofs(x - hs * p)
+        g_minus = shell.energy_and_gradient()[1]
+        return proj((g_plus - g_minus) / (2.0 * hs))
+
+    res = minimize(fun, np.asarray(x0, float), jac=True, hessp=hessp, method="trust-ncg",
+                   options={"maxiter": maxiter, "gtol": gtol})
+    return res.x, res
+
+
+# Note : an earlier attempt used method="trust-krylov" and appeared to show that trust
+# region "does not work" here. That was a false negative -- trust-krylov's aggressive model
+# is tripped by the finite-difference HvP, but trust-ncg (Steihaug) above is robust to it
+# and does cross the snap-through. Keep using minimize_energy_newton for curvature-aware
+# work; keep minimize_energy (L-BFGS) as the cheap default for the well-behaved stages.
 
 
 # ----------------------------------------------------------------------------------
@@ -129,7 +172,7 @@ class ContinuationResult:
 
 def branch_continuation(build, schedule, E, h, rel_curv=1e-6, seed_amp=None,
                         seed_factors=(0.25, 1.0, 2.5), grad_tol_nd=1e-4,
-                        stop_on_fail=True, verbose=True):
+                        stop_on_fail=True, minimizer=minimize_energy, verbose=True):
     """
     Parameters
     ----------
@@ -160,7 +203,7 @@ def branch_continuation(build, schedule, E, h, rel_curv=1e-6, seed_amp=None,
     for t in schedule:
         shell = build(t)
         x0 = shell.get_dofs().copy() if warm is None else warm
-        x, _ = minimize_energy(shell, x0)
+        x, _ = minimizer(shell, x0)
 
         # Spectral certification can fail (ARPACK non-convergence, non-finite operator).
         # Treat that as an uncertifiable stage rather than letting it abort the whole run
@@ -210,7 +253,7 @@ def branch_continuation(build, schedule, E, h, rel_curv=1e-6, seed_amp=None,
                 best_x, best_v, best_E, branched = x, v, E_pre, 0
                 for factor in seed_factors:
                     for sign in (+1, -1):
-                        xs, _ = minimize_energy(shell, x + sign * factor * seed_amp * mode)
+                        xs, _ = minimizer(shell, x + sign * factor * seed_amp * mode)
                         try:
                             vs = assess_stage(shell, xs, E=E, h=h, grad_tol_nd=grad_tol_nd,
                                               rel_curv=rel_curv, mode="full")
