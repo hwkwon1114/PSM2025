@@ -77,7 +77,7 @@ def _is_flat(shell, tol=1e-9):
 
 def hessian_lowest_eig(shell, x, k=1, mode="auto", deflate_shift=1.0,
                        lanczos_tol=1e-8, maxiter=40000, want_vectors=False,
-                       v0=None):
+                       v0=None, return_scale=False):
     """
     Smallest ``k`` Hessian eigenvalue(s) at ``x``, with the rigid-body nullspace deflated
     so it cannot masquerade as a cluster of ~0 "unstable" modes.
@@ -135,8 +135,16 @@ def hessian_lowest_eig(shell, x, k=1, mode="auto", deflate_shift=1.0,
         gvals, vecs = out
         vals = c - gvals                       # c*I - H shares H's eigenvectors
         order = np.argsort(vals)
-        return vals[order], vecs[:, order], idx
-    return np.sort(c - np.atleast_1d(out))
+        res = (vals[order], vecs[:, order], idx)
+    else:
+        res = np.sort(c - np.atleast_1d(out))
+
+    # lam_max is the spectral scale : callers use it to set a *relative* curvature
+    # tolerance, since the finite-difference Hessian noise floor scales with it (and with
+    # the mesh). An absolute eps_curv flickers between min/saddle on soft near-zero modes.
+    if return_scale:
+        return (*res, lam_max) if want_vectors else (res, lam_max)
+    return res
 
 
 # ----------------------------------------------------------------------------------
@@ -160,8 +168,8 @@ class StageVerdict:
                 f"lam_min={self.lam_min:+.3e}  ({self.reason})")
 
 
-def assess_stage(shell, x, E, h, grad_tol_nd=1e-6, eps_curv=1e-7,
-                 mode="auto", v0=None):
+def assess_stage(shell, x, E, h, grad_tol_nd=1e-6, rel_curv=1e-6, abs_curv=1e-9,
+                 eps_curv=None, mode="auto", v0=None):
     """
     Decide whether ``x`` is a genuine stable minimum of the shell energy.
 
@@ -171,11 +179,15 @@ def assess_stage(shell, x, E, h, grad_tol_nd=1e-6, eps_curv=1e-7,
         Young's modulus and thickness, for the non-dimensional gradient norm.
     grad_tol_nd
         Threshold on the non-dimensional gradient norm (condition 1).
-    eps_curv
+    rel_curv, abs_curv
         Negative-curvature tolerance (condition 2) : the state is a saddle when
-        ``lam_min < -eps_curv``. Absorbs the finite-difference noise in the Hessian;
-        scale it to the bending stiffness (~E*h^3) for a new problem. The default is
-        conservative for the E=1, h=0.01 validation case.
+        ``lam_min < -curv_floor`` with ``curv_floor = max(abs_curv, rel_curv*lam_max)``.
+        The floor is *relative to the spectral scale* because the finite-difference
+        Hessian noise floor scales with lam_max and with the mesh; a fixed absolute
+        threshold flickers between min and saddle on the soft near-zero modes of a
+        bilayer/fine mesh, which spuriously triggers branch switching.
+    eps_curv
+        Optional absolute override : if given, ``curv_floor = eps_curv`` (back-compat).
 
     Returns a :class:`StageVerdict`. This is the check to call after every continuation
     stage instead of trusting the solver's first-order "converged".
@@ -185,10 +197,14 @@ def assess_stage(shell, x, E, h, grad_tol_nd=1e-6, eps_curv=1e-7,
     gnorm = float(np.linalg.norm(g))
     gnd = nondim_gradient_norm(g, E, h, shell.n_dofs)
 
-    lam = float(hessian_lowest_eig(shell, x, k=1, mode=mode, v0=v0)[0])
+    vals, lam_max = hessian_lowest_eig(shell, x, k=1, mode=mode, v0=v0,
+                                       return_scale=True)
+    lam = float(np.atleast_1d(vals)[0])
+    curv_floor = eps_curv if eps_curv is not None else max(abs_curv,
+                                                           rel_curv * abs(lam_max))
 
     first = gnd <= grad_tol_nd
-    second = lam >= -eps_curv
+    second = lam >= -curv_floor
     accepted = first and second
 
     if accepted:
