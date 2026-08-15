@@ -164,7 +164,9 @@ def main():
     lam_exact = float(vals_exact[0])
 
     # --- FD Hessian path (existing stage_check machinery) ---
-    vals_fd = hessian_lowest_eig(sf, x_base, k=6, mode="out_of_plane")
+    # force exact=False : hessian_lowest_eig now auto-selects the exact Hessian when present,
+    # so without this the "FD" side would silently be exact-vs-exact.
+    vals_fd = hessian_lowest_eig(sf, x_base, k=6, mode="out_of_plane", exact=False)
     lam_fd = float(np.atleast_1d(vals_fd)[0])
 
     print(f"   exact  lowest 6 eigs: "

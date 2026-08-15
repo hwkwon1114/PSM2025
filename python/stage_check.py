@@ -79,7 +79,7 @@ def _is_flat(shell, tol=1e-9):
     return float(np.abs(shell.vertices()[:, 2]).max()) <= tol
 
 
-def _exact_hessian_operator(shell, x, idx, deflate=None, deflate_shift=1.0):
+def _exact_hessian_operator(shell, x, idx, deflate=None, deflate_shift=1.0, Hs=None):
     """
     Deflated LinearOperator wrapping the EXACT sparse TinyAD Hessian restricted to `idx`.
 
@@ -87,9 +87,14 @@ def _exact_hessian_operator(shell, x, idx, deflate=None, deflate_shift=1.0):
     deflate_shift) but uses the analytic Hessian (shell.hessian_tinyad) instead of a finite
     difference of the gradient -- so the eigenvalues carry no FD noise floor, which matters
     for near-critical certification where |lam_min| ~ 1e-8.
+
+    Pass a pre-assembled sparse ``Hs`` to avoid re-assembling the (expensive) Hessian; when
+    None it is assembled at ``x``.
     """
-    shell.set_dofs(np.asarray(x, float))
-    Hs = shell.hessian_tinyad().tocsr()
+    if Hs is None:
+        shell.set_dofs(np.asarray(x, float))
+        Hs = shell.hessian_tinyad()
+    Hs = Hs.tocsr()
     Hsub = Hs[idx][:, idx].tocsr()
     Q = deflate
     n = len(idx)
@@ -147,9 +152,19 @@ def hessian_lowest_eig(shell, x, k=1, mode="auto", deflate_shift=1.0,
     else:
         raise ValueError(f"unknown mode {mode!r}")
 
-    # exact (analytic TinyAD) Hessian when available, else the finite-difference operator
+    # exact (analytic TinyAD) Hessian when available, else the finite-difference operator.
+    # Assemble the sparse Hessian ONCE (it is the expensive step) and reuse it for both the
+    # deflated operator and the lam_max operator below.
     use_exact = (exact if exact is not None else hasattr(shell, "hessian_tinyad"))
-    make_op = _exact_hessian_operator if use_exact else hessian_operator
+    if use_exact:
+        shell.set_dofs(np.asarray(x, float))
+        _Hs = shell.hessian_tinyad()
+
+        def make_op(shell, x, idx, deflate=None, deflate_shift=1.0):
+            return _exact_hessian_operator(shell, x, idx, deflate=deflate,
+                                           deflate_shift=deflate_shift, Hs=_Hs)
+    else:
+        make_op = hessian_operator
 
     H = make_op(shell, x, idx=idx, deflate=Q, deflate_shift=deflate_shift)
     n = H.shape[0]

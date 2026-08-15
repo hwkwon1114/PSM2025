@@ -332,14 +332,26 @@ def _bordered_solve(H, Q, rhs):
     Pins the rigid components (Q^T dx = 0) while using the EXACT sparse Hessian H for the
     physical directions, via a direct sparse LU (spsolve) -- so the biharmonic
     ill-conditioning that defeats an unpreconditioned Krylov root-finder is handled exactly.
+
+    At a bifurcation / extra zero mode the bordered matrix is (near-)singular; spsolve then
+    emits a MatrixRankWarning and returns non-finite values RATHER than raising. We promote
+    that to an error and also check finiteness, so the caller's try/except reliably treats a
+    failed solve as non-convergence instead of propagating NaN into Sherman-Morrison.
     """
+    import warnings
     import scipy.sparse as sp
-    from scipy.sparse.linalg import spsolve
+    from scipy.sparse.linalg import spsolve, MatrixRankWarning
     n, m = H.shape[0], Q.shape[1]
     Qs = sp.csr_matrix(Q)
     K = sp.bmat([[H, Qs], [Qs.T, None]], format="csc")
     b = np.concatenate([np.asarray(rhs, float).ravel(), np.zeros(m)])
-    return spsolve(K, b)[:n]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", MatrixRankWarning)
+        sol = spsolve(K, b)
+    dx = sol[:n]
+    if not np.all(np.isfinite(dx)):
+        raise np.linalg.LinAlgError("bordered solve produced a non-finite step (singular K)")
+    return dx
 
 
 def farrell_deflation(build, t, E, h, max_solutions=10, power=2.0, shift=1.0,
@@ -394,7 +406,7 @@ def farrell_deflation(build, t, E, h, max_solutions=10, power=2.0, shift=1.0,
         return P(shell.energy_and_gradient()[1])
 
     crit = []          # all found critical points, used to deflate
-    tally = dict(newton_fail=0, minimum=0, saddle=0, not_converged=0)
+    tally = dict(newton_fail=0, minimum=0, saddle=0, not_converged=0, spectral_fail=0)
 
     def defl_factor(x):
         m = 1.0
@@ -470,16 +482,30 @@ def farrell_deflation(build, t, E, h, max_solutions=10, power=2.0, shift=1.0,
                     print(f"  {max_fail} consecutive failures -- stopping")
                 break
             continue
-        consec_fail = 0
-        crit.append(xk.copy())
-        v = assess_stage(shell, xk, E=E, h=h, grad_tol_nd=grad_tol_nd,
-                         rel_curv=rel_curv, mode="full")
+        # certify BEFORE deflating : only genuine, first-order-converged critical points are
+        # added to the deflation set. Adding a gauge artifact or under-converged root would
+        # repel every later solve from a point that is not actually a critical point. A
+        # spectral (ARPACK) failure must not abort the whole enumeration either.
+        try:
+            v = assess_stage(shell, xk, E=E, h=h, grad_tol_nd=grad_tol_nd,
+                             rel_curv=rel_curv, mode="full")
+        except (ArpackNoConvergence, ArpackError, RuntimeError):
+            tally["spectral_fail"] = tally.get("spectral_fail", 0) + 1
+            consec_fail += 1
+            if consec_fail >= max_fail:
+                break
+            continue
         if not v.first_order_ok:
             tally["not_converged"] += 1
+            consec_fail += 1
             if verbose:
-                print(f"  iter {k}: converged root fails first-order gate "
-                      f"(||g||_nd={v.grad_norm_nd:.2e})")
+                print(f"  iter {k}: root fails first-order gate "
+                      f"(||g||_nd={v.grad_norm_nd:.2e}); not deflated")
+            if consec_fail >= max_fail:
+                break
             continue
+        consec_fail = 0
+        crit.append(xk.copy())                       # genuine critical point -> deflate it
         shell.set_dofs(xk)
         z = shell.vertices()[:, 2]
         Ek = float(shell.energy())

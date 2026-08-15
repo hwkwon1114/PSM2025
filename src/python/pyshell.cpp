@@ -214,6 +214,39 @@ public:
     }
 
     tMesh & getMesh() { return mesh; }
+
+protected:
+    /**
+     * FIX #1: boolean mask over the length-(3*nV+nE) DOF vector, in the column-major
+     * [x|y|z|phi] layout, marking the Dirichlet-constrained DOFs EXACTLY as the production
+     * gradient merge does. Production zeros a vertex component (i,j) iff vertices_bc(i,j)
+     * (MergeGradVertices, MergePerFaceQuantities.hpp:67,85) and an edge director e iff
+     * edges_bc(e) (MergeGradEdges, MergePerFaceQuantities.hpp:129). The TinyAD scatter does
+     * not honour these, so the TinyAD gradient/Hessian methods use this mask to reproduce the
+     * production masking (grad[i]=0; Hessian row/col i zeroed with unit diagonal).
+     */
+    std::vector<char> constrainedDofMask() const
+    {
+        const int nV = mesh.getNumberOfVertices();
+        const int nE = mesh.getNumberOfEdges();
+        const int nD = 3 * nV + nE;
+        std::vector<char> mask(nD, 0);
+
+        const auto & bc = mesh.getBoundaryConditions();
+        const auto vertices_bc = bc.getVertexBoundaryConditions();
+        const auto edges_bc    = bc.getEdgeBoundaryConditions();
+
+        if(vertices_bc.rows() == nV && vertices_bc.cols() == 3)
+            for(int i = 0; i < nV; ++i)
+                for(int j = 0; j < 3; ++j)
+                    if(vertices_bc(i, j)) mask[j * nV + i] = 1;
+
+        if(edges_bc.size() == nE)
+            for(int e = 0; e < nE; ++e)
+                if(edges_bc(e)) mask[3 * nV + e] = 1;
+
+        return mask;
+    }
 };
 
 /**
@@ -435,180 +468,34 @@ public:
         const Eigen::VectorXd phi = mesh.getCurrentConfiguration().getEdgeDirectors();
         const tVecMat2d & abars   = mesh.getRestConfiguration().getFirstFundamentalForms();
 
-        const Real c1   = 0.5 * E * nu / (1.0 - nu * nu); // getStVenantFactor1()
-        const Real c2   = 0.5 * E / (1.0 + nu);           // getStVenantFactor2()
-        const Real h_aa = h / 4.0;                         // single-layer compute_h_aa
-        const Real h_bb = h * h * h / 12.0;                // single-layer compute_h_bb
-
         Eigen::VectorXd grad = Eigen::VectorXd::Zero(nD);
         Real total = 0.0;
 
-        // 21 active variables per face: [v0 v1 v2 | v_opp_e0 v_opp_e1 v_opp_e2 | phi0 phi1 phi2]
+        // 21 active variables per face: [v0 v1 v2 | v_opp_e0 v_opp_e1 v_opp_e2 | phi0 phi1 phi2].
+        // FIX #2: use the SAME templated per-face builder as the Hessian path so the dihedral
+        // angle uses one single source -- the SMOOTH signed form theta = atan2(sinComp,cosComp)
+        // -- which is finite (no 0/0 NaN gradient) at an exactly-flat coplanar state, and gives
+        // an identical value+gradient to the old 2*s*atan2(|n0-n1|,|n0+n1|) form at any curved
+        // state. Gradient only (no Hessian).
         using ADouble = TinyAD::Double<21, false>;
-        typedef Eigen::Matrix<ADouble, 3, 1> Vec3A;
 
         for(int f = 0; f < nF; ++f)
         {
-            const int i0 = F(f, 0), i1 = F(f, 1), i2 = F(f, 2);
-            const int ownIdx[3] = {i0, i1, i2};
+            int gidx[21];
+            const ADouble energy = computeFaceEnergyAD<ADouble>(
+                f, F, F2E, E2F, V, phi, abars, nV, gidx);
 
-            bool interior[3];
-            int  sgn[3];
-            int  eIdx[3];
-            int  oppGlobal[3];
-            int  nbrMap[3][3];      // neighbour (nv0,nv1,nv2) -> 0/1/2 = own v0/v1/v2, 3 = opposite
-
-            for(int i = 0; i < 3; ++i)
-            {
-                const int e = F2E(f, i);
-                eIdx[i] = e;
-                const int fA = E2F(e, 0), fB = E2F(e, 1);
-                sgn[i] = (fA == f ? +1 : -1);
-                oppGlobal[i] = -1;
-                if(fA < 0 || fB < 0) { interior[i] = false; continue; }
-                interior[i] = true;
-                const int nbr = (fA == f ? fB : fA);
-                const int nv[3] = {F(nbr, 0), F(nbr, 1), F(nbr, 2)};
-                for(int k = 0; k < 3; ++k)
-                {
-                    const int gidx = nv[k];
-                    if(gidx == i0)      nbrMap[i][k] = 0;
-                    else if(gidx == i1) nbrMap[i][k] = 1;
-                    else if(gidx == i2) nbrMap[i][k] = 2;
-                    else { nbrMap[i][k] = 3; oppGlobal[i] = gidx; }
-                }
-            }
-
-            Eigen::Matrix<double, 21, 1> x0;
-            x0.setZero();
-            x0.segment<3>(0) = V.row(i0).transpose();
-            x0.segment<3>(3) = V.row(i1).transpose();
-            x0.segment<3>(6) = V.row(i2).transpose();
-            for(int i = 0; i < 3; ++i)
-                if(interior[i]) x0.segment<3>(9 + 3 * i) = V.row(oppGlobal[i]).transpose();
-            x0(18) = phi(eIdx[0]);
-            x0(19) = phi(eIdx[1]);
-            x0(20) = phi(eIdx[2]);
-
-            const Eigen::Matrix<ADouble, 21, 1> x = ADouble::make_active(x0);
-
-            const Vec3A v0 = x.segment<3>(0);
-            const Vec3A v1 = x.segment<3>(3);
-            const Vec3A v2 = x.segment<3>(6);
-
-            const Vec3A e0 = v1 - v0;
-            const Vec3A e1 = v2 - v1;
-            const Vec3A e2 = v0 - v2;
-
-            // --- geometry (own face) ---
-            const Vec3A fn_unnorm = e2.cross(e0);
-            const ADouble dbl_area = fn_unnorm.norm();
-            const Vec3A n_own = fn_unnorm / dbl_area;
-
-            const ADouble height0 = dbl_area / e0.norm();
-            const ADouble height1 = dbl_area / e1.norm();
-            const ADouble height2 = dbl_area / e2.norm();
-
-            // --- material (shared abar) ---
-            const Eigen::Matrix2d & abar = abars[f];
-            const Eigen::Matrix2d abar_inv = abar.inverse();
-            const double ai11 = abar_inv(0, 0);
-            const double ai12 = abar_inv(0, 1);
-            const double ai22 = abar_inv(1, 1);
-            const double area = 0.5 * std::sqrt(abar.determinant());
-
-            // --- stretching ---
-            const ADouble aF11 = e1.dot(e1);
-            const ADouble aF12 = e1.dot(e2);
-            const ADouble aF22 = e2.dot(e2);
-
-            const ADouble Est11 = ai11 * aF11 + ai12 * aF12 - 1.0;
-            const ADouble Est12 = ai11 * aF12 + ai12 * aF22;
-            const ADouble Est21 = ai12 * aF11 + ai22 * aF12;
-            const ADouble Est22 = ai12 * aF12 + ai22 * aF22 - 1.0;
-
-            const ADouble tr_st   = Est11 + Est22;
-            const ADouble trsq_st = Est11 * Est11 + 2.0 * Est12 * Est21 + Est22 * Est22;
-            const ADouble stretch_energy = h_aa * (c1 * tr_st * tr_st + c2 * trsq_st) * area;
-
-            // --- bending: dihedral angles ---
-            const Vec3A eLocal[3] = {e0, e1, e2};
-            ADouble theta[3];
-            for(int i = 0; i < 3; ++i)
-            {
-                if(!interior[i]) { theta[i] = ADouble(0.0); continue; }
-
-                auto pick = [&](int k) -> Vec3A {
-                    const int tag = nbrMap[i][k];
-                    if(tag == 0) return v0;
-                    if(tag == 1) return v1;
-                    if(tag == 2) return v2;
-                    return Vec3A(x.segment<3>(9 + 3 * i));
-                };
-                const Vec3A nb0 = pick(0);
-                const Vec3A nb1 = pick(1);
-                const Vec3A nb2 = pick(2);
-                const Vec3A nbn_unnorm = (nb0 - nb2).cross(nb1 - nb0);
-                const Vec3A n_nbr = nbn_unnorm / nbn_unnorm.norm();
-
-                const double s = (n_own.cross(n_nbr)).dot(eLocal[i]).val > 0.0 ? 1.0 : -1.0;
-                const ADouble num = (n_own - n_nbr).norm();
-                const ADouble den = (n_own + n_nbr).norm();
-                theta[i] = 2.0 * s * atan2(num, den);
-            }
-
-            const ADouble alpha0 = 0.5 * theta[0] + double(sgn[0]) * x(18);
-            const ADouble alpha1 = 0.5 * theta[1] + double(sgn[1]) * x(19);
-            const ADouble alpha2 = 0.5 * theta[2] + double(sgn[2]) * x(20);
-
-            const ADouble n2_dot_e1 =  height2 * sin(alpha2);
-            const ADouble n0_dot_e1 = -height0 * sin(alpha0);
-            const ADouble n0_dot_e2 = -n0_dot_e1;
-            const ADouble n1_dot_e2 = -height1 * sin(alpha1);
-
-            const ADouble b11 =  2.0 * (n0_dot_e1 - n2_dot_e1);
-            const ADouble b12 = -2.0 * n0_dot_e1;
-            const ADouble b22 =  2.0 * (n1_dot_e2 - n0_dot_e2);
-
-            // rest second fundamental form (0 for a flat plate); subtract as production does.
-            const Eigen::Matrix2d bbar = mesh.getRestConfiguration().getSecondFundamentalForm(f);
-            const double bb11 = bbar(0, 0), bb12 = bbar(0, 1), bb22 = bbar(1, 1);
-
-            const ADouble d11 = b11 - bb11;
-            const ADouble d12 = b12 - bb12;
-            const ADouble d22 = b22 - bb22;
-
-            // Sb = abar_inv * (secondFF - bbar)  (row-major 2x2, generally non-symmetric)
-            const ADouble Sb11 = ai11 * d11 + ai12 * d12;
-            const ADouble Sb12 = ai11 * d12 + ai12 * d22;
-            const ADouble Sb21 = ai12 * d11 + ai22 * d12;
-            const ADouble Sb22 = ai12 * d12 + ai22 * d22;
-
-            const ADouble tr_b   = Sb11 + Sb22;
-            const ADouble trsq_b = Sb11 * Sb11 + 2.0 * Sb12 * Sb21 + Sb22 * Sb22;
-            const ADouble bend_energy = h_bb * (c1 * tr_b * tr_b + c2 * trsq_b) * area;
-
-            const ADouble energy = stretch_energy + bend_energy;
             total += energy.val;
-
             const Eigen::Matrix<double, 21, 1> & g = energy.grad;
-            for(int a = 0; a < 3; ++a)
-            {
-                grad(0 * nV + ownIdx[a]) += g(3 * a + 0);
-                grad(1 * nV + ownIdx[a]) += g(3 * a + 1);
-                grad(2 * nV + ownIdx[a]) += g(3 * a + 2);
-            }
-            for(int i = 0; i < 3; ++i)
-                if(interior[i])
-                {
-                    grad(0 * nV + oppGlobal[i]) += g(9 + 3 * i + 0);
-                    grad(1 * nV + oppGlobal[i]) += g(9 + 3 * i + 1);
-                    grad(2 * nV + oppGlobal[i]) += g(9 + 3 * i + 2);
-                }
-            grad(3 * nV + eIdx[0]) += g(18);
-            grad(3 * nV + eIdx[1]) += g(19);
-            grad(3 * nV + eIdx[2]) += g(20);
+            for(int j = 0; j < 21; ++j)
+                if(gidx[j] >= 0) grad(gidx[j]) += g(j);
         }
+
+        // FIX #1: zero the gradient components of Dirichlet-constrained DOFs, exactly as the
+        // production gradient merge does (MergeGradVertices/MergeGradEdges).
+        const std::vector<char> bcMask = constrainedDofMask();
+        for(int i = 0; i < nD; ++i)
+            if(bcMask[i]) grad(i) = 0.0;
 
         return py::make_tuple(total, grad);
     }
@@ -838,6 +725,12 @@ public:
 
         using ADouble = TinyAD::Double<21>; // with_hessian = true
 
+        // FIX #1: Dirichlet masking. Zeroing the constrained COLUMNS is done by gathering v
+        // with constrained components set to 0, so they contribute nothing to any physical row.
+        // Zeroing the constrained ROWS + unit diagonal is done afterwards by overwriting the
+        // constrained outputs with v[i] (so (H v)[i] = v[i] for constrained i).
+        const std::vector<char> bcMask = constrainedDofMask();
+
         Eigen::VectorXd out = Eigen::VectorXd::Zero(nD);
 
         for(int f = 0; f < nF; ++f)
@@ -849,13 +742,17 @@ public:
             Eigen::Matrix<double, 21, 1> v_local;
             v_local.setZero();
             for(int j = 0; j < 21; ++j)
-                if(gidx[j] >= 0) v_local(j) = v(gidx[j]);
+                if(gidx[j] >= 0 && !bcMask[gidx[j]]) v_local(j) = v(gidx[j]);
 
             const Eigen::Matrix<double, 21, 1> hv = energy.Hess * v_local;
 
             for(int j = 0; j < 21; ++j)
-                if(gidx[j] >= 0) out(gidx[j]) += hv(j);
+                if(gidx[j] >= 0 && !bcMask[gidx[j]]) out(gidx[j]) += hv(j);
         }
+
+        // constrained rows: zero row + unit diagonal  =>  (H v)[i] = v[i]
+        for(int i = 0; i < nD; ++i)
+            if(bcMask[i]) out(i) = v(i);
 
         return out;
     }
@@ -884,6 +781,11 @@ public:
 
         using ADouble = TinyAD::Double<21>; // with_hessian = true
 
+        // FIX #1: Dirichlet masking. Skip every triplet whose row OR column is a constrained
+        // DOF (zeroing those rows/cols), then add a unit diagonal for each constrained DOF so
+        // it is decoupled and creates no spurious zero mode.
+        const std::vector<char> bcMask = constrainedDofMask();
+
         std::vector<Eigen::Triplet<double>> trips;
         trips.reserve(nF * 21 * 21);
 
@@ -896,14 +798,17 @@ public:
             const Eigen::Matrix<double, 21, 21> & Hloc = energy.Hess;
             for(int r = 0; r < 21; ++r)
             {
-                if(gidx[r] < 0) continue;
+                if(gidx[r] < 0 || bcMask[gidx[r]]) continue;
                 for(int c = 0; c < 21; ++c)
                 {
-                    if(gidx[c] < 0) continue;
+                    if(gidx[c] < 0 || bcMask[gidx[c]]) continue;
                     trips.emplace_back(gidx[r], gidx[c], Hloc(r, c));
                 }
             }
         }
+
+        for(int i = 0; i < nD; ++i)
+            if(bcMask[i]) trips.emplace_back(i, i, 1.0);
 
         Eigen::SparseMatrix<double> H(nD, nD);
         H.setFromTriplets(trips.begin(), trips.end());
@@ -1282,6 +1187,11 @@ public:
                 if(gidx[j] >= 0) grad(gidx[j]) += g(j);
         }
 
+        // FIX #1: zero the gradient of Dirichlet-constrained DOFs, matching production.
+        const std::vector<char> bcMask = constrainedDofMask();
+        for(int i = 0; i < nD; ++i)
+            if(bcMask[i]) grad(i) = 0.0;
+
         return py::make_tuple(total, grad);
     }
 
@@ -1311,6 +1221,10 @@ public:
 
         using ADouble = TinyAD::Double<21>; // with_hessian = true
 
+        // FIX #1: Dirichlet masking (see monolayer HvP for the derivation): zero constrained
+        // columns via the gathered v, zero constrained rows and set unit diagonal afterwards.
+        const std::vector<char> bcMask = constrainedDofMask();
+
         Eigen::VectorXd out = Eigen::VectorXd::Zero(nD);
 
         for(int f = 0; f < nF; ++f)
@@ -1322,13 +1236,16 @@ public:
             Eigen::Matrix<double, 21, 1> v_local;
             v_local.setZero();
             for(int j = 0; j < 21; ++j)
-                if(gidx[j] >= 0) v_local(j) = v(gidx[j]);
+                if(gidx[j] >= 0 && !bcMask[gidx[j]]) v_local(j) = v(gidx[j]);
 
             const Eigen::Matrix<double, 21, 1> hv = energy.Hess * v_local;
 
             for(int j = 0; j < 21; ++j)
-                if(gidx[j] >= 0) out(gidx[j]) += hv(j);
+                if(gidx[j] >= 0 && !bcMask[gidx[j]]) out(gidx[j]) += hv(j);
         }
+
+        for(int i = 0; i < nD; ++i)
+            if(bcMask[i]) out(i) = v(i);
 
         return out;
     }
@@ -1357,6 +1274,9 @@ public:
 
         using ADouble = TinyAD::Double<21>; // with_hessian = true
 
+        // FIX #1: Dirichlet masking -- skip constrained rows/cols, then add a unit diagonal.
+        const std::vector<char> bcMask = constrainedDofMask();
+
         std::vector<Eigen::Triplet<double>> trips;
         trips.reserve(nF * 21 * 21);
 
@@ -1369,14 +1289,17 @@ public:
             const Eigen::Matrix<double, 21, 21> & Hloc = energy.Hess;
             for(int r = 0; r < 21; ++r)
             {
-                if(gidx[r] < 0) continue;
+                if(gidx[r] < 0 || bcMask[gidx[r]]) continue;
                 for(int c = 0; c < 21; ++c)
                 {
-                    if(gidx[c] < 0) continue;
+                    if(gidx[c] < 0 || bcMask[gidx[c]]) continue;
                     trips.emplace_back(gidx[r], gidx[c], Hloc(r, c));
                 }
             }
         }
+
+        for(int i = 0; i < nD; ++i)
+            if(bcMask[i]) trips.emplace_back(i, i, 1.0);
 
         Eigen::SparseMatrix<double> H(nD, nD);
         H.setFromTriplets(trips.begin(), trips.end());
