@@ -29,7 +29,7 @@ import sys
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.sparse.linalg import eigsh
+from scipy.sparse.linalg import eigsh, LinearOperator
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from verify_bindings import (  # noqa: E402
@@ -114,16 +114,29 @@ def hessian_lowest_eig(shell, x, k=1, mode="auto", deflate_shift=1.0,
         raise ValueError(f"unknown mode {mode!r}")
 
     H = hessian_operator(shell, x, idx=idx, deflate=Q, deflate_shift=deflate_shift)
+    n = H.shape[0]
+    k = min(k, n - 2)   # eigsh needs k < n-1
 
-    # k smallest algebraic eigenvalues; eigsh needs k < n-1
-    k = min(k, H.shape[0] - 2)
-    out = eigsh(H, k=k, which="SA", tol=lanczos_tol, maxiter=maxiter,
+    # ARPACK which="SA" (smallest algebraic) is unreliable on this operator : the
+    # biharmonic bending block gives a huge spectral spread, and ARPACK converges the
+    # *largest* eigenvalues far more robustly than the smallest. So we shift : find the
+    # largest eigenvalues of (c*I - H), which are c minus the smallest of H. c is an
+    # upper bound on the spectrum, estimated from the (reliable) largest-algebraic solve.
+    lam_max = float(eigsh(H, k=1, which="LA", tol=1e-3, maxiter=maxiter,
+                          return_eigenvectors=False)[0])
+    c = lam_max + abs(lam_max) + 1.0
+    shifted = LinearOperator(
+        (n, n), matvec=lambda v: c * np.asarray(v, float).ravel() - H.matvec(v),
+        dtype=float)
+
+    out = eigsh(shifted, k=k, which="LA", tol=lanczos_tol, maxiter=maxiter,
                 v0=v0, return_eigenvectors=want_vectors)
     if want_vectors:
-        vals, vecs = out
+        gvals, vecs = out
+        vals = c - gvals                       # c*I - H shares H's eigenvectors
         order = np.argsort(vals)
         return vals[order], vecs[:, order], idx
-    return np.sort(np.atleast_1d(out))
+    return np.sort(c - np.atleast_1d(out))
 
 
 # ----------------------------------------------------------------------------------
