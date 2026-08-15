@@ -79,9 +79,39 @@ def _is_flat(shell, tol=1e-9):
     return float(np.abs(shell.vertices()[:, 2]).max()) <= tol
 
 
+def _exact_hessian_operator(shell, x, idx, deflate=None, deflate_shift=1.0):
+    """
+    Deflated LinearOperator wrapping the EXACT sparse TinyAD Hessian restricted to `idx`.
+
+    Mirrors verify_bindings.hessian_operator's deflation (rigid modes mapped to
+    deflate_shift) but uses the analytic Hessian (shell.hessian_tinyad) instead of a finite
+    difference of the gradient -- so the eigenvalues carry no FD noise floor, which matters
+    for near-critical certification where |lam_min| ~ 1e-8.
+    """
+    shell.set_dofs(np.asarray(x, float))
+    Hs = shell.hessian_tinyad().tocsr()
+    Hsub = Hs[idx][:, idx].tocsr()
+    Q = deflate
+    n = len(idx)
+
+    def matvec(v):
+        v = np.asarray(v, float).ravel()
+        coeff = None
+        if Q is not None:
+            coeff = Q.T @ v
+            v = v - Q @ coeff
+        out = np.asarray(Hsub @ v).ravel()
+        if Q is not None:
+            out = out - Q @ (Q.T @ out)
+            out = out + deflate_shift * (Q @ coeff)
+        return out
+
+    return LinearOperator((n, n), matvec=matvec, dtype=float)
+
+
 def hessian_lowest_eig(shell, x, k=1, mode="auto", deflate_shift=1.0,
                        lanczos_tol=1e-8, maxiter=40000, want_vectors=False,
-                       v0=None, return_scale=False):
+                       v0=None, return_scale=False, exact=None):
     """
     Smallest ``k`` Hessian eigenvalue(s) at ``x``, with the rigid-body nullspace deflated
     so it cannot masquerade as a cluster of ~0 "unstable" modes.
@@ -117,7 +147,11 @@ def hessian_lowest_eig(shell, x, k=1, mode="auto", deflate_shift=1.0,
     else:
         raise ValueError(f"unknown mode {mode!r}")
 
-    H = hessian_operator(shell, x, idx=idx, deflate=Q, deflate_shift=deflate_shift)
+    # exact (analytic TinyAD) Hessian when available, else the finite-difference operator
+    use_exact = (exact if exact is not None else hasattr(shell, "hessian_tinyad"))
+    make_op = _exact_hessian_operator if use_exact else hessian_operator
+
+    H = make_op(shell, x, idx=idx, deflate=Q, deflate_shift=deflate_shift)
     n = H.shape[0]
     k = min(k, n - 2)   # eigsh needs k < n-1
 
@@ -128,7 +162,7 @@ def hessian_lowest_eig(shell, x, k=1, mode="auto", deflate_shift=1.0,
     # softer than that shift (e.g. the soft out-of-plane bending block, where the physical
     # max is ~1e-3 but the shift is 1.0). That would silently turn the relative floor into
     # a fixed absolute one.
-    H_phys = hessian_operator(shell, x, idx=idx, deflate=None)
+    H_phys = make_op(shell, x, idx=idx, deflate=None)
     lam_max = float(eigsh(H_phys, k=1, which="LA", tol=1e-3, maxiter=maxiter,
                           return_eigenvectors=False)[0])
 

@@ -95,22 +95,28 @@ def minimize_energy(shell, x0, gtol=1e-8, ftol=1e-15, maxiter=4000):
     return res.x, res
 
 
-def minimize_energy_newton(shell, x0, gtol=1e-8, maxiter=2000, fd_root=1.0 / 3.0):
+def minimize_energy_newton(shell, x0, gtol=1e-8, maxiter=2000, fd_root=1.0 / 3.0,
+                           exact_hvp=None):
     """
-    Curvature-aware relaxation : trust-region Newton-CG (Steihaug) with a matrix-free
-    Hessian-vector product (central difference of the analytic gradient at the *current*
-    iterate), rigid modes projected out of gradient and HvP.
+    Curvature-aware relaxation : trust-region Newton-CG (Steihaug) with a Hessian-vector
+    product, rigid modes projected out of gradient and HvP.
 
     Unlike L-BFGS the inner CG detects negative curvature and steps along it, so this
     descends off a saddle and across the high-swelling snap-through where the first-order
     solver stalls. It converged cleanly (`trust-ncg`) at the t=0.4 bilayer snap-through
     where plain relaxation gave up.
 
-    IMPORTANT : method is `trust-ncg`, NOT `trust-krylov`. trust-krylov builds a more
-    aggressive Lanczos model that is tripped by the (mildly inexact) finite-difference HvP
-    -- it stalls with "bad approximation caused failure to predict improvement". Steihaug's
-    trust-ncg is robust to the same HvP. (An analytic C++ Hessian would let either work and
-    would be the way to make this faster/tighter, but is not required.)
+    The HvP is either:
+      * exact -- the analytic TinyAD Hessian via shell.hessian_vector_product_tinyad (one
+        pass, no differencing noise, ~half the gradient work of the FD form), or
+      * finite-difference -- a central difference of the analytic gradient (2 gradient evals
+        per HvP).
+    exact_hvp=None (default) auto-selects exact when the shell exposes it (monolayer), else
+    FD. Pass True/False to force.
+
+    method is `trust-ncg`, NOT `trust-krylov`: trust-krylov's aggressive Lanczos model is
+    tripped by the FD HvP (it stalls "bad approximation ..."); Steihaug's trust-ncg is
+    robust to it. With the exact HvP either would work.
     """
     Q = _rigid_projector(shell, x0)
 
@@ -123,19 +129,38 @@ def minimize_energy_newton(shell, x0, gtol=1e-8, maxiter=2000, fd_root=1.0 / 3.0
         Ev, g = shell.energy_and_gradient()
         return Ev, proj(g)
 
-    hstepc = np.finfo(float).eps ** fd_root
+    use_exact = (exact_hvp if exact_hvp is not None
+                 else hasattr(shell, "hessian_vector_product_tinyad"))
 
-    def hessp(x, p):
-        p = proj(p)
-        pn = np.linalg.norm(p)
-        if pn == 0.0:
-            return np.zeros_like(p)
-        hs = hstepc * max(1.0, np.linalg.norm(x)) / pn
-        shell.set_dofs(x + hs * p)
-        g_plus = shell.energy_and_gradient()[1]
-        shell.set_dofs(x - hs * p)
-        g_minus = shell.energy_and_gradient()[1]
-        return proj((g_plus - g_minus) / (2.0 * hs))
+    if use_exact:
+        # Assemble the exact sparse Hessian ONCE per outer iterate and reuse it for all the
+        # inner-CG matvecs (trust-ncg calls hessp many times at the same x). A per-matvec
+        # TinyAD Hessian pass is ~40x slower than this, since one second-order pass costs far
+        # more than the fast analytic-gradient evals; caching amortizes it to one assembly
+        # per Newton step + cheap sparse products.
+        cache = {"x": None, "H": None}
+
+        def hessp(x, p):
+            x = np.asarray(x, float)
+            if cache["x"] is None or not np.array_equal(x, cache["x"]):
+                shell.set_dofs(x)
+                cache["H"] = shell.hessian_tinyad()      # exact sparse Hessian
+                cache["x"] = x.copy()
+            return proj(np.asarray(cache["H"] @ proj(p)).ravel())
+    else:
+        hstepc = np.finfo(float).eps ** fd_root
+
+        def hessp(x, p):
+            p = proj(p)
+            pn = np.linalg.norm(p)
+            if pn == 0.0:
+                return np.zeros_like(p)
+            hs = hstepc * max(1.0, np.linalg.norm(x)) / pn
+            shell.set_dofs(x + hs * p)
+            g_plus = shell.energy_and_gradient()[1]
+            shell.set_dofs(x - hs * p)
+            g_minus = shell.energy_and_gradient()[1]
+            return proj((g_plus - g_minus) / (2.0 * hs))
 
     res = minimize(fun, np.asarray(x0, float), jac=True, hessp=hessp, method="trust-ncg",
                    options={"maxiter": maxiter, "gtol": gtol})
