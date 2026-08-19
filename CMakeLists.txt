@@ -109,6 +109,7 @@ target_compile_definitions(hlbfgs PRIVATE HLBFGS_EIGEN)
 
 target_compile_definitions(libshell PUBLIC USEHLBFGS)
 target_include_directories(libshell PUBLIC "${EXT_PROJECTS_DIR}/hlbfgs/")
+target_include_directories(libshell PUBLIC "${EXT_PROJECTS_DIR}/tinyad/include")
 target_link_libraries(libshell PUBLIC hlbfgs)
 
 # LIBIGL

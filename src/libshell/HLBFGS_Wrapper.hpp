@@ -178,6 +178,13 @@ namespace HLBFGS_Methods
         // ---- max iteration control ----
         int max_iter_override = -1; // -1 means: use default behavior
 
+        // ---- termination reporting ----
+        // The int returned by minimize() collapses several distinct outcomes into
+        // success/failure, so a solve truncated by max_iter_override is indistinguishable
+        // from a converged one. Keep the raw code and the iteration count.
+        int last_retcode = -1;
+        int last_iterations = 0;
+
     public:
         HLBFGS_Energy(tMesh & mesh, const tMeshOperator & engop):
         mesh(mesh),
@@ -242,7 +249,10 @@ namespace HLBFGS_Methods
                 info[4] = max_iter_override;
             
             const int ret = HLBFGS(nVariables, Mval, x, HLBFGS_Methods::evaluate, 0, HLBFGS_UPDATE_Hessian, HLBFGS_Methods::newiteration, this, parameter, info);
-            
+
+            last_retcode = ret;
+            last_iterations = info[2];
+
             if(verbose) std::cout << "HLBFGS return value = " << ret << std::endl;
             const Real energy1 = op.compute(mesh);
             if(verbose) printf("Energy went from %10.10e to %10.10e, using epsilon = %e, final eps = %e \n", energy0, energy1, eps, last_gnorm);
@@ -350,7 +360,27 @@ namespace HLBFGS_Methods
         {
             return last_gnorm;
         }
-        
+
+        /**
+         * Raw HLBFGS termination code of the last minimize() call.
+         *
+         * 1 : line-search failure
+         * 2 : ||G||/max(1,||X||) <= PARAMETER[5]
+         * 3 : ||G|| <= PARAMETER[6]
+         * 4 : line-search step outside [stpmin, stpmax] (stagnation, not a tolerance)
+         * 5 : iteration cap INFO[4] exceeded -- what max_iter_override makes reachable
+         */
+        int get_lastreturncode() const
+        {
+            return last_retcode;
+        }
+
+        /// Iterations taken by the last minimize() call.
+        int get_lastiterations() const
+        {
+            return last_iterations;
+        }
+
     };
 }
 #endif

@@ -34,6 +34,12 @@ protected:
     std::string outFileName;
     Real last_gnorm;
 
+    // Termination reporting: the int returned by minimize() collapses distinct
+    // outcomes into success/failure, so a solve truncated by max_iter_override looks
+    // identical to a converged one. Keep the raw code and the iteration count.
+    int last_retcode = -1;
+    int last_iterations = 0;
+
     bool dump_enabled = false;
     std::vector<int> dump_iters;
     std::size_t next_dump_idx = 0;
@@ -168,6 +174,9 @@ public:
             parameter,
             info);
 
+        last_retcode = ret;
+        last_iterations = info[2];
+
         scatterReducedToMesh(reducedVariables.data());
         mesh.updateDeformedConfiguration();
         const Real energy1 = op.compute(mesh);
@@ -273,6 +282,19 @@ public:
     Real get_lastnorm() const
     {
         return last_gnorm;
+    }
+
+    /// Raw HLBFGS termination code: 1 line-search failure, 2/3 tolerance met,
+    /// 4 step outside [stpmin,stpmax] (stagnation), 5 iteration cap exceeded.
+    int get_lastreturncode() const
+    {
+        return last_retcode;
+    }
+
+    /// Iterations taken by the last minimize() call.
+    int get_lastiterations() const
+    {
+        return last_iterations;
     }
 
     int getNumberOfFullVariables() const

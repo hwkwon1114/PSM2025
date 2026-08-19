@@ -14,6 +14,8 @@
 #include "MaterialProperties.hpp"
 #include "CombinedOperator_Parametric.hpp"
 #include "EnergyOperatorList.hpp"
+#include "TinyADHessian_Bilayer.hpp"
+#include <random>
 #include "ComputeCurvatures.hpp"
 
 // ver-0122
@@ -1074,6 +1076,46 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             engOp_top(matprop_top);
         EnergyOperatorList<tMesh> engOps({&engOp_bot, &engOp_top});
 
+        // ---- exact-Hessian (TinyAD) verification gate ----------------------------------
+        // Perturb to a curved state (so bending terms are active), then check the TinyAD
+        // gradient against CombinedOperator_Parametric to machine precision, plus Hessian
+        // symmetry and sparse-vs-HvP consistency. Verification-only; returns without solving.
+        if(parser.parse<bool>("-verify_hessian", false))
+        {
+            const int nVv = mesh.getNumberOfVertices();
+            const int nEv = mesh.getNumberOfEdges();
+            const int nDv = 3 * nVv + nEv;
+            Eigen::Map<Eigen::VectorXd> xmap(mesh.getDataPointer(), nDv);
+            std::mt19937 rng(1);
+            std::uniform_real_distribution<double> Ud(-1.0, 1.0);
+            for(int k = 0; k < nVv; ++k) xmap(2 * nVv + k) += 0.02 * Ud(rng);   // z
+            for(int e = 0; e < nEv; ++e) xmap(3 * nVv + e) += 0.02 * Ud(rng);   // directors
+            mesh.updateDeformedConfiguration();
+
+            Eigen::VectorXd gOp = Eigen::VectorXd::Zero(nDv);
+            engOps.compute(mesh, gOp);
+
+            TinyADHessian_Bilayer<tMesh> tad(E, nu, h_total);
+            const Eigen::VectorXd gAD = tad.gradient(mesh);
+
+            const double gdiff  = (gOp - gAD).cwiseAbs().maxCoeff();
+            const double gscale = std::max(gOp.cwiseAbs().maxCoeff(), 1e-30);
+            printf("[verify_hessian] gradient: ||g_op - g_tinyad||_inf = %.3e   rel = %.3e\n",
+                   gdiff, gdiff / gscale);
+
+            const Eigen::SparseMatrix<double> H = tad.assembleHessian(mesh);
+            Eigen::VectorXd v = Eigen::VectorXd::Random(nDv);
+            Eigen::VectorXd w = Eigen::VectorXd::Random(nDv);
+            const Eigen::VectorXd Hv = tad.hessianVectorProduct(mesh, v);
+            const Eigen::VectorXd Hw = tad.hessianVectorProduct(mesh, w);
+            const double sym = std::abs(w.dot(Hv) - v.dot(Hw));
+            const double spd = (H * v - Hv).cwiseAbs().maxCoeff();
+            printf("[verify_hessian] symmetry |wHv - vHw| = %.3e   ||H@v - HvP||_inf = %.3e   nnz = %ld\n",
+                   sym, spd, (long)H.nonZeros());
+            printf("[verify_hessian] DONE (verification-only run)\n");
+            return;
+        }
+
         const std::string dump_iters_str =
             parser.parse<std::string>("-dump_iters", "");
         const std::vector<int> dump_iters =
@@ -1703,6 +1745,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         "metric-only treatment requires fixed reference curvature.");
 
                 Real eps_cycle = eps_init_default;
+                const std::string minimizer =
+                    parser.parse<std::string>("-minimizer", "hlbfgs");
                 if(use_sequence_bc)
                     minimizeEnergyReduced(
                         engOps,
@@ -1711,6 +1755,23 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         stepwise,
                         (dump_iters.empty() ? nullptr : &dump_iters),
                         max_iter);
+                else if(minimizer == "newton")
+                    // curvature-aware Newton-CG (FD Hessian-vector products); gtol = tol
+                    minimizeEnergyNewtonCG(engOps, tol, 200,
+                                           parser.parse<int>("-newton_cgmax", 60));
+                else if(minimizer == "newton_exact")
+                {
+                    // TRUE Newton with the exact TinyAD Hessian (no FD noise floor)
+                    TinyADHessian_Bilayer<tMesh> tad(E, nu, h_total);
+                    minimizeEnergyNewtonExact(engOps, tad, tol);
+                }
+                else if(minimizer == "hlbfgs_precond")
+                {
+                    // HLBFGS preconditioned by the exact TinyAD Hessian (ICFS)
+                    TinyADHessian_Bilayer<tMesh> tad(E, nu, h_total);
+                    minimizeEnergyHLBFGSPrecond(engOps, tad, tol,
+                                                parser.parse<int>("-precond_T", 5));
+                }
                 else
                     minimizeEnergy(
                         engOps,
@@ -1945,6 +2006,109 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             << "[" << growth_type << "] completed " << executed_cycle
             << " physical cycles. Summary: "
             << summary_filename << "\n";
+
+        // ---- second-order certification of the FINAL state (exact TinyAD Hessian) --------
+        // Answers: is the final springback state a genuine (local) energy minimum, or a
+        // saddle / soft shoulder the |g|-based stop accepted prematurely? Assemble the exact
+        // sparse Hessian once, then power-iterate for lam_max and (via the spectral shift
+        // c*I - H) for lam_min. A free panel has 6 rigid zero modes, so lam_min ~ 0 means
+        // "minimum up to rigid modes"; lam_min clearly negative means saddle/false stop.
+        const bool certify_final = parser.parse<bool>("-certify_final", false);
+        const bool seed_escape   = parser.parse<bool>("-seed_escape", false);
+        if(certify_final || seed_escape)
+        {
+            TinyADHessian_Bilayer<tMesh> tad(E, nu, h_total);
+            const int nVv = mesh.getNumberOfVertices();
+            const int nDv = 3 * nVv + mesh.getNumberOfEdges();
+            std::mt19937 rng(3);
+            std::uniform_real_distribution<double> Ud(-1.0, 1.0);
+
+            // certify the CURRENT state: returns lam_min, fills lam_max and the buckling
+            // eigenvector (eigenvector of lam_min) via spectral-shift power iteration.
+            const int piters = parser.parse<int>("-certify_iters", 1200);
+            auto certify = [&](Real & lam_max_out, Eigen::VectorXd & evec) -> Real
+            {
+                mesh.updateDeformedConfiguration();
+                const Eigen::SparseMatrix<double> H = tad.assembleHessian(mesh);
+                Eigen::VectorXd v(nDv);
+                for(int i = 0; i < nDv; ++i) v(i) = Ud(rng);
+                v.normalize();
+                Real lm = 0;
+                for(int it = 0; it < 150; ++it) { v = H * v; lm = v.norm(); v /= lm; }
+                lam_max_out = lm;
+                const Real c = 1.05 * lm;
+                Eigen::VectorXd w(nDv);
+                for(int i = 0; i < nDv; ++i) w(i) = Ud(rng);
+                w.normalize();
+                Real mu = 0;
+                for(int it = 0; it < piters; ++it)
+                { Eigen::VectorXd Hw = H * w; w = c * w - Hw; mu = w.norm(); w /= mu; }
+                evec = w;
+                return c - mu;
+            };
+
+            // The saddle-escape loop (Phase-1 branch seeding): while the state has negative
+            // curvature, kick along +/- the buckling eigenvector (a few amplitudes, scaled to
+            // unit physical max|z|), re-minimize, keep the lowest-energy candidate, repeat.
+            // Deterministic escape off the saddle cascade instead of tolerance-grinding.
+            const Real seed_amp  = parser.parse<Real>("-seed_amp", 10.0 * h_total);
+            const int  seed_max  = parser.parse<int>("-seed_max", 12);
+            const Real tolEsc    = parser.parse<Real>("-tol", 1e-6);
+            int esc = 0;
+            while(true)
+            {
+                mesh.updateDeformedConfiguration();
+                Eigen::VectorXd gfin = Eigen::VectorXd::Zero(nDv);
+                const Real Ecur = engOps.compute(mesh, gfin);
+                Real lam_max = 0;
+                Eigen::VectorXd wmode(nDv);
+                const Real lam_min = certify(lam_max, wmode);
+                const bool is_min = (lam_min >= -1e-6 * lam_max);
+                printf("[certify_final] esc=%d  E=%.6e  |g|=%.3e  lam_max=%.3e  lam_min=%+.3e  -> %s\n",
+                       esc, Ecur, gfin.norm(), lam_max, lam_min,
+                       is_min ? "MINIMUM (up to rigid modes)" : "saddle");
+                fflush(stdout);
+                if(is_min || !seed_escape || esc >= seed_max) break;
+
+                // normalize the mode to unit physical out-of-plane amplitude
+                const Real zmax = wmode.segment(2 * nVv, nVv).cwiseAbs().maxCoeff();
+                if(zmax > 1e-12) wmode /= zmax; else wmode /= wmode.norm();
+
+                const Eigen::VectorXd x0 =
+                    Eigen::Map<const Eigen::VectorXd>(mesh.getDataPointer(), nDv);
+                Real bestE = Ecur;
+                Eigen::VectorXd bestX = x0;
+                const Real facs[3] = {1.0, 0.25, 2.5};
+                for(int fi = 0; fi < 3; ++fi)
+                for(int sgn = -1; sgn <= 1; sgn += 2)
+                {
+                    Eigen::Map<Eigen::VectorXd>(mesh.getDataPointer(), nDv) =
+                        x0 + (sgn * facs[fi] * seed_amp) * wmode;
+                    Real eps_esc = 1e-2;
+                    minimizeEnergy(engOps, eps_esc, tolEsc);
+                    const Real Etry = engOps.compute(mesh);
+                    if(std::isfinite(Etry) && Etry < bestE)
+                    {
+                        bestE = Etry;
+                        bestX = Eigen::Map<const Eigen::VectorXd>(mesh.getDataPointer(), nDv);
+                    }
+                }
+                Eigen::Map<Eigen::VectorXd>(mesh.getDataPointer(), nDv) = bestX;
+                mesh.updateDeformedConfiguration();
+                if(bestE >= Ecur - 1e-18)
+                {
+                    printf("[seed_escape] no seeded candidate lowered the energy -- stopping\n");
+                    break;
+                }
+                const Real z_now = [&]{
+                    const auto vv = mesh.getCurrentConfiguration().getVertices();
+                    return vv.col(2).cwiseAbs().maxCoeff(); }();
+                printf("[seed_escape] escape %d accepted: E %.6e -> %.6e   max|z|=%.4e\n",
+                       esc + 1, Ecur, bestE, z_now);
+                fflush(stdout);
+                ++esc;
+            }
+        }
 
         // Preserve target-form history and the original b_r; do not enter the
         // legacy final mesh.init_rest(...) block below.
@@ -3036,6 +3200,30 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                       stepwise,
                       (dump_iters.empty() ? nullptr : &dump_iters),
                       max_iter);
+
+        // Record how the solve terminated. Without this a step truncated by -max_iter,
+        // or one whose line search gave up early, is indistinguishable from an
+        // equilibrium -- both in the dumps and as the starting guess for the next step.
+        {
+            const Real gradTol = parser.parse<Real>("-gradtol", -1.0);
+            const bool converged = lastMinimization.converged(gradTol);
+            const std::string cfile = tag + "_convergence.dat";
+            FILE * f = fopen(cfile.c_str(), (s == startidx) ? "w" : "a");
+            if(f != nullptr)
+            {
+                if(s == startidx)
+                    fprintf(f, "# step \t swelling \t hlbfgs code \t iterations \t grad norm \t converged\n");
+                fprintf(f, "%d \t %10.10e \t %d \t %d \t %10.10e \t %d\n",
+                        s, swelling_fac, lastMinimization.code,
+                        lastMinimization.iterations, lastMinimization.gradientNorm,
+                        converged ? 1 : 0);
+                fclose(f);
+            }
+            if(not converged)
+                printf("WARNING : swelling step %d (fac %10.10e) did not reach equilibrium -- HLBFGS code %d after %d iterations, |g| = %10.10e\n",
+                       s, swelling_fac, lastMinimization.code,
+                       lastMinimization.iterations, lastMinimization.gradientNorm);
+        }
 
         // dump
         // dumpIso(growthRates_b, growthRates_t, curTag);

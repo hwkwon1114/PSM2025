@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "units": { "length": "mm", "angle": "deg", "growth": "engineering_strain" },
+  "hardening": { "model": "none" },
+  "defaults": {
+    "start_mode": "left_bottom_up",
+    "profile": { "mode": "uniform" }
+  },
+  "toolpaths": [
+    {
+      "id": "big_pass",
+      "enabled": true,
+      "repeat": 12,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 120.0,
+        "alpha_deg": 5.0,
+        "n_strips": 10,
+        "width_mm": 16.0,
+        "gtop": 0.02469,
+        "gbot": 0.0,
+        "ortho": 0.0
+      }
+    }
+  ]
+}

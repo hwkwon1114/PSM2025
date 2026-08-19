@@ -44,6 +44,8 @@ namespace HLBFGS_Methods
         
         std::string outFileName;
         Real last_gnorm;
+        int last_retcode = -1;
+        int last_iterations = 0;
         
     public:
         HLBFGS_Energy_Parametrized(tMesh & mesh, const tMeshOperator & engop, tParametrizer<tMesh> & parametrizer_in):
@@ -79,6 +81,9 @@ namespace HLBFGS_Methods
             
             const int ret = HLBFGS(nVariables_prms, Mval, x, HLBFGS_Methods::evaluate, 0, HLBFGS_UPDATE_Hessian, HLBFGS_Methods::newiteration, this, parameter, info);
             
+            last_retcode = ret;
+            last_iterations = info[2];
+
             if(verbose) std::cout << "HLBFGS return value = " << ret << std::endl;
             parametrizer.updateSolution();
             const Real energy1 = op.compute(mesh) + parametrizer.computeEnergyContribution();
@@ -143,6 +148,11 @@ namespace HLBFGS_Methods
         {
             return last_gnorm;
         }
+
+        /// Raw HLBFGS termination code; see HLBFGS_Energy::get_lastreturncode.
+        int get_lastreturncode() const { return last_retcode; }
+        /// Iterations taken by the last minimize() call.
+        int get_lastiterations() const { return last_iterations; }
         
     };
     

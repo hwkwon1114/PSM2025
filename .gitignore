@@ -1,3 +1,9 @@
+# Ignore the SLURM run workspace (convergence/sensitivity studies, raw outputs)
+scratch/
+
+# Ignore oh-my-claudecode state
+.omc/
+
 # Ignore the build, lib, doc dirs and run/* scripts
 build
 build_cmake
