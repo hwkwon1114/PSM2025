@@ -1,0 +1,48 @@
+### Create an environment for compiling the code
+# from any folder, in your tmux session
+conda deactivate
+conda create -n smcpp_vtk38 -y -c conda-forge \
+  python=3.8 cmake ninja git patch \
+  gcc_linux-64=12 gxx_linux-64=12 \
+  vtk tbb tbb-devel gsl eigen=3.4
+conda activate smcpp_vtk38
+
+# helpful for CMake to find things
+export CMAKE_PREFIX_PATH="$CONDA_PREFIX"
+
+ls "$CONDA_PREFIX/lib/cmake" | grep -E '^vtk-9\.' -n
+ls "$CONDA_PREFIX/lib/cmake/TBB" -1
+
+# Attention! Case-sensitive rename required for HLBFGS.
+# The original guide has an issue with the folder name.
+cd ~/workspace/src/PSM2025/external
+mv HLBFGS hlbfgs
+
+# Configure & build PSM2025 using this env
+cd ~/PSM2025
+rm -rf build_cmake
+mkdir build_cmake && cd build_cmake
+
+cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-cc" \
+  -DCMAKE_CXX_COMPILER="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++" \
+  -DCMAKE_PREFIX_PATH="$CONDA_PREFIX;$CONDA_PREFIX/lib/cmake" \
+  -DVTK_DIR="$CONDA_PREFIX/lib/cmake/$(ls "$CONDA_PREFIX/lib/cmake" | grep -E '^vtk-9\.' | head -n1)" \
+  -DTBB_DIR="$CONDA_PREFIX/lib/cmake/TBB" \
+  -DTBB_ROOT="$CONDA_PREFIX" \
+  -DVTK_ROOT="$CONDA_PREFIX" \
+  -DGSL_ROOT_DIR="$CONDA_PREFIX"
+
+# Build (use -j2 on login nodes; -j$(nproc) can OOM-kill cc1plus)
+ninja -j2
+
+# To run PSM2025, use the following commands
+# Change directory to a new run folder
+cd ~/workspace/src/PSM2025
+mkdir -p run/quicktest
+cp bin/shell run/quicktest/
+cd run/quicktest
+
+# run
+./shell -sim monolayer_growth -case basic_disk -h 0.01 -innerR 0.05 -res 128 -s1 0.05 -s2 0.0
+

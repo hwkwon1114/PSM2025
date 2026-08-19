@@ -38,3 +38,10 @@ bin/*
 
 # Appcode shit
 .idea/*
+
+# Reference PDFs (copyrighted; keep README.md map only, not the papers)
+paper_list/*.pdf
+
+# Build logs
+bld.log
+cfg.log
