@@ -1,0 +1,42 @@
+{
+  "defaults": {
+    "profile": {
+      "mode": "uniform"
+    },
+    "start_mode": "left_bottom_up"
+  },
+  "hardening": {
+    "model": "none"
+  },
+  "schema_version": 1,
+  "toolpaths": [
+    {
+      "enabled": true,
+      "id": "zigzag_0416",
+      "operation": {
+        "alpha_deg": 5.671556845877367,
+        "center_uv_mm": [
+          20.13069134552612,
+          57.015420464035415
+        ],
+        "gbot": 0.0005381048379886955,
+        "gtop": 0.0041415958412268986,
+        "lv_mm": 39.02839042919099,
+        "n_strips": 6,
+        "ortho": 0.53225884979082,
+        "profile": {
+          "mode": "uniform"
+        },
+        "rotation_deg": 172.53116903096415,
+        "type": "zigzag",
+        "width_mm": 2.213937939164005
+      },
+      "repeat": 1
+    }
+  ],
+  "units": {
+    "angle": "deg",
+    "growth": "engineering_strain",
+    "length": "mm"
+  }
+}

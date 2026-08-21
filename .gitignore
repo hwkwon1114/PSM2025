@@ -45,3 +45,19 @@ paper_list/*.pdf
 # Build logs
 bld.log
 cfg.log
+
+# Local agent/runtime state
+.omx/
+
+# Python caches and generated checkpoints
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.npy
+python/*.png
+
+# Raw experiment outputs and one-off root jobs
+uq_runs/
+scratch_*
+core
+core.*

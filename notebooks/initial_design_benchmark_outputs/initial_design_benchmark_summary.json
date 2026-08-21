@@ -1,0 +1,343 @@
+{
+  "designs": {
+    "lhs": {
+      "counts": {
+        "n_strips": {
+          "10": 42,
+          "11": 42,
+          "12": 42,
+          "13": 41,
+          "14": 41,
+          "3": 42,
+          "4": 41,
+          "5": 41,
+          "6": 42,
+          "7": 42,
+          "8": 42,
+          "9": 42
+        },
+        "scale_class": {
+          "local": 150,
+          "medium": 250,
+          "near_full": 100
+        }
+      },
+      "selection_seconds": 0.0
+    },
+    "maximin_action_euclidean": {
+      "counts": {
+        "n_strips": {
+          "10": 42,
+          "11": 42,
+          "12": 42,
+          "13": 41,
+          "14": 41,
+          "3": 42,
+          "4": 41,
+          "5": 41,
+          "6": 42,
+          "7": 42,
+          "8": 42,
+          "9": 42
+        },
+        "scale_class": {
+          "local": 150,
+          "medium": 250,
+          "near_full": 100
+        }
+      },
+      "insertion_distance_median": 1.6478836002185577,
+      "insertion_distance_q05": 1.3219043828749666,
+      "minimum_pair_distance": 1.1064408366203788,
+      "reference_covering_radius": 1.525612035649442,
+      "selection_seconds": 0.26330565102398396
+    },
+    "maximin_d2_dtw": {
+      "counts": {
+        "n_strips": {
+          "10": 42,
+          "11": 42,
+          "12": 42,
+          "13": 41,
+          "14": 41,
+          "3": 42,
+          "4": 41,
+          "5": 41,
+          "6": 42,
+          "7": 42,
+          "8": 42,
+          "9": 42
+        },
+        "scale_class": {
+          "local": 150,
+          "medium": 250,
+          "near_full": 100
+        }
+      },
+      "insertion_distance_median": 0.17569877531305378,
+      "insertion_distance_q05": 0.12308435426913909,
+      "minimum_pair_distance": 0.11007789538530564,
+      "reference_covering_radius": 0.16864189522111378,
+      "selection_seconds": 67.4382977001369
+    },
+    "maximin_d2_frechet": {
+      "counts": {
+        "n_strips": {
+          "10": 42,
+          "11": 42,
+          "12": 42,
+          "13": 41,
+          "14": 41,
+          "3": 42,
+          "4": 41,
+          "5": 41,
+          "6": 42,
+          "7": 42,
+          "8": 42,
+          "9": 42
+        },
+        "scale_class": {
+          "local": 150,
+          "medium": 250,
+          "near_full": 100
+        }
+      },
+      "insertion_distance_median": 0.4858838984996571,
+      "insertion_distance_q05": 0.3072075735969705,
+      "minimum_pair_distance": 0.27792109878913335,
+      "reference_covering_radius": 0.4529553037471086,
+      "selection_seconds": 72.77075937762856
+    },
+    "maximin_d2_ordered_l2": {
+      "counts": {
+        "n_strips": {
+          "10": 42,
+          "11": 42,
+          "12": 42,
+          "13": 41,
+          "14": 41,
+          "3": 42,
+          "4": 41,
+          "5": 41,
+          "6": 42,
+          "7": 42,
+          "8": 42,
+          "9": 42
+        },
+        "scale_class": {
+          "local": 150,
+          "medium": 250,
+          "near_full": 100
+        }
+      },
+      "insertion_distance_median": 0.3826462783096928,
+      "insertion_distance_q05": 0.25567176680329096,
+      "minimum_pair_distance": 0.22839221598519124,
+      "reference_covering_radius": 0.35440446791498253,
+      "selection_seconds": 2.1871092123910785
+    },
+    "random": {
+      "counts": {
+        "n_strips": {
+          "10": 42,
+          "11": 42,
+          "12": 42,
+          "13": 41,
+          "14": 41,
+          "3": 42,
+          "4": 41,
+          "5": 41,
+          "6": 42,
+          "7": 42,
+          "8": 42,
+          "9": 42
+        },
+        "scale_class": {
+          "local": 150,
+          "medium": 250,
+          "near_full": 100
+        }
+      },
+      "selection_seconds": 0.0
+    }
+  },
+  "lhs_generation": {
+    "accepted_counts": {
+      "local": 150,
+      "medium": 250,
+      "near_full": 100
+    },
+    "accepted_samples": 500,
+    "canonical_symmetry_domain": "rectangle_D2_first_quadrant_center",
+    "panel_full_dimensions_m": [
+      0.254,
+      0.3048
+    ],
+    "panel_half_extents_m": [
+      0.127,
+      0.1524
+    ],
+    "proposed_counts": {
+      "local": 260,
+      "medium": 628,
+      "near_full": 1433
+    },
+    "rejected_counts": {
+      "local:class_mismatch": 28,
+      "local:decoded alpha is outside [1,72] degrees": 1,
+      "local:pitch-to-band ratio is outside [0.15,30]": 16,
+      "local:strip_quota_filled": 65,
+      "medium:class_mismatch": 23,
+      "medium:decoded alpha is outside [1,72] degrees": 1,
+      "medium:pitch-to-band ratio is outside [0.15,30]": 17,
+      "medium:rotated footprint does not fit inside the panel": 52,
+      "medium:strip_quota_filled": 285,
+      "near_full:class_mismatch": 76,
+      "near_full:pitch-to-band ratio is outside [0.15,30]": 52,
+      "near_full:rotated footprint does not fit inside the panel": 721,
+      "near_full:strip_quota_filled": 484
+    },
+    "requested_samples": 500,
+    "seed": 20260820,
+    "strip_targets_by_class": {
+      "local": {
+        "3": 13,
+        "4": 13,
+        "5": 13,
+        "6": 13,
+        "7": 13,
+        "8": 13,
+        "9": 12,
+        "10": 12,
+        "11": 12,
+        "12": 12,
+        "13": 12,
+        "14": 12
+      },
+      "medium": {
+        "3": 21,
+        "4": 20,
+        "5": 20,
+        "6": 21,
+        "7": 21,
+        "8": 21,
+        "9": 21,
+        "10": 21,
+        "11": 21,
+        "12": 21,
+        "13": 21,
+        "14": 21
+      },
+      "near_full": {
+        "3": 8,
+        "4": 8,
+        "5": 8,
+        "6": 8,
+        "7": 8,
+        "8": 8,
+        "9": 9,
+        "10": 9,
+        "11": 9,
+        "12": 9,
+        "13": 8,
+        "14": 8
+      }
+    },
+    "target_counts": {
+      "local": 150,
+      "medium": 250,
+      "near_full": 100
+    }
+  },
+  "n_samples": 500,
+  "reference_generation": {
+    "accepted_counts": {
+      "local": 450,
+      "medium": 750,
+      "near_full": 300
+    },
+    "accepted_samples": 1500,
+    "canonical_symmetry_domain": "rectangle_D2_first_quadrant_center",
+    "panel_full_dimensions_m": [
+      0.254,
+      0.3048
+    ],
+    "panel_half_extents_m": [
+      0.127,
+      0.1524
+    ],
+    "proposed_counts": {
+      "local": 807,
+      "medium": 1454,
+      "near_full": 8277
+    },
+    "rejected_counts": {
+      "local:class_mismatch": 77,
+      "local:pitch-to-band ratio is outside [0.15,30]": 70,
+      "local:strip_quota_filled": 210,
+      "medium:class_mismatch": 55,
+      "medium:decoded alpha is outside [1,72] degrees": 2,
+      "medium:pitch-to-band ratio is outside [0.15,30]": 65,
+      "medium:rotated footprint does not fit inside the panel": 109,
+      "medium:strip_quota_filled": 473,
+      "near_full:class_mismatch": 338,
+      "near_full:pitch-to-band ratio is outside [0.15,30]": 243,
+      "near_full:rotated footprint does not fit inside the panel": 3064,
+      "near_full:strip_quota_filled": 4332
+    },
+    "requested_samples": 1500,
+    "seed": 20260830,
+    "strip_targets_by_class": {
+      "local": {
+        "3": 38,
+        "4": 38,
+        "5": 38,
+        "6": 38,
+        "7": 38,
+        "8": 38,
+        "9": 37,
+        "10": 37,
+        "11": 37,
+        "12": 37,
+        "13": 37,
+        "14": 37
+      },
+      "medium": {
+        "3": 62,
+        "4": 62,
+        "5": 62,
+        "6": 63,
+        "7": 63,
+        "8": 63,
+        "9": 63,
+        "10": 63,
+        "11": 63,
+        "12": 62,
+        "13": 62,
+        "14": 62
+      },
+      "near_full": {
+        "3": 25,
+        "4": 25,
+        "5": 25,
+        "6": 25,
+        "7": 25,
+        "8": 25,
+        "9": 25,
+        "10": 25,
+        "11": 25,
+        "12": 25,
+        "13": 25,
+        "14": 25
+      }
+    },
+    "target_counts": {
+      "local": 450,
+      "medium": 750,
+      "near_full": 300
+    }
+  },
+  "reference_size": 1500,
+  "seed": 20260820,
+  "trajectory_points": 16
+}

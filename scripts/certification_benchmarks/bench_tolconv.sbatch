@@ -42,6 +42,4 @@ run_case tol_hl_1e6  hlbfgs 1e-6  -max_iter 50000
 run_case tol_hl_1e8  hlbfgs 1e-8  -max_iter 50000
 run_case tol_hl_1e10 hlbfgs 1e-10 -max_iter 50000
 run_case tol_hl_1e12 hlbfgs 1e-12 -max_iter 50000
-# well-conditioned reference: exact-Hessian preconditioned HLBFGS at tight tol
-run_case tol_pc_1e10 hlbfgs_precond 1e-10
 echo "==== ALLDONE ===="

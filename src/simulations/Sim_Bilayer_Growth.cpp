@@ -491,7 +491,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         // accepts Real& and may update the step size internally.
         const Real eps_init_default = 1e-2;
         const Real tol =
-            parser.parse<Real>("-tol", 1e-6);
+            parser.parse<Real>("-tol", 1e-12);
         const bool stepwise =
             parser.parse<bool>("-stepwise", false);
         const bool write_cycle_state =
@@ -1123,10 +1123,17 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         const int max_iter =
             parser.parse<int>("-max_iter", -1);
         const Real eps_init_default = 1e-2;
-        const Real tol = parser.parse<Real>("-tol", 1e-6);
+        const Real tol = parser.parse<Real>("-tol", 1e-12);
         const bool stepwise = parser.parse<bool>("-stepwise", false);
         const bool write_cycle_state =
             parser.parse<bool>("-cycle_write_state", false);
+        const std::string minimizer =
+            parser.parse<std::string>("-minimizer", "hlbfgs");
+        if(minimizer != "hlbfgs")
+            throw std::runtime_error(
+                "zigzag_sequence: unsupported -minimizer '" + minimizer +
+                "'. Only 'hlbfgs' is available; Newton-family optimizers "
+                "were removed because they select the wrong physical basin.");
 
         const std::string summary_filename =
             use_sequence_bc ? "cycle_summary.csv" : tag + "_summary.csv";
@@ -1745,8 +1752,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         "metric-only treatment requires fixed reference curvature.");
 
                 Real eps_cycle = eps_init_default;
-                const std::string minimizer =
-                    parser.parse<std::string>("-minimizer", "hlbfgs");
                 if(use_sequence_bc)
                     minimizeEnergyReduced(
                         engOps,
@@ -1755,23 +1760,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         stepwise,
                         (dump_iters.empty() ? nullptr : &dump_iters),
                         max_iter);
-                else if(minimizer == "newton")
-                    // curvature-aware Newton-CG (FD Hessian-vector products); gtol = tol
-                    minimizeEnergyNewtonCG(engOps, tol, 200,
-                                           parser.parse<int>("-newton_cgmax", 60));
-                else if(minimizer == "newton_exact")
-                {
-                    // TRUE Newton with the exact TinyAD Hessian (no FD noise floor)
-                    TinyADHessian_Bilayer<tMesh> tad(E, nu, h_total);
-                    minimizeEnergyNewtonExact(engOps, tad, tol);
-                }
-                else if(minimizer == "hlbfgs_precond")
-                {
-                    // HLBFGS preconditioned by the exact TinyAD Hessian (ICFS)
-                    TinyADHessian_Bilayer<tMesh> tad(E, nu, h_total);
-                    minimizeEnergyHLBFGSPrecond(engOps, tad, tol,
-                                                parser.parse<int>("-precond_T", 5));
-                }
                 else
                     minimizeEnergy(
                         engOps,
@@ -2053,7 +2041,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             // Deterministic escape off the saddle cascade instead of tolerance-grinding.
             const Real seed_amp  = parser.parse<Real>("-seed_amp", 10.0 * h_total);
             const int  seed_max  = parser.parse<int>("-seed_max", 12);
-            const Real tolEsc    = parser.parse<Real>("-tol", 1e-6);
+            const Real tolEsc    = parser.parse<Real>("-tol", 1e-12);
             int esc = 0;
             while(true)
             {
@@ -3720,7 +3708,7 @@ void Sim_Bilayer_Growth::initForwardProblem()
     else if (geometryCase == "rectangle")
     // regular mesh
     {
-      const Real res = parser.parse<Real>("-res", 0.01); //res = 1/(quantity of nodes per boundary)
+      const Real res = parser.parse<Real>("-res", 0.03); // production default selected by the field-convergence sweep
       const Real Lx = parser.parse<Real>("-lx", 0.5);
       const Real Ly = parser.parse<Real>("-ly", 0.5);
       const Real relArea = 2.0*Lx*res;
