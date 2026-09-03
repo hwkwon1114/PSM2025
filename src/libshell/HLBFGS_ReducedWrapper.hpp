@@ -36,9 +36,11 @@ protected:
 
     // Termination reporting: the int returned by minimize() collapses distinct
     // outcomes into success/failure, so a solve truncated by max_iter_override looks
-    // identical to a converged one. Keep the raw code and the iteration count.
+    // identical to a converged one. Keep the raw code, the iteration count and the
+    // number of energy/gradient evaluations the line search actually spent.
     int last_retcode = -1;
     int last_iterations = 0;
+    int last_evaluations = 0;
 
     bool dump_enabled = false;
     std::vector<int> dump_iters;
@@ -176,6 +178,7 @@ public:
 
         last_retcode = ret;
         last_iterations = info[2];
+        last_evaluations = info[1];
 
         scatterReducedToMesh(reducedVariables.data());
         mesh.updateDeformedConfiguration();
@@ -295,6 +298,12 @@ public:
     int get_lastiterations() const
     {
         return last_iterations;
+    }
+
+    /// Energy/gradient evaluations spent by the last minimize() call (HLBFGS info[1]).
+    int get_lastevaluations() const
+    {
+        return last_evaluations;
     }
 
     int getNumberOfFullVariables() const

@@ -116,3 +116,55 @@ No segmentation result exceeds either required geometry threshold. With load equ
 6. **Exact segmentation, solve cadence, and stroke order are negligible** for the tested low-strain, three-path loading once the final target metric is verified identical.
 7. **Loose tolerance can select a materially different endpoint.** `tol=1e-10` is inadequate; the current Hessian diagnostic is positive there but is not a formal certificate.
 8. **No branch-changing physical effect is established.** Every candidate either falls below repeatability, lacks mesh persistence, or is explicitly a different constitutive approximation.
+
+## Replacement equilibrium methodology
+
+The ablation above remains a record of the original solver and is not retroactively
+reinterpreted as a converged path study. The replacement implementation separates
+three levels that were previously conflated:
+
+1. A constitutive path maps one physical toolpath to an exact endpoint
+   $(\bar a_\mathrm{top},\bar a_\mathrm{bot})$. Hardening history advances once at
+   that endpoint.
+2. Numerical continuation interpolates between the path-start and path-end
+   positive-definite metrics with a scalar load amplitude $\lambda\in[0,1]$.
+   Rejected corrector attempts restore geometry, edge directors, target metrics,
+   and pass counts before reducing $\Delta\lambda$. Subdivision therefore cannot
+   change the constitutive endpoint.
+3. The inner corrector solves static equilibrium at fixed $\lambda$. HLBFGS and
+   trust-region Newton-CG are alternative correctors, not alternative physical
+   evolution laws. An endpoint is accepted only when the reported residual is
+   finite and no larger than the explicit `-equilibrium_grad_tol`; an optimizer
+   exit code alone is insufficient.
+
+Free-shell tangent diagnostics now project boundary-compatible rigid motions and
+report the smallest Ritz value together with its eigenpair residual. The
+classification is `positive` only when the residual-certified lower bound
+$\lambda_\mathrm{Ritz}-\|Hv-\lambda_\mathrm{Ritz}v\|$ is positive, `negative`
+only when the corresponding upper bound is negative, and `indeterminate`
+otherwise. This diagnoses the accepted state; it does not identify a physical
+branch or trace an unstable branch.
+
+The deterministic follow-up uses 20 distinct longitudinal, transverse, oblique,
+offset, and layer-differential paths. It jointly refines mesh size and continuation
+step, compares HLBFGS with the exact-Hessian trust-region corrector, and evaluates
+all three metric-update laws on a common discretization. The serial Slurm runner is
+`scripts/equilibrium_continuation_study.sbatch`; machine-readable manifests and
+per-attempt diagnostics are written below
+`run/equilibrium_continuation_study/`.
+
+### Evidence gates
+
+- **Constitutive discrimination:** not established until differences between
+  metric-update laws persist under joint mesh/load-step refinement and exceed the
+  measured repeatability floor. Solver convergence alone cannot discriminate a
+  constitutive law.
+- **Surrogate readiness:** not established until all 20 paths pass the residual
+  gate, final observables are jointly converged, and branch/stability labels are
+  derived from outputs rather than supplied as model inputs. Until then, training
+  a low-fidelity surrogate would encode discretization and solver-selection error.
+- **Instability evolution:** a negative certified tangent direction marks loss of
+  local stability. Following an unstable equilibrium requires an augmented
+  residual formulation with arc-length continuation; modeling a measured snap
+  requires dynamics and dissipation. Neither behavior is represented by repeatedly
+  minimizing static energy.

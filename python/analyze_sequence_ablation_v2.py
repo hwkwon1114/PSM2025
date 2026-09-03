@@ -176,8 +176,11 @@ def analyze() -> None:
             "stage": manifest["case"]["stage"], "case": manifest["case"]["name"],
             "res": manifest["case"]["res"], "tol": manifest["case"]["tol"],
             "warm": manifest["case"]["warm"], "metric_scheme": manifest["case"]["metric"],
-            "wall_seconds": result["wall_seconds"], "converged": int(convergence.get("converged", 0)),
-            "hlbfgs_code": convergence.get("hlbfgs_code"),
+            "wall_seconds": result["wall_seconds"],
+            "converged": int(convergence.get(
+                "equilibrium_accepted", convergence.get("converged", 0))),
+            "hlbfgs_code": convergence.get(
+                "solver_code", convergence.get("hlbfgs_code")),
             "iterations": convergence.get("iterations"),
             "final_gradient_norm": convergence.get("final_gradient_norm"),
             "energy": convergence.get("recomputed_energy", summary.get("total_energy")),

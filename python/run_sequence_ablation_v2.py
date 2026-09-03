@@ -131,8 +131,10 @@ def run_case(case: dict, timeout: int, force: bool = False) -> None:
         "-sequence_warm_start", str(case["warm"]).lower(),
         "-metric_update", case["metric"],
         "-sequence_minimize_every", str(case["minimize_every"]),
+        "-sequence_adaptive", "false",
+        "-equilibrium_solver", "hlbfgs",
         "-enable_passE", "false", "-nsteps", "1", "-tol", str(case["tol"]),
-        "-minimizer", "hlbfgs", "-max_iter", "50000", "-certify_final", "true",
+        "-max_iter", "50000", "-certify_final", "true",
         "-seed_escape", "false", "-basename", case["name"], "-export_stl", "false",
     ]
     env = os.environ.copy()

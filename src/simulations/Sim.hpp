@@ -178,6 +178,8 @@ protected:
     }
 
 
+public:
+
     /*! \struct MinimizationReport
      * \brief How the last minimizeEnergy / minimizeEnergyReduced call terminated.
      *
@@ -189,20 +191,70 @@ protected:
      */
     struct MinimizationReport
     {
+        /*! \enum Termination
+         * \brief Classification of the raw optimizer code, kept apart from acceptance.
+         *
+         * Diagnostic only: it records which exit branch HLBFGS took, not whether the
+         * resulting state may be used as an equilibrium. For that, use accepted().
+         */
+        enum class Termination
+        {
+            NeverRan,           //!< minimize() was never called (negative code)
+            LineSearchStalled,  //!< codes 1 and 4: no further progress along the search direction
+            GradientTolerance,  //!< codes 2 and 3: a tolerance test fired
+            IterationCap,       //!< code 5: iteration budget exhausted
+            Unknown             //!< any other code the wrapper does not model
+        };
+
         int code = -1;              //!< raw HLBFGS code, see HLBFGS_Energy::get_lastreturncode
         int iterations = 0;
+        int evaluations = 0;        //!< energy/gradient evaluations, HLBFGS info[1]
         Real gradientNorm = -1.0;   //!< dimensional: scales with E, thickness and mesh
+
+        /// Raw termination branch, for logging and diagnostics only.
+        Termination termination() const
+        {
+            if(code < 0) return Termination::NeverRan;
+            switch(code)
+            {
+                case 1:
+                case 4: return Termination::LineSearchStalled;
+                case 2:
+                case 3: return Termination::GradientTolerance;
+                case 5: return Termination::IterationCap;
+                default: return Termination::Unknown;
+            }
+        }
 
         /**
          * Whether the stage may be treated as an equilibrium.
          *
-         * Code 5 (iteration cap) never qualifies. Codes 2 and 3 are genuine tolerance
-         * hits, but note that minimizeEnergy passes epsMin -- machine epsilon by default
-         * -- so in practice they never fire and the normal outcome is code 1 or 4, the
-         * line search running out of progress. Those are accepted; pass a positive
-         * gradientTolerance to additionally require the achieved gradient norm to meet
-         * it. Calibrate that threshold from a known-good run, since the norm is
-         * dimensional.
+         * Acceptance never rests on the raw code alone: every accepted outcome must also
+         * have driven the achieved gradient norm to the requested threshold.
+         *  - gradientTolerance is mandatory and must be finite and strictly positive.
+         *    There is no "no threshold" mode: the raw codes carry no such guarantee, and
+         *    codes 2 and 3 only report that HLBFGS' own internal test fired, with
+         *    minimizeEnergy passing epsMin -- machine epsilon by default -- so in
+         *    practice they never fire and the normal outcome is code 1 or 4.
+         *  - only codes 1-4 are eligible. Code 5 (iteration cap), the -1 "never ran"
+         *    default and any unmodelled code are rejected outright.
+         *  - gradientNorm must be finite and non-negative: NaN, infinity and the -1
+         *    sentinel are rejected. Equality with the threshold is accepted.
+         * Calibrate the threshold from a known-good run, since the norm is dimensional.
+         */
+        bool accepted(const Real gradientTolerance) const
+        {
+            if(not std::isfinite(gradientTolerance) or gradientTolerance <= 0.0) return false;
+            if(code < 1 or code > 4) return false;
+            if(not std::isfinite(gradientNorm) or gradientNorm < 0.0) return false;
+            return gradientNorm <= gradientTolerance;
+        }
+
+        /**
+         * \deprecated Legacy acceptance test, kept source-compatible only until every
+         * caller has moved to accepted(). It takes codes 2 and 3 on trust without ever
+         * looking at the achieved norm, and accepts codes 1 and 4 outright when no
+         * positive tolerance is passed.
          */
         bool converged(const Real gradientTolerance = -1.0) const
         {
@@ -213,6 +265,8 @@ protected:
             return (gradientNorm >= 0.0 and gradientNorm <= gradientTolerance);
         }
     };
+
+protected:
 
     MinimizationReport lastMinimization;
 
@@ -284,6 +338,7 @@ protected:
 
         lastMinimization.code = hlbfgs_wrapper.get_lastreturncode();
         lastMinimization.iterations = hlbfgs_wrapper.get_lastiterations();
+        lastMinimization.evaluations = hlbfgs_wrapper.get_lastevaluations();
         lastMinimization.gradientNorm = hlbfgs_wrapper.get_lastnorm();
 
 #else
@@ -347,6 +402,7 @@ protected:
 
         lastMinimization.code = hlbfgs_wrapper.get_lastreturncode();
         lastMinimization.iterations = hlbfgs_wrapper.get_lastiterations();
+        lastMinimization.evaluations = hlbfgs_wrapper.get_lastevaluations();
         lastMinimization.gradientNorm = hlbfgs_wrapper.get_lastnorm();
 
         std::cout

@@ -51,6 +51,11 @@ file(GLOB SOURCES_LIB "${SRC_DIR}/libshell/*.cpp")
 file(GLOB HEADERS_LIB "${SRC_DIR}/libshell/*.hpp")
 file(GLOB SOURCES_HLBFGS "${EXT_PROJECTS_DIR}/hlbfgs/*.cpp")
 file(GLOB SOURCES_TEST ${TEST_SRC_DIR}/testshell/*.cpp)
+# This translation unit instantiates the exact-Hessian continuation templates;
+# -O3 exceeds the memory limit on the build nodes without improving solver math.
+set_source_files_properties(
+    "${SRC_DIR}/simulations/Sim_Bilayer_Growth.cpp"
+    PROPERTIES COMPILE_OPTIONS "-O2")
 
 # ------------------------------------------------------------
 # Create the main library
@@ -172,6 +177,7 @@ SET(BUILD_GMOCK OFF)
 enable_testing()
 add_executable(testshell ${SOURCES_TEST})
 target_include_directories(testshell PUBLIC "${SRC_DIR}/libshell/")
+target_include_directories(testshell PUBLIC "${SRC_DIR}/simulations/")
 target_link_libraries(testshell gtest gmock_main libshell)
 add_test(NAME test1 COMMAND testshell)
 

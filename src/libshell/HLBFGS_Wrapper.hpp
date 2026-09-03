@@ -181,9 +181,11 @@ namespace HLBFGS_Methods
         // ---- termination reporting ----
         // The int returned by minimize() collapses several distinct outcomes into
         // success/failure, so a solve truncated by max_iter_override is indistinguishable
-        // from a converged one. Keep the raw code and the iteration count.
+        // from a converged one. Keep the raw code, the iteration count and the number of
+        // energy/gradient evaluations (the line search spends several per iteration).
         int last_retcode = -1;
         int last_iterations = 0;
+        int last_evaluations = 0;
 
     public:
         HLBFGS_Energy(tMesh & mesh, const tMeshOperator & engop):
@@ -252,6 +254,7 @@ namespace HLBFGS_Methods
 
             last_retcode = ret;
             last_iterations = info[2];
+            last_evaluations = info[1];
 
             if(verbose) std::cout << "HLBFGS return value = " << ret << std::endl;
             const Real energy1 = op.compute(mesh);
@@ -379,6 +382,12 @@ namespace HLBFGS_Methods
         int get_lastiterations() const
         {
             return last_iterations;
+        }
+
+        /// Energy/gradient evaluations spent by the last minimize() call (HLBFGS info[1]).
+        int get_lastevaluations() const
+        {
+            return last_evaluations;
         }
 
     };

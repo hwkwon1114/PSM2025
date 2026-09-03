@@ -15,6 +15,7 @@
 #include "CombinedOperator_Parametric.hpp"
 #include "EnergyOperatorList.hpp"
 #include "TinyADHessian_Bilayer.hpp"
+#include "ShellEquilibriumSolver.hpp"
 #include <random>
 #include "ComputeCurvatures.hpp"
 
@@ -1132,13 +1133,72 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         const bool stepwise = parser.parse<bool>("-stepwise", false);
         const bool write_cycle_state =
             parser.parse<bool>("-cycle_write_state", false);
-        const std::string minimizer =
-            parser.parse<std::string>("-minimizer", "hlbfgs");
-        if(minimizer != "hlbfgs")
+        const std::string equilibrium_solver =
+            parser.parse<std::string>("-equilibrium_solver", "hlbfgs");
+        if(equilibrium_solver != "hlbfgs" &&
+           equilibrium_solver != "trust_region")
             throw std::runtime_error(
-                "zigzag_sequence: unsupported -minimizer '" + minimizer +
-                "'. Only 'hlbfgs' is available; Newton-family optimizers "
-                "were removed because they select the wrong physical basin.");
+                "zigzag_sequence: -equilibrium_solver must be 'hlbfgs' "
+                "or 'trust_region'.");
+        const Real equilibrium_gradient_tolerance =
+            parser.parse<Real>("-equilibrium_grad_tol", 10.0 * tol);
+        if(!std::isfinite(equilibrium_gradient_tolerance) ||
+           equilibrium_gradient_tolerance <= 0.0)
+            throw std::runtime_error(
+                "zigzag_sequence: -equilibrium_grad_tol must be finite and > 0.");
+        const bool adaptive_continuation =
+            parser.parse<bool>("-sequence_adaptive", true);
+        const Real continuation_initial_step =
+            parser.parse<Real>("-sequence_initial_step", 1.0);
+        const Real continuation_max_step =
+            parser.parse<Real>("-sequence_max_step", 1.0);
+        const Real continuation_min_step =
+            parser.parse<Real>("-sequence_min_step", 1.0 / 64.0);
+        const Real continuation_growth =
+            parser.parse<Real>("-sequence_step_growth", 2.0);
+        const int continuation_max_retries =
+            parser.parse<int>("-sequence_max_retries", 8);
+        if(!std::isfinite(continuation_initial_step) ||
+           !std::isfinite(continuation_max_step) ||
+           !std::isfinite(continuation_min_step) ||
+           !std::isfinite(continuation_growth) ||
+           continuation_initial_step <= 0.0 ||
+           continuation_max_step <= 0.0 ||
+           continuation_initial_step > continuation_max_step ||
+           continuation_min_step > continuation_initial_step ||
+           continuation_min_step <= 0.0 ||
+           continuation_max_step > 1.0 ||
+           continuation_growth < 1.0 ||
+           continuation_max_retries < 0)
+            throw std::runtime_error(
+                "zigzag_sequence: invalid adaptive-continuation controls.");
+        ShellEquilibrium::TrustRegionNewtonOptions trustRegionOptions;
+        trustRegionOptions.gradientTolerance = equilibrium_gradient_tolerance;
+        trustRegionOptions.maxIterations =
+            parser.parse<int>("-trust_max_iterations", 100);
+        trustRegionOptions.initialTrustRadius =
+            parser.parse<Real>("-trust_initial_radius", 0.25);
+        trustRegionOptions.maxTrustRadius =
+            parser.parse<Real>("-trust_max_radius", 4.0);
+        trustRegionOptions.minTrustRadius =
+            parser.parse<Real>("-trust_min_radius", 1e-8);
+        trustRegionOptions.vertexLengthScale =
+            parser.parse<Real>("-trust_vertex_scale", h_total);
+        trustRegionOptions.directorAngleScale =
+            parser.parse<Real>("-trust_director_scale", 1.0);
+        trustRegionOptions.cg.maxIterations =
+            parser.parse<int>("-trust_cg_max_iterations", 250);
+        const bool track_sequence_stability =
+            parser.parse<bool>("-sequence_stability", false);
+        ShellEquilibrium::SmallestRitzPairOptions stabilityOptions;
+        stabilityOptions.krylovDimension =
+            parser.parse<int>("-stability_krylov_dimension", 40);
+        stabilityOptions.maxRestarts =
+            parser.parse<int>("-stability_max_restarts", 20);
+        stabilityOptions.absoluteResidualTolerance =
+            parser.parse<Real>("-stability_abs_residual_tol", 1e-10);
+        stabilityOptions.relativeResidualTolerance =
+            parser.parse<Real>("-stability_rel_residual_tol", 1e-8);
         const bool sequence_warm_start =
             parser.parse<bool>("-sequence_warm_start", true);
         const std::string metric_update_name =
@@ -1146,8 +1206,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         GrowthMetricUpdate metric_update;
         if(metric_update_name == "multiplicative")
             metric_update = GrowthMetricUpdate::Multiplicative;
-        else if(metric_update_name == "recursive_linearized" ||
-                metric_update_name == "additive_linearized")
+        else if(metric_update_name == "recursive_linearized")
             metric_update = GrowthMetricUpdate::RecursiveLinearized;
         else if(metric_update_name == "reference_additive_linearized")
             metric_update = GrowthMetricUpdate::ReferenceAdditiveLinearized;
@@ -1160,6 +1219,10 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         if(minimize_every < 1)
             throw std::runtime_error(
                 "zigzag_sequence: -sequence_minimize_every must be >= 1.");
+        if(adaptive_continuation && minimize_every != 1)
+            throw std::runtime_error(
+                "zigzag_sequence: adaptive continuation requires "
+                "-sequence_minimize_every 1 so every physical path is equilibrated.");
 
         const std::string summary_filename =
             use_sequence_bc ? "cycle_summary.csv" : tag + "_summary.csv";
@@ -1173,9 +1236,21 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             throw std::runtime_error(
                 "zigzag_sequence: cannot open sequence_convergence.csv.");
         convergenceSummary
-            << "executed_cycle_index,minimization_performed,hlbfgs_code,"
-            << "iterations,final_gradient_norm,converged,recomputed_energy\n";
+            << "executed_cycle_index,minimization_performed,state_kind,"
+            << "substep_attempt,"
+            << "lambda_from,lambda_trial,step_size,retry_count,solver,"
+            << "solver_code,iterations,evaluations,final_gradient_norm,"
+            << "equilibrium_accepted,recomputed_energy\n";
         convergenceSummary << std::setprecision(17);
+        std::ofstream stabilitySummary("sequence_stability.csv");
+        if(!stabilitySummary)
+            throw std::runtime_error(
+                "zigzag_sequence: cannot open sequence_stability.csv.");
+        stabilitySummary
+            << "executed_cycle_index,evaluated,smallest_ritz_value,"
+            << "residual_absolute,residual_relative,residual_converged,"
+            << "classification,rigid_modes,operator_evaluations\n";
+        stabilitySummary << std::setprecision(17);
         summary << std::setprecision(17);
         if(use_sequence_bc)
             summary
@@ -1722,6 +1797,14 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         hitsThisCycle,
                         hitsByFace,
                         maxHitsPerFace);
+                const tVecMat2d pathStartAformsTop = aformsTop;
+                const tVecMat2d pathStartAformsBot = aformsBot;
+                const Eigen::VectorXi pathStartPassCount = totalPassCount;
+                const int pathDofCount =
+                    3 * mesh.getNumberOfVertices() + mesh.getNumberOfEdges();
+                Eigen::Map<Eigen::VectorXd> pathState(
+                    mesh.getDataPointer(), pathDofCount);
+                const Eigen::VectorXd pathStartState = pathState;
 
                 Eigen::VectorXd incG1Top =
                     Eigen::VectorXd::Zero(nFaces);
@@ -1816,46 +1899,216 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         "zigzag_sequence: b_r changed unexpectedly; "
                         "metric-only treatment requires fixed reference curvature.");
 
+                const tVecMat2d pathEndAformsTop = aformsTop;
+                const tVecMat2d pathEndAformsBot = aformsBot;
+                const Eigen::VectorXi pathEndPassCount = totalPassCount;
+                auto setPathLoad = [&](const Real lambda)
+                {
+                    if(lambda <= 0.0)
+                    {
+                        aformsTop = pathStartAformsTop;
+                        aformsBot = pathStartAformsBot;
+                        return;
+                    }
+                    if(lambda >= 1.0)
+                    {
+                        aformsTop = pathEndAformsTop;
+                        aformsBot = pathEndAformsBot;
+                        return;
+                    }
+                    for(int face = 0; face < nFaces; ++face)
+                    {
+                        aformsTop[face] =
+                            pathStartAformsTop[face] +
+                            lambda *
+                            (pathEndAformsTop[face] -
+                             pathStartAformsTop[face]);
+                        aformsBot[face] =
+                            pathStartAformsBot[face] +
+                            lambda *
+                            (pathEndAformsBot[face] -
+                             pathStartAformsBot[face]);
+                    }
+                };
+
                 int solveCode = -1;
                 int solveIterations = 0;
+                int solveEvaluations = 0;
                 Real solveGradient = std::numeric_limits<Real>::quiet_NaN();
                 bool solveConverged = false;
                 Real totalEnergy = std::numeric_limits<Real>::quiet_NaN();
                 if(minimize_this_cycle)
                 {
-                    Real eps_cycle = eps_init_default;
-                    if(use_sequence_bc)
-                        minimizeEnergyReduced(
-                            engOps,
-                            eps_cycle,
-                            tol,
-                            stepwise,
-                            (dump_iters.empty() ? nullptr : &dump_iters),
-                            max_iter);
-                    else
-                        minimizeEnergy(
-                            engOps,
-                            eps_cycle,
-                            tol,
-                            stepwise,
-                            (dump_iters.empty() ? nullptr : &dump_iters),
-                            max_iter);
-                    mesh.updateDeformedConfiguration();
-                    solveCode = lastMinimization.code;
-                    solveIterations = lastMinimization.iterations;
-                    solveGradient = lastMinimization.gradientNorm;
-                    solveConverged = lastMinimization.converged();
-                    totalEnergy = engOps.compute(mesh);
+                    TinyADHessian_Bilayer<tMesh> exactHessian(
+                        E, nu, h_total);
+                    Real acceptedLambda = 0.0;
+                    Real stepSize = adaptive_continuation ?
+                        continuation_initial_step : 1.0;
+                    int retries = 0;
+                    int attempt = 0;
+                    Eigen::VectorXd acceptedState = pathStartState;
+                    totalPassCount = pathStartPassCount;
+                    setPathLoad(0.0);
+
+                    while(acceptedLambda < 1.0)
+                    {
+                        ++attempt;
+                        const Real trialLambda =
+                            std::min<Real>(1.0, acceptedLambda + stepSize);
+                        setPathLoad(trialLambda);
+                        pathState = acceptedState;
+                        mesh.updateDeformedConfiguration();
+
+                        if(equilibrium_solver == "hlbfgs")
+                        {
+                            Real eps_cycle = eps_init_default;
+                            const std::vector<int>* trialDumps =
+                                adaptive_continuation ? nullptr :
+                                (dump_iters.empty() ? nullptr : &dump_iters);
+                            if(use_sequence_bc)
+                                minimizeEnergyReduced(
+                                    engOps,
+                                    eps_cycle,
+                                    tol,
+                                    stepwise,
+                                    trialDumps,
+                                    max_iter);
+                            else
+                                minimizeEnergy(
+                                    engOps,
+                                    eps_cycle,
+                                    tol,
+                                    stepwise,
+                                    trialDumps,
+                                    max_iter);
+                            mesh.updateDeformedConfiguration();
+
+                            solveCode = lastMinimization.code;
+                            solveIterations = lastMinimization.iterations;
+                            solveEvaluations = lastMinimization.evaluations;
+                            solveGradient = lastMinimization.gradientNorm;
+                            solveConverged = lastMinimization.accepted(
+                                equilibrium_gradient_tolerance);
+                            totalEnergy = engOps.compute(mesh);
+                        }
+                        else
+                        {
+                            const ShellEquilibrium::TrustRegionNewtonReport
+                                report =
+                                    ShellEquilibrium::solveShellEquilibrium(
+                                        mesh,
+                                        engOps,
+                                        exactHessian,
+                                        trustRegionOptions);
+                            solveCode = static_cast<int>(report.status);
+                            solveIterations = report.iterations;
+                            solveEvaluations =
+                                report.energyEvaluations +
+                                report.gradientEvaluations;
+                            solveGradient = report.gradientNorm;
+                            solveConverged = report.accepted;
+                            totalEnergy = report.energy;
+                        }
+                        convergenceSummary
+                            << executed_cycle << ",1,physical,"
+                            << attempt << ","
+                            << acceptedLambda << ","
+                            << trialLambda << ","
+                            << (trialLambda - acceptedLambda) << ","
+                            << retries << ","
+                            << equilibrium_solver << ","
+                            << solveCode << ","
+                            << solveIterations << ","
+                            << solveEvaluations << ","
+                            << solveGradient << ","
+                            << (solveConverged ? 1 : 0) << ","
+                            << totalEnergy << "\n";
+                        convergenceSummary.flush();
+
+                        if(solveConverged)
+                        {
+                            acceptedLambda = trialLambda;
+                            acceptedState = pathState;
+                            retries = 0;
+                            if(adaptive_continuation)
+                                stepSize = std::min(
+                                    continuation_max_step,
+                                    stepSize * continuation_growth);
+                            continue;
+                        }
+
+                        pathState = acceptedState;
+                        mesh.updateDeformedConfiguration();
+                        setPathLoad(acceptedLambda);
+                        ++retries;
+                        if(!adaptive_continuation ||
+                           retries > continuation_max_retries ||
+                           stepSize <=
+                               continuation_min_step *
+                               (1.0 + 10.0 *
+                                std::numeric_limits<Real>::epsilon()))
+                            throw std::runtime_error(
+                                "zigzag_sequence: equilibrium corrector failed "
+                                "at cycle " + std::to_string(executed_cycle) +
+                                ", lambda=" + std::to_string(trialLambda) +
+                                ", gradient_norm=" +
+                                std::to_string(solveGradient) + ".");
+                        stepSize = std::max(
+                            continuation_min_step, 0.5 * stepSize);
+                    }
+
+                    // Preserve the exact constitutive endpoint rather than its
+                    // floating-point interpolation at lambda = 1.
+                    aformsTop = pathEndAformsTop;
+                    aformsBot = pathEndAformsBot;
+                    totalPassCount = pathEndPassCount;
                 }
-                convergenceSummary
-                    << executed_cycle << ","
-                    << (minimize_this_cycle ? 1 : 0) << ","
-                    << solveCode << ","
-                    << solveIterations << ","
-                    << solveGradient << ","
-                    << (solveConverged ? 1 : 0) << ","
-                    << totalEnergy << "\n";
-                convergenceSummary.flush();
+                else
+                {
+                    convergenceSummary
+                        << executed_cycle << ",0,pending,0,0,0,0,0,"
+                        << equilibrium_solver
+                        << ",-1,0,0,nan,0,nan\n";
+                    convergenceSummary.flush();
+                }
+                if(minimize_this_cycle && track_sequence_stability)
+                {
+                    TinyADHessian_Bilayer<tMesh> stabilityHessian(
+                        E, nu, h_total);
+                    const ShellEquilibrium::RigidModeProjector projector =
+                        ShellEquilibrium::RigidModeProjector::fromMesh(mesh);
+                    const ShellEquilibrium::RitzPairReport stability =
+                        ShellEquilibrium::smallestProjectedRitzPairForMesh(
+                            mesh,
+                            stabilityHessian,
+                            projector,
+                            Eigen::VectorXd(),
+                            stabilityOptions);
+                    std::string classification = "indeterminate";
+                    if(stability.residualConverged)
+                    {
+                        if(stability.eigenvalue -
+                           stability.residualAbsolute > 0.0)
+                            classification = "positive";
+                        else if(stability.eigenvalue +
+                                stability.residualAbsolute < 0.0)
+                            classification = "negative";
+                    }
+                    stabilitySummary
+                        << executed_cycle << ",1,"
+                        << stability.eigenvalue << ","
+                        << stability.residualAbsolute << ","
+                        << stability.residualRelative << ","
+                        << (stability.residualConverged ? 1 : 0) << ","
+                        << classification << ","
+                        << projector.numberOfRigidModes() << ","
+                        << stability.operatorEvaluations << "\n";
+                }
+                else
+                    stabilitySummary
+                        << executed_cycle
+                        << ",0,nan,nan,nan,0,not_evaluated,0,0\n";
+                stabilitySummary.flush();
 
                 bcOutputIndex = output_index;
                 bcOutputIsRelease = false;
@@ -1965,23 +2218,59 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     materialCoordinates);
             zigzag_sequence_bc::applyVertexMask(mesh, gauge.vertex_mask);
 
-            Real eps_release = eps_init_default;
-            minimizeEnergyReduced(
-                engOps,
-                eps_release,
-                tol,
-                stepwise,
-                (dump_iters.empty() ? nullptr : &dump_iters),
-                max_iter);
-            mesh.updateDeformedConfiguration();
-
-            const Real releaseEnergy =
-                engOp_bot.getLastStretchingEnergy() +
-                engOp_bot.getLastBendingEnergy() +
-                engOp_bot.getLastABEnergy() +
-                engOp_top.getLastStretchingEnergy() +
-                engOp_top.getLastBendingEnergy() +
-                engOp_top.getLastABEnergy();
+            int releaseCode = -1;
+            int releaseIterations = 0;
+            int releaseEvaluations = 0;
+            Real releaseGradient = std::numeric_limits<Real>::quiet_NaN();
+            bool releaseAccepted = false;
+            Real releaseEnergy = std::numeric_limits<Real>::quiet_NaN();
+            if(equilibrium_solver == "hlbfgs")
+            {
+                Real eps_release = eps_init_default;
+                minimizeEnergyReduced(
+                    engOps,
+                    eps_release,
+                    tol,
+                    stepwise,
+                    (dump_iters.empty() ? nullptr : &dump_iters),
+                    max_iter);
+                mesh.updateDeformedConfiguration();
+                releaseCode = lastMinimization.code;
+                releaseIterations = lastMinimization.iterations;
+                releaseEvaluations = lastMinimization.evaluations;
+                releaseGradient = lastMinimization.gradientNorm;
+                releaseAccepted = lastMinimization.accepted(
+                    equilibrium_gradient_tolerance);
+                releaseEnergy = engOps.compute(mesh);
+            }
+            else
+            {
+                TinyADHessian_Bilayer<tMesh> releaseHessian(E, nu, h_total);
+                const ShellEquilibrium::TrustRegionNewtonReport report =
+                    ShellEquilibrium::solveShellEquilibrium(
+                        mesh, engOps, releaseHessian, trustRegionOptions);
+                releaseCode = static_cast<int>(report.status);
+                releaseIterations = report.iterations;
+                releaseEvaluations =
+                    report.energyEvaluations + report.gradientEvaluations;
+                releaseGradient = report.gradientNorm;
+                releaseAccepted = report.accepted;
+                releaseEnergy = report.energy;
+            }
+            convergenceSummary
+                << executed_cycle << ",1,release,1,1,1,0,0,"
+                << equilibrium_solver << ","
+                << releaseCode << ","
+                << releaseIterations << ","
+                << releaseEvaluations << ","
+                << releaseGradient << ","
+                << (releaseAccepted ? 1 : 0) << ","
+                << releaseEnergy << "\n";
+            convergenceSummary.flush();
+            if(!releaseAccepted)
+                throw std::runtime_error(
+                    "zigzag_sequence: final release equilibrium failed, "
+                    "gradient_norm=" + std::to_string(releaseGradient) + ".");
             // The release follows the last constrained physical cycle.
             const int release_output_index = executed_cycle + 1;
             const std::string releaseBase =
