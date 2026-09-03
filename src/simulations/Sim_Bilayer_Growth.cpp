@@ -27,13 +27,6 @@
 #include "ZigZagGrowth.hpp"
 #include <memory>
 
-// ver-0321
-#include "RectSpiralGrowth.hpp"
-
-// ver-multipatch
-#include "MultiParallelLinesGrowth.hpp"
-#include "MultiZigZagGrowth.hpp"
-
 // Updates @07/19: JSON-defined recurring toolpath sequence.
 #include "ZigZagSequenceGrowth.hpp"
 #include "ZigZagSequenceBoundaryConditions.hpp"
@@ -93,16 +86,12 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
     // - external (projection of a pattern coming from another mesh)
     // - zigzag (zigzag pattern) New function added ver-0203
     // - zigzag_cycles (Updates @07/19: recurring, pass-count hardened zigzag)
-    // - zigzag_sequence (Updates @07/19: JSON-defined toolpath recipes; each repeat is a new released cycle)
-    // - zigzag_sequence_BC (persistent two-region full fixation, then final release)
-    // - rect_spiral
-    // - multi_zigzag (JSON-defined rectangular patches with patch-centered zigzag paths)
-
-    // - for PSM project, new case
-    // - panel_ortho (uniform orthotropic growth over the whole panel;
-    //                direct exx/eyy input for top and bottom, optional rotation)
-    // - parallel_lines (uniform repeated parallel treated bands with direct exx/eyy bilayer inputs)
-    // - multi_parallel_lines (JSON-defined quadrilateral patches with patch-clipped parallel lines)
+    // Supported active growth types:
+    // - zigzag_sequence (JSON-defined toolpath recipes and recurring forming cycles)
+    // - zigzag_sequence_BC (persistent boundary clamp regions, then final release)
+    // - zigzag (single zigzag toolpath)
+    // - panel_ortho (uniform orthotropic growth over the whole panel)
+    // - parallel_lines (uniform repeated parallel treated bands)
   
    
     const std::string geometryCase = parser.parse<std::string>("-geometry", ""); //see initForwardProblem()
@@ -924,7 +913,12 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
     if(growth_type == "zigzag_sequence" ||
        growth_type == "zigzag_sequence_BC")
     {
-        const bool use_sequence_bc = (growth_type == "zigzag_sequence_BC");
+        // Both CLI names use the same recurring-sequence implementation.
+        // The JSON boundary_conditions.enabled flag is the source of truth
+        // for whether physical clamps and final release are activated.
+        const bool requested_sequence_bc_alias =
+            (growth_type == "zigzag_sequence_BC");
+
         if(enable_passE)
             throw std::runtime_error(
                 growth_type + " uses hit-count eigenstrain hardening; "
@@ -944,10 +938,25 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         const zigzag_sequence::SequenceConfig sequence =
             zigzag_sequence::loadSequenceJson(cycle_file);
 
-        if(!use_sequence_bc && sequence.boundary_conditions.enabled)
-            throw std::runtime_error(
-                "zigzag_sequence: the JSON enables boundary_conditions. "
-                "Run with -growth_type zigzag_sequence_BC instead.");
+        const bool use_sequence_bc =
+            sequence.boundary_conditions.enabled;
+
+        // Normalize output tags to the actual mechanics mode rather than the
+        // compatibility CLI alias. This makes a BC-disabled run identical to
+        // the legacy zigzag_sequence naming, even if the user supplied
+        // -growth_type zigzag_sequence_BC.
+        tag = use_sequence_bc
+            ? "bilayer_zigzag_sequence_BC"
+            : "bilayer_zigzag_sequence";
+
+        if(requested_sequence_bc_alias && !use_sequence_bc)
+            std::cout
+                << "[zigzag_sequence] boundary_conditions.enabled=false; "
+                << "running the unconstrained recurring sequence.\n";
+        else if(!requested_sequence_bc_alias && use_sequence_bc)
+            std::cout
+                << "[zigzag_sequence] boundary_conditions.enabled=true; "
+                << "activating persistent clamps and final release.\n";
 
         Eigen::MatrixXb physicalClampMask =
             Eigen::MatrixXb::Constant(nVert, 3, false);
@@ -958,10 +967,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
 
         if(use_sequence_bc)
         {
-            if(!sequence.boundary_conditions.enabled)
-                throw std::runtime_error(
-                    "zigzag_sequence_BC: JSON boundary_conditions.enabled "
-                    "must be true.");
             if(sequence.boundary_conditions.regions.size() != 2)
                 throw std::runtime_error(
                     "zigzag_sequence_BC first version requires exactly two "
@@ -1134,6 +1139,27 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 "zigzag_sequence: unsupported -minimizer '" + minimizer +
                 "'. Only 'hlbfgs' is available; Newton-family optimizers "
                 "were removed because they select the wrong physical basin.");
+        const bool sequence_warm_start =
+            parser.parse<bool>("-sequence_warm_start", true);
+        const std::string metric_update_name =
+            parser.parse<std::string>("-metric_update", "multiplicative");
+        GrowthMetricUpdate metric_update;
+        if(metric_update_name == "multiplicative")
+            metric_update = GrowthMetricUpdate::Multiplicative;
+        else if(metric_update_name == "recursive_linearized" ||
+                metric_update_name == "additive_linearized")
+            metric_update = GrowthMetricUpdate::RecursiveLinearized;
+        else if(metric_update_name == "reference_additive_linearized")
+            metric_update = GrowthMetricUpdate::ReferenceAdditiveLinearized;
+        else
+            throw std::runtime_error(
+                "zigzag_sequence: -metric_update must be 'multiplicative', "
+                "'recursive_linearized', or 'reference_additive_linearized'.");
+        const int minimize_every =
+            parser.parse<int>("-sequence_minimize_every", 1);
+        if(minimize_every < 1)
+            throw std::runtime_error(
+                "zigzag_sequence: -sequence_minimize_every must be >= 1.");
 
         const std::string summary_filename =
             use_sequence_bc ? "cycle_summary.csv" : tag + "_summary.csv";
@@ -1142,6 +1168,14 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             throw std::runtime_error(
                 "zigzag_sequence: cannot open summary CSV: " +
                 summary_filename);
+        std::ofstream convergenceSummary("sequence_convergence.csv");
+        if(!convergenceSummary)
+            throw std::runtime_error(
+                "zigzag_sequence: cannot open sequence_convergence.csv.");
+        convergenceSummary
+            << "executed_cycle_index,minimization_performed,hlbfgs_code,"
+            << "iterations,final_gradient_norm,converged,recomputed_energy\n";
+        convergenceSummary << std::setprecision(17);
         summary << std::setprecision(17);
         if(use_sequence_bc)
             summary
@@ -1561,6 +1595,9 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
 
         int executed_cycle = 0;
         int toolpath_sequence_index = 0;
+        int total_sequence_cycles = 0;
+        for(const auto& scheduled : sequence.toolpaths)
+            total_sequence_cycles += scheduled.repeat;
 
         for(const auto& toolpath : sequence.toolpaths)
         {
@@ -1604,6 +1641,24 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 op.ortho,
                 materialHits,
                 &hitsThisCycle);
+            if(!op.active_strips.empty())
+            {
+                materialHits.erase(
+                    std::remove_if(
+                        materialHits.begin(),
+                        materialHits.end(),
+                        [&](const zigzag::MaterialHit& hit)
+                        {
+                            return !std::binary_search(
+                                op.active_strips.begin(),
+                                op.active_strips.end(),
+                                hit.strip_idx);
+                        }),
+                    materialHits.end());
+                hitsThisCycle.setZero();
+                for(const auto& hit : materialHits)
+                    ++hitsThisCycle(hit.face_idx);
+            }
 
             filterHitsByMargins(materialHits, hitsThisCycle);
             if(materialHits.empty())
@@ -1631,10 +1686,17 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 repeat_index <= toolpath.repeat;
                 ++repeat_index)
             {
+                if(!sequence_warm_start)
+                    mesh.resetToRestState();
+                // Reset before mapping so cold-start diagnostics describe the
+                // geometry actually passed to the nonlinear minimizer.
                 ++executed_cycle;
                 // BC output index 000 is reserved for the initial geometry.
                 // Therefore physical cycle k is written as cycle_k.
                 const int output_index = executed_cycle;
+                const bool minimize_this_cycle =
+                    executed_cycle % minimize_every == 0 ||
+                    executed_cycle == total_sequence_cycles;
                 const std::string cyclePrefix =
                     use_sequence_bc ?
                         ("cycle_" + helpers::ToString(output_index, 3)) :
@@ -1647,7 +1709,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         ("mapping_" + helpers::ToString(output_index, 3)) :
                         cyclePrefix + "_mapping";
                 const std::string finalBase =
-                    use_sequence_bc ? cyclePrefix : cyclePrefix + "_final";
+                    (use_sequence_bc ? cyclePrefix : cyclePrefix + "_final") +
+                    (minimize_this_cycle ? "" : "_pending");
 
                 // Every repeat starts from the previous repeat's released
                 // current geometry and receives its own mapping and solve.
@@ -1715,7 +1778,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                             hit.angle_rad,
                             g1Top,
                             g2Top,
-                            aformsTop[face]);
+                            aformsTop[face],
+                            metric_update);
                     GrowthHelper<tMesh>::
                         updateAbarWithMaterialGrowthIncrement(
                             materialCoordinates,
@@ -1724,7 +1788,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                             hit.angle_rad,
                             g1Bot,
                             g2Bot,
-                            aformsBot[face]);
+                            aformsBot[face],
+                            metric_update);
 
                     incG1Top(face) += g1Top;
                     incG2Top(face) += g2Top;
@@ -1751,32 +1816,46 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         "zigzag_sequence: b_r changed unexpectedly; "
                         "metric-only treatment requires fixed reference curvature.");
 
-                Real eps_cycle = eps_init_default;
-                if(use_sequence_bc)
-                    minimizeEnergyReduced(
-                        engOps,
-                        eps_cycle,
-                        tol,
-                        stepwise,
-                        (dump_iters.empty() ? nullptr : &dump_iters),
-                        max_iter);
-                else
-                    minimizeEnergy(
-                        engOps,
-                        eps_cycle,
-                        tol,
-                        stepwise,
-                        (dump_iters.empty() ? nullptr : &dump_iters),
-                        max_iter);
-                mesh.updateDeformedConfiguration();
-
-                const Real totalEnergy =
-                    engOp_bot.getLastStretchingEnergy() +
-                    engOp_bot.getLastBendingEnergy() +
-                    engOp_bot.getLastABEnergy() +
-                    engOp_top.getLastStretchingEnergy() +
-                    engOp_top.getLastBendingEnergy() +
-                    engOp_top.getLastABEnergy();
+                int solveCode = -1;
+                int solveIterations = 0;
+                Real solveGradient = std::numeric_limits<Real>::quiet_NaN();
+                bool solveConverged = false;
+                Real totalEnergy = std::numeric_limits<Real>::quiet_NaN();
+                if(minimize_this_cycle)
+                {
+                    Real eps_cycle = eps_init_default;
+                    if(use_sequence_bc)
+                        minimizeEnergyReduced(
+                            engOps,
+                            eps_cycle,
+                            tol,
+                            stepwise,
+                            (dump_iters.empty() ? nullptr : &dump_iters),
+                            max_iter);
+                    else
+                        minimizeEnergy(
+                            engOps,
+                            eps_cycle,
+                            tol,
+                            stepwise,
+                            (dump_iters.empty() ? nullptr : &dump_iters),
+                            max_iter);
+                    mesh.updateDeformedConfiguration();
+                    solveCode = lastMinimization.code;
+                    solveIterations = lastMinimization.iterations;
+                    solveGradient = lastMinimization.gradientNorm;
+                    solveConverged = lastMinimization.converged();
+                    totalEnergy = engOps.compute(mesh);
+                }
+                convergenceSummary
+                    << executed_cycle << ","
+                    << (minimize_this_cycle ? 1 : 0) << ","
+                    << solveCode << ","
+                    << solveIterations << ","
+                    << solveGradient << ","
+                    << (solveConverged ? 1 : 0) << ","
+                    << totalEnergy << "\n";
+                convergenceSummary.flush();
 
                 bcOutputIndex = output_index;
                 bcOutputIsRelease = false;
@@ -2617,50 +2696,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 << " bot[min,max]=[" << vmin(growthRates_b) << "," << vmax(growthRates_b) << "]\n";
     }
 
-    else if (growth_type == "rect_spiral")
-    {
-      std::cout << "[rect_spiral] ENTER (TestCustomGrowth) line=" << __LINE__ << "\n";
-
-      // ---- CLI (mm units) ----
-      const Real Lx0_mm = parser.parse<Real>("-spiral_Lx0_mm", 40.0);
-      const Real Ly0_mm = parser.parse<Real>("-spiral_Ly0_mm", 40.0);
-      const Real gap_mm = parser.parse<Real>("-spiral_gap_mm", 8.0);
-      const Real w_mm   = parser.parse<Real>("-spiral_w_mm", 8.0);
-      const Real min_leg_mm = parser.parse<Real>("-spiral_min_leg_mm", -1.0);
-
-      const Real offset_dx_mm = parser.parse<Real>("-spiral_offset_dx_mm", 0.0);
-      const Real offset_dy_mm = parser.parse<Real>("-spiral_offset_dy_mm", 0.0);
-
-      const Real spiral_gtop  = parser.parse<Real>("-spiral_gtop", growthRate_t);
-      const Real spiral_gbot  = parser.parse<Real>("-spiral_gbot", growthRate_b);
-      const Real spiral_ortho = parser.parse<Real>("-spiral_ortho", ortho_coeff);
-
-      rect_spiral::Params rs;
-      rs.Lx0_mm = Lx0_mm;
-      rs.Ly0_mm = Ly0_mm;
-      rs.gap_mm = gap_mm;
-      rs.w_mm   = w_mm;
-      rs.last_wins = true;
-      rs.start_mode = rect_spiral::StartMode::LeftBottom_Up;
-      rs.zero_outside = true;
-      rs.offset_dx_mm = offset_dx_mm;
-      rs.offset_dy_mm = offset_dy_mm;
-      rs.min_leg_mm = min_leg_mm;
-      Eigen::VectorXi passCountFaces(nFaces);
-      passCountFaces.setZero();
-
-      rect_spiral::apply(mesh, rs, spiral_gtop, spiral_gbot, spiral_ortho,
-                        growthRates_t, growthRates_b,
-                        growthAngles, orthoCoeffFaces,
-                        &passCountFaces);
-
-      std::cout << "[rect_spiral] after apply: "
-                << "nnz_top=" << nnz(growthRates_t)
-                << " nnz_bot=" << nnz(growthRates_b)
-                << " top[min,max]=[" << vmin(growthRates_t) << "," << vmax(growthRates_t) << "]"
-                << " bot[min,max]=[" << vmin(growthRates_b) << "," << vmax(growthRates_b) << "]\n";
-    }
-
     else if (growth_type == "panel_ortho")
     {
         const Real exx_top = parser.parse<Real>("-exx_top", 0.001);
@@ -2692,64 +2727,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
     }
 
 
-
-    else if (growth_type == "multi_zigzag")
-    {
-        const std::string patch_file = parser.parse<std::string>("-patch_file", "");
-        if (patch_file.empty()) {
-            throw std::runtime_error("multi_zigzag: please provide -patch_file patches.json");
-        }
-
-        // multi_zigzag uses the scalar growth representation, like the original zigzag branch.
-        // Patches are currently restricted to rectangles and are clipped by the patch boundary.
-        passCountFaces.setZero();
-
-        multi_zigzag::apply(mesh, patch_file,
-                            growthRates_t, growthRates_b,
-                            growthAngles, orthoCoeffFaces,
-                            &passCountFaces);
-
-        std::cout << "[multi_zigzag] after apply: "
-                  << "nnz_top=" << nnz(growthRates_t)
-                  << " nnz_bot=" << nnz(growthRates_b)
-                  << " top[min,max]=[" << vmin(growthRates_t) << "," << vmax(growthRates_t) << "]"
-                  << " bot[min,max]=[" << vmin(growthRates_b) << "," << vmax(growthRates_b) << "]\n";
-    }
-
-    else if (growth_type == "multi_parallel_lines")
-    {
-        const std::string patch_file = parser.parse<std::string>("-patch_file", "");
-        if (patch_file.empty()) {
-            throw std::runtime_error("multi_parallel_lines: please provide -patch_file patches.json");
-        }
-
-        use_direct_ortho = true;
-
-        // Eigen::VectorXi patchHitCount(nFaces);
-        // patchHitCount.setZero();
-
-        // multi_parallel_lines::apply(mesh, patch_file,
-        //                             growthRates_1_t, growthRates_1_b,
-        //                             growthRates_2_t, growthRates_2_b,
-        //                             growthRates_t, growthRates_b,
-        //                             growthAngles,
-        //                             &patchHitCount);
-
-        passCountFaces.setZero();
-
-        multi_parallel_lines::apply(mesh, patch_file,
-                                    growthRates_1_t, growthRates_1_b,
-                                    growthRates_2_t, growthRates_2_b,
-                                    growthRates_t, growthRates_b,
-                                    growthAngles,
-                                    &passCountFaces);
-
-        std::cout << "[multi_parallel_lines] after apply: "
-                  << "nnz_top=" << nnz(growthRates_t)
-                  << " nnz_bot=" << nnz(growthRates_b)
-                  << " top[min,max]=[" << vmin(growthRates_t) << "," << vmax(growthRates_t) << "]"
-                  << " bot[min,max]=[" << vmin(growthRates_b) << "," << vmax(growthRates_b) << "]\n";
-    }
 
     else if (growth_type == "parallel_lines")
     {

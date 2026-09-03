@@ -36,6 +36,15 @@ from .zigzag_action import (
     generate_actions,
     zigzag_vertices,
 )
+from .spatial_kernel_design import (
+    FIELD_CHANNELS,
+    constrained_information_greedy,
+    information_gain,
+    raster_convergence_diagnostic,
+    rbf_kernel,
+    spatial_field_features,
+    spatial_treatment_fields,
+)
 
 
 SCALE_CLASSES = ("local", "medium", "near_full")
@@ -376,6 +385,7 @@ def run_benchmark(
     random_indices = stratified_random_indices(reference, schedule, seed=seed + 30)
     random_design = [reference[index] for index in random_indices]
     _write_design(output_directory, "random", random_design, random_indices)
+    reference_design_indices = {"random": random_indices}
 
     result = {
         "seed": seed,
@@ -389,6 +399,73 @@ def run_benchmark(
             "random": {"counts": _counts(random_design), "selection_seconds": 0.0},
         },
     }
+
+    spatial_start = perf_counter()
+    spatial_grid_shape = (20, 16)
+    spatial_subsamples_per_axis = 16
+    spatial_noise_variance = 1e-4
+    treatment_fields = spatial_treatment_fields(
+        reference,
+        grid_shape=spatial_grid_shape,
+        subsamples_per_axis=spatial_subsamples_per_axis,
+    )
+    spatial_features, channel_scale = spatial_field_features(treatment_fields)
+    spatial_kernel, spatial_bandwidth = rbf_kernel(spatial_features)
+    spatial_indices, conditional_variance = constrained_information_greedy(
+        spatial_kernel,
+        reference,
+        schedule,
+        noise_variance=spatial_noise_variance,
+    )
+    spatial_elapsed = perf_counter() - spatial_start
+    spatial_design = [reference[index] for index in spatial_indices]
+    spatial_strategy = "spatial_information"
+    _write_design(
+        output_directory,
+        spatial_strategy,
+        spatial_design,
+        spatial_indices,
+    )
+    result["designs"][spatial_strategy] = {
+        "counts": _counts(spatial_design),
+        "selection_seconds": spatial_elapsed,
+        "grid_shape_vu": list(spatial_grid_shape),
+        "subsamples_per_axis": spatial_subsamples_per_axis,
+        "field_channels": list(FIELD_CHANNELS),
+        "channel_rms_scale": channel_scale.tolist(),
+        "kernel": "rbf",
+        "kernel_bandwidth": spatial_bandwidth,
+        "noise_variance": spatial_noise_variance,
+        "information_gain_nats": information_gain(
+            spatial_kernel, spatial_indices, spatial_noise_variance
+        ),
+        "final_conditional_variance": float(conditional_variance[-1]),
+        "minimum_conditional_variance": float(conditional_variance.min()),
+        "raster_convergence": raster_convergence_diagnostic(
+            reference[:150],
+            grid_shape=spatial_grid_shape,
+            tested_subsamples=(8, spatial_subsamples_per_axis),
+            reference_subsamples=32,
+        ),
+    }
+    reference_design_indices[spatial_strategy] = spatial_indices
+    with (output_directory / "spatial_information_diagnostics.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=("design_size", "conditional_variance"),
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(
+            {
+                "design_size": index + 1,
+                "conditional_variance": variance,
+            }
+            for index, variance in enumerate(conditional_variance)
+        )
+
     diagnostic_rows = []
     for metric in metrics:
         start = perf_counter()
@@ -407,6 +484,7 @@ def run_benchmark(
             "insertion_distance_median": float(np.median(finite_insertion)),
             "reference_covering_radius": float(remaining[remaining >= 0.0].max()),
         }
+        reference_design_indices[strategy] = indices
         for design_index, distance in enumerate(insertion):
             diagnostic_rows.append(
                 {
@@ -416,10 +494,93 @@ def run_benchmark(
                 }
             )
 
+    lhs_spatial_fields = spatial_treatment_fields(
+        lhs,
+        grid_shape=spatial_grid_shape,
+        subsamples_per_axis=spatial_subsamples_per_axis,
+    )
+    lhs_spatial_features, _ = spatial_field_features(
+        lhs_spatial_fields,
+        channel_scale=channel_scale,
+    )
+    lhs_spatial_kernel, _ = rbf_kernel(
+        lhs_spatial_features,
+        bandwidth=spatial_bandwidth,
+    )
+    diagnostic_budgets = (25, 50, 100, 200, 500)
+    comparison_rows = []
+    lhs_information_by_budget = {
+        str(budget): information_gain(
+            lhs_spatial_kernel,
+            np.arange(budget),
+            spatial_noise_variance,
+        )
+        for budget in diagnostic_budgets
+    }
+    result["designs"]["lhs"]["spatial_information_gain_nats_independent_pool"] = (
+        lhs_information_by_budget[str(n_samples)]
+    )
+    result["designs"]["lhs"][
+        "spatial_information_gain_nats_by_budget_independent_pool"
+    ] = lhs_information_by_budget
+    comparison_rows.extend(
+        {
+            "strategy": "lhs",
+            "candidate_universe": "independent_lhs_pool_not_directly_comparable",
+            "design_size": budget,
+            "spatial_information_gain_nats": lhs_information_by_budget[str(budget)],
+        }
+        for budget in diagnostic_budgets
+    )
+    for strategy, indices in reference_design_indices.items():
+        information_by_budget = {
+            str(budget): information_gain(
+                spatial_kernel,
+                indices[:budget],
+                spatial_noise_variance,
+            )
+            for budget in diagnostic_budgets
+        }
+        result["designs"][strategy]["spatial_information_gain_nats"] = (
+            information_by_budget[str(n_samples)]
+        )
+        result["designs"][strategy]["spatial_information_gain_nats_by_budget"] = (
+            information_by_budget
+        )
+        comparison_rows.extend(
+            {
+                "strategy": strategy,
+                "candidate_universe": "shared_reference_pool",
+                "design_size": budget,
+                "spatial_information_gain_nats": information_by_budget[str(budget)],
+            }
+            for budget in diagnostic_budgets
+        )
+
+    with (output_directory / "spatial_information_gain_comparison.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=(
+                "strategy",
+                "candidate_universe",
+                "design_size",
+                "spatial_information_gain_nats",
+            ),
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(comparison_rows)
+
     with (output_directory / "maximin_insertion_diagnostics.csv").open(
         "w", newline="", encoding="utf-8"
     ) as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(diagnostic_rows[0]))
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=list(diagnostic_rows[0]),
+            lineterminator="\n",
+        )
         writer.writeheader()
         writer.writerows(diagnostic_rows)
     (output_directory / "initial_design_benchmark_summary.json").write_text(

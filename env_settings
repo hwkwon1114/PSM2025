@@ -1,3 +1,11 @@
+### NOTE: this is a historical shell-command log, not a maintained script.
+### `rect_spiral`, `multi_zigzag`, `multi_parallel_lines`, and `parallel_lines`
+### CLI growth types (and the -patch_file examples that used them) were
+### removed from src/simulations/Sim_Bilayer_Growth.cpp during the 2026-08-29
+### codebase cleanup. Entries below referencing those flags are kept for
+### history only and will no longer run; use `-growth_type zigzag_sequence`
+### with a JSON toolpath file (see README_ZigZag_Sequence.md) instead.
+
 ### Create an environment for compiling the code
 # from any folder, in your tmux session
 conda deactivate

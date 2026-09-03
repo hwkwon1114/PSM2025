@@ -14,6 +14,14 @@ from python.active_sampling.initial_design_benchmark import (
     d2_orbit,
     ordered_trajectory,
 )
+from python.active_sampling.spatial_kernel_design import (
+    constrained_information_greedy,
+    information_gain,
+    raster_convergence_diagnostic,
+    rbf_kernel,
+    spatial_field_features,
+    spatial_treatment_fields,
+)
 from python.active_sampling.zigzag_action import generate_actions
 
 
@@ -59,6 +67,61 @@ class InitialDesignBenchmarkTests(unittest.TestCase):
         np.testing.assert_array_equal(first, second)
         self.assertEqual(len(np.unique(first)), 48)
         self.assertTrue(np.all(insertion[1:] >= 0.0))
+
+    def test_spatial_fields_are_symmetric_target_metric_increments(self) -> None:
+        fields = spatial_treatment_fields(self.samples[:8], grid_shape=(10, 8))
+        self.assertEqual(fields.shape, (8, 10, 8, 6))
+        self.assertTrue(np.all(np.isfinite(fields)))
+        self.assertGreater(np.max(np.abs(fields)), 0.0)
+
+        features, scales = spatial_field_features(fields)
+        self.assertEqual(features.shape, (8, 10 * 8 * 6))
+        self.assertEqual(scales.shape, (6,))
+        self.assertTrue(np.all(scales > 0.0))
+        reused, returned_scales = spatial_field_features(
+            fields,
+            channel_scale=scales,
+        )
+        np.testing.assert_allclose(reused, features)
+        np.testing.assert_allclose(returned_scales, scales)
+
+    def test_spatial_rbf_kernel_is_positive_semidefinite(self) -> None:
+        fields = spatial_treatment_fields(self.samples[:24], grid_shape=(10, 8))
+        features, _ = spatial_field_features(fields)
+        kernel, bandwidth = rbf_kernel(features)
+        self.assertGreater(bandwidth, 0.0)
+        np.testing.assert_allclose(kernel, kernel.T, atol=1e-12)
+        self.assertGreaterEqual(np.linalg.eigvalsh(kernel).min(), -1e-10)
+
+    def test_spatial_kernel_converges_with_subsampling(self) -> None:
+        diagnostic = raster_convergence_diagnostic(
+            self.samples[:24],
+            grid_shape=(8, 6),
+            tested_subsamples=(2, 4),
+            reference_subsamples=8,
+        )
+        coarse = diagnostic["comparisons"]["2"]
+        fine = diagnostic["comparisons"]["4"]
+        self.assertLess(
+            fine["relative_kernel_frobenius_error"],
+            coarse["relative_kernel_frobenius_error"],
+        )
+
+    def test_spatial_information_design_is_unique_and_reproducible(self) -> None:
+        schedule = balanced_schedule(48)
+        fields = spatial_treatment_fields(self.samples, grid_shape=(10, 8))
+        features, _ = spatial_field_features(fields)
+        kernel, _ = rbf_kernel(features)
+        first, conditional = constrained_information_greedy(
+            kernel, self.samples, schedule
+        )
+        second, _ = constrained_information_greedy(
+            kernel, self.samples, schedule
+        )
+        np.testing.assert_array_equal(first, second)
+        self.assertEqual(len(np.unique(first)), 48)
+        self.assertTrue(np.all(conditional > 0.0))
+        self.assertGreater(information_gain(kernel, first, 1e-4), 0.0)
 
 
 if __name__ == "__main__":

@@ -13,9 +13,6 @@
 #include "Sim.hpp"
 
 #include "Sim_Bilayer_Growth.hpp"
-#include "Sim_InverseBilayer.hpp"
-#include "Sim_Calibration.hpp"
-
 // Added functionality for creating output directories if they do not exist
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -55,19 +52,10 @@ int main(int argc,  const char ** argv)
 
     if(simCase == "bilayer_growth")
         sim = new Sim_Bilayer_Growth(parser);
-    else if(simCase == "inverse_bilayer")
-        sim = new Sim_InverseBilayer(parser);
-    else if(simCase == "calibration")
-        sim = new Sim_Calibration(parser);
-
     else
     {
         std::cout << "No valid sim case defined. Options are \n";
-
         std::cout << "\t -sim bilayer_growth\n";
-        std::cout << "\t -sim inverse_bilayer\n";
-        std::cout << "\t -sim calibration\n";
-
         helpers::catastrophe("sim case does not exist",__FILE__,__LINE__);
     }
 

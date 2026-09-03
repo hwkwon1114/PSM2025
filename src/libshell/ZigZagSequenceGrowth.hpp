@@ -1,10 +1,31 @@
 #pragma once
 
-// Updates @07/19:
-// JSON schema and validation for history-preserving zigzag toolpath sequences.
-// Each JSON "toolpath" is a reusable recipe. Every repeat is expanded by the
-// solver into a separate physical cycle with its own springback/minimization.
-
+/**
+ * ZigZagSequenceGrowth: Production JSON Engine for Recurring English Wheeling Sequences.
+ *
+ * Architecture:
+ *  1. Toolpath Recipe & Repeat Lifecycle:
+ *     - Defines an ordered sequence of physical forming cycles in JSON format.
+ *     - Each toolpath recipe specifies geometric parameters (Lv, alpha, N, width, rotation),
+ *       eigenstrain (gtop, gbot, ortho), profile (center_peak, uniform), and repeat counts.
+ *     - Every repeat executes as a full physical forming cycle: toolpath application,
+ *       nonlinear elastic energy minimization (HLBFGS), and VTP/CSV diagnostic output.
+ *
+ *  2. Metric Tensor Compounding:
+ *     - Each hit computes an incremental growth tensor G(theta, g1, g2) in the flat
+ *       material plane (u,v).
+ *     - Compounds the metric via exact tensor pullback:
+ *       abar_new = Dm^T * G^T * (Dm^(-T) * abar_old * Dm^(-1)) * G * Dm
+ *
+ *  3. Strain Hardening Model (Voce Decay):
+ *     - Tracks face-level plastic hit counts across consecutive passes.
+ *     - Scaling factor q(N_hits) = floor + (1 - floor) * exp(-beta * N_hits)
+ *       reduces incremental plastic yield as metal work-hardens.
+ *
+ *  4. Boundary Clamping & Release:
+ *     - Optionally enforces persistent physical clamp regions (e.g. edge clamps)
+ *       during forming cycles, followed by unconstrained release minimization.
+ */
 #include "ZigZagGrowth.hpp"
 
 #include <Eigen/Dense>
@@ -69,6 +90,9 @@ struct ZigZagOperationConfig {
     std::vector<double> gtop;
     std::vector<double> gbot;
     std::vector<double> ortho;
+    // Optional zero-based indices selecting physical straight strips from
+    // the generated zigzag. Empty means all strips.
+    std::vector<int> active_strips;
 
     ProfileConfig profile;
 };
@@ -500,7 +524,7 @@ inline SequenceConfig loadSequenceJson(const std::string& filename)
             operation,
             {"type", "lv_mm", "alpha_deg", "n_strips", "width_mm",
              "center_uv_mm", "shift_uv_mm", "shift_frame", "rotation_deg",
-             "gtop", "gbot", "ortho", "profile"},
+             "gtop", "gbot", "ortho", "profile", "active_strips"},
             context + ".operation");
 
         if(getStringOrDefault(operation, "type", "zigzag") != "zigzag")
@@ -541,6 +565,26 @@ inline SequenceConfig loadSequenceJson(const std::string& filename)
             operation, "gbot", op.n_strips, false, 0.0);
         op.ortho = readScalarOrExactList(
             operation, "ortho", op.n_strips, false, 0.0);
+        if(operation.contains("active_strips"))
+        {
+            const auto& active = operation.at("active_strips");
+            if(!active.is_array())
+                throw std::runtime_error(
+                    context + ".operation.active_strips must be an integer array.");
+            std::set<int> unique;
+            for(const auto& value : active)
+            {
+                if(!value.is_number_integer())
+                    throw std::runtime_error(
+                        context + ".operation.active_strips must contain integers.");
+                const int strip = value.get<int>();
+                if(strip < 0 || strip >= op.n_strips)
+                    throw std::runtime_error(
+                        context + ".operation.active_strips index out of range.");
+                unique.insert(strip);
+            }
+            op.active_strips.assign(unique.begin(), unique.end());
+        }
 
         for(int i = 0; i < op.n_strips; ++i)
         {

@@ -12,11 +12,11 @@
 # Production zigzag: continuation + exact-Hessian certification/escape.
 #
 # Usage:
-#   sbatch run_zigzag_certified.sbatch                      # default: cont30 @ res 0.008
+#   sbatch run_zigzag_certified.sbatch                      # default: cont30 @ res 0.03, tol 1e-12
 #   sbatch run_zigzag_certified.sbatch CYCLE.json RES NAME [SEEDMAX LX LY HTOT TOL]
 #   sbatch run_zigzag_certified.sbatch check                # 3-case convergence suite
 #
-# TWO REGIMES -- pick the tolerance to match (positional arg 8, TOL; default 1e-8):
+# TWO REGIMES -- pick the tolerance to match (positional arg 8, TOL; default 1e-12):
 #   * STRESS / large-growth (accumulated growth ~O(0.1-1), deep post-buckling):
 #     TOL=1e-8 + seed_escape. The trap here is NEGATIVE CURVATURE (saddles), which
 #     the exact-Hessian escape fixes cheaply -- 204 s vs a 1833 s tol-1e-12 grind.
@@ -49,7 +49,8 @@ mkdir -p "$RUN"
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 run_case () {  # name res cycle_json
-  local name=$1 res=$2 cyc=$3
+  local name=$1 res=$2 cyc status
+  cyc=$(realpath "$3")
   local d="$RUN/$name"; rm -rf "$d"; mkdir -p "$d"; cd "$d"
   echo "==== CASE $name (res=$res cycle=$(basename "$cyc")) ===="
   /usr/bin/time -f "WALL %e s" "$WT/bin/shell" \
@@ -57,9 +58,14 @@ run_case () {  # name res cycle_json
     -lx "${LX:-0.13}" -ly "${LY:-0.16}" -res "$res" -h_total "${HTOT:-0.0005}" \
     -growth_type zigzag_sequence -cycle_file "$cyc" \
     -enable_passE false -nsteps 1 \
-    -tol "${TOL:-1e-8}" -minimizer hlbfgs -max_iter 50000 \
+    -tol "${TOL:-1e-12}" -minimizer hlbfgs -max_iter 50000 \
     -seed_escape true -seed_max "${SEEDMAX:-12}" \
-    -basename "$name" -export_stl true > run.log 2>&1
+    -basename "$name" -export_stl true > run.log 2>&1 || {
+      status=$?
+      echo "==== ${name}_FAILED status=$status ===="
+      tail -40 run.log
+      return "$status"
+    }
   grep -E "certify_final|seed_escape" run.log | tail -4
   echo "==== ${name}_DONE ===="
 }
@@ -120,23 +126,23 @@ summary_header () {
 
 MODE=${1:-prod}
 if [ "$MODE" = check ]; then
-  run_case prod    0.008  "$CFG/zigzag_cont30.json"
-  run_case contref 0.008  "$CFG/zigzag_cont60.json"
-  run_case meshref 0.0057 "$CFG/zigzag_cont30.json"
+  run_case prod    0.008  "$CFG/zigzag_cont30.json" || exit $?
+  run_case contref 0.008  "$CFG/zigzag_cont60.json" || exit $?
+  run_case meshref 0.0057 "$CFG/zigzag_cont30.json" || exit $?
   summary_header
   summary_row prod    0.008
   summary_row contref 0.008
   summary_row meshref 0.0057
 else
   CYCLE=${1:-$CFG/zigzag_cont30.json}
-  RES=${2:-0.008}
+  RES=${2:-0.03}
   NAME=${3:-prod}
   SEEDMAX=${4:-12}   # max certified saddle escapes (raise if a run stops at the cap)
   LX=${5:-0.13}      # panel geometry; Putong-parity runs pass 0.127 0.1524 0.0006
   LY=${6:-0.16}
   HTOT=${7:-0.0005}
-  TOL=${8:-1e-8}     # physical-regime (small-growth) runs need 1e-12: the flat plateau gradient sits below 1e-8
-  run_case "$NAME" "$RES" "$CYCLE"
+  TOL=${8:-1e-12}    # validated physical-regime default; large-growth studies may override with 1e-8
+  run_case "$NAME" "$RES" "$CYCLE" || exit $?
   summary_header
   summary_row "$NAME" "$RES"
 fi

@@ -73,14 +73,52 @@ MPLCONFIGDIR=/tmp/psm-hlbfgs-mpl \
   --reference run/zigzag_production/pt_1step
 ```
 
-## Deferred trajectory ablation
+## Loading-trajectory ablation
 
-After selecting the working resolution, compare exactly three loading schemes
-with equal final eigenstrain and the same HLBFGS settings:
+The three corrected runs use the same 0.01 m mesh, final eigenstrain, HLBFGS
+minimizer, and `tol=1e-12`. This tight tolerance matters: looser tolerances can
+stop on the flat plateau and turn the comparison into a solver-artifact study.
 
-1. one-shot full path (`putong_1step.json`);
-2. uniform numerical continuation (`putong_uniform10.json`);
-3. stripwise trajectory continuation (`putong_traj30.json`).
+| Loading scheme | Cycles | Wall time | Field NRMSE vs one shot | Energy difference | Deflection span | Span difference | `integral(abs(H))` difference |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| one-shot full path | 1 | 831 s | 0.00% | 0.00% | 35.222 mm | 0.00% | 0.00% |
+| uniform continuation | 10 | 3,461 s | 0.82% | 0.28% | 34.738 mm | 1.37% | 0.15% |
+| stripwise trajectory | 30 | 7,590 s | 5.58% | 0.22% | 36.481 mm | 3.57% | <0.01% |
 
-The discarded face-eventwise full-increment method is not part of this
+The actual final signed mean-curvature statistics are:
+
+| Loading scheme | Area-weighted mean H (1/m) | Area-weighted RMS H (1/m) | min H (1/m) | max H (1/m) | integral H dA (m) | integral abs(H) dA (m) |
+|---|---:|---:|---:|---:|---:|---:|
+| one-shot full path | -0.9007 | 2.4927 | -12.5539 | +2.8780 | -0.069769 | 0.094290 |
+| uniform continuation | -0.8926 | 2.4911 | -12.5646 | +2.8734 | -0.069141 | 0.094428 |
+| stripwise trajectory | -0.8957 | 2.4904 | -12.5883 | +2.8955 | -0.069388 | 0.094293 |
+
+Uniform numerical continuation reaches essentially the same endpoint as the
+one-shot solve. Stripwise loading has a measurable path-history effect: it
+changes the plane-removed full displacement field by 5.58% and the deflection
+span by 3.57%. However, its final energy and integrated absolute mean curvature
+remain within 0.22% and 0.01% of the one-shot result. The trajectory therefore
+changes where bending is distributed more than it changes the aggregate
+energetic or curvature response in this small-growth case.
+
+This is evidence of a modest history-dependent endpoint, not evidence that the
+30-cycle trajectory is a better optimizer. It costs about 9.1 times the
+one-shot run at this mesh. A trajectory optimization claim would require a
+specified target field or objective and a search over alternative strip
+orders; this ablation only establishes that such a search can affect the final
+field.
+
+The discarded face-eventwise full-increment method remains outside the
 ablation because it does not reproduce Putong's loading definition.
+
+Reproduce the comparison with:
+
+```bash
+MPLCONFIGDIR=/tmp/psm-trajectory-ablation-mpl \
+/gpfs/home/pxl1051/miniforge/envs/smcpp_vtk38/bin/python \
+  python/analyze_trajectory_ablation.py run/zigzag_production
+```
+
+The command writes `trajectory_ablation_summary.csv`,
+`trajectory_ablation_history.png`, `trajectory_ablation_curvature.png`, and
+`trajectory_ablation_curvature_3d.png` under `run/zigzag_production/`.

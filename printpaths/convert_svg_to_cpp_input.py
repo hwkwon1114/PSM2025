@@ -16,7 +16,7 @@ fnames_i = sys.argv[1:]
 for fname_i in fnames_i:
     fname_o = fname_i.replace('.svg', '.dat')
 
-    print 'converting ',fname_i,' into ',fname_o
+    print('converting ',fname_i,' into ',fname_o)
 
     paths, attributes = svg2paths(fname_i)
     nPaths = len(paths)
@@ -30,7 +30,7 @@ for fname_i in fnames_i:
                 path_length = path.length()
             except: continue
 
-            print 'path ',i,' has length ',path.length(),' and ',nSegs,' number of segments'
+            print('path ',i,' has length ',path.length(),' and ',nSegs,' number of segments')
             fout.write("%d\n" % nSegs)
             for s,seg in enumerate(path):
                 
@@ -63,7 +63,7 @@ for fname_i in fnames_i:
                     fout.write("\t %10.10e %d %d\n" % (seg.rotation, seg.large_arc, seg.sweep))
             #                print 'arc          : ',seg.start, seg.end, seg.radius, seg.rotation, seg.large_arc, seg.sweep, tStart, tEnd
                 else:
-                    print 'unknown segment type found      : ',seg,tStart, tEnd
+                    print('unknown segment type found      : ',seg,tStart, tEnd)
                 fout.write("\n")
 
             

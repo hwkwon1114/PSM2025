@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "units": {
+    "length": "mm",
+    "angle": "deg",
+    "growth": "engineering_strain"
+  },
+  "hardening": {
+    "model": "none"
+  },
+  "defaults": {
+    "start_mode": "left_bottom_up",
+    "profile": {
+      "mode": "uniform"
+    }
+  },
+  "toolpaths": [
+    {
+      "id": "cycle01_top_0deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 0.0,
+        "gtop": 0.003,
+        "gbot": 0.0,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle02_bottom_90deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 90.0,
+        "gtop": 0.0,
+        "gbot": 0.003,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle03_top_0deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 0.0,
+        "gtop": 0.003,
+        "gbot": 0.0,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle04_bottom_90deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 90.0,
+        "gtop": 0.0,
+        "gbot": 0.003,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle05_top_0deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 0.0,
+        "gtop": 0.003,
+        "gbot": 0.0,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle06_bottom_90deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 90.0,
+        "gtop": 0.0,
+        "gbot": 0.003,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle07_top_0deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 0.0,
+        "gtop": 0.003,
+        "gbot": 0.0,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle08_bottom_90deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 90.0,
+        "gtop": 0.0,
+        "gbot": 0.003,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle09_top_0deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 0.0,
+        "gtop": 0.003,
+        "gbot": 0.0,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle10_bottom_90deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 90.0,
+        "gtop": 0.0,
+        "gbot": 0.003,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle11_top_0deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 0.0,
+        "gtop": 0.003,
+        "gbot": 0.0,
+        "ortho": 0.0
+      }
+    },
+    {
+      "id": "cycle12_bottom_90deg",
+      "repeat": 1,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 10.0,
+        "center_uv_mm": [0.0, 0.0],
+        "rotation_deg": 90.0,
+        "gtop": 0.0,
+        "gbot": 0.003,
+        "ortho": 0.0
+      }
+    }
+  ]
+}

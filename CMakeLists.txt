@@ -8,10 +8,10 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 ## BASE DIRS
-set(TBB_ROOT_DIR "/opt/homebrew/")
-set(VTK_ROOT "/opt/homebrew/")
-set(GSL_ROOT_DIR "/opt/homebrew/")
-
+# TBB_ROOT_DIR / VTK_ROOT / GSL_ROOT_DIR are intentionally unset here.
+# Set them via -D<NAME>=... (or the matching *_DIR / CONDA_PREFIX hints already
+# consumed by find_package below) for your platform; do not hardcode a
+# machine-specific default.
 include(safeguards)
 include(FetchContent)
 

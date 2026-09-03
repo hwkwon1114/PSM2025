@@ -4,6 +4,9 @@ Papers backing the modeling choices in this codebase, grouped by the claim each
 supports. DOIs verified via CrossRef / publisher; PDFs obtained from open-access
 or legitimate author/repository copies only.
 
+Sampling, functional-kernel, and neural-operator acquisition papers are
+organized separately in [sampling/README.md](sampling/README.md).
+
 ## 1. Core framework — incompatible-metric (eigenstrain) elasticity
 
 The simulation prescribes a per-layer target first fundamental form (`abar`) and

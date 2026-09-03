@@ -1,6 +1,6 @@
 # Initial-sampling metric benchmark
 
-These files define six equal-budget, nested 500-trajectory initial designs. They
+These files define seven equal-budget, nested 500-sample initial designs. They
 are solver-ready manifests, not completed simulations.
 
 ## Designs
@@ -13,6 +13,7 @@ are solver-ready manifests, not completed simulations.
 | `design_maximin_d2_ordered_l2` | Farthest-first using ordered, reflection-invariant input distance | Yes |
 | `design_maximin_d2_frechet` | Farthest-first using the D2 quotient of discrete Fréchet | Yes |
 | `design_maximin_d2_dtw` | Farthest-first using the D2 quotient of constrained DTW | Yes |
+| `design_spatial_information` | Greedy information gain from final top/bottom treatment-metric fields | No; uses the final spatial state |
 
 Every design has 150 local, 250 medium, and 100 near-full paths, with strip
 counts balanced from 3 through 14. The ordering keeps prefixes approximately
@@ -40,6 +41,28 @@ metric because it need not satisfy the triangle inequality.
 Distances have different units and normalizations. Their numerical magnitudes
 must not be compared across metric families; compare designs using downstream
 neural-operator error on one frozen test set.
+
+The spatial-information design rasterizes the final top and bottom target
+metrics on a fixed material-coordinate grid, balances their six symmetric
+tensor channels, constructs a positive-definite RBF kernel, and greedily
+maximizes log-determinant information gain under the same scale/strip schedule
+as every baseline. Intermediate equilibrium states and traversal timing are not
+features. Band overlaps are accumulated into the final target metric. Geometric
+coverage is still a raster approximation: each stored grid cell averages a
+16-by-16 subgrid. The summary records a convergence diagnostic against a
+32-by-32 subgrid on a fixed 150-candidate subset; this measures raster error but
+does not replace a future comparison with simulator-emitted face metrics.
+
+This is an input-space prior, not yet a learned response kernel. Once a pilot
+set of simulated output-curvature fields exists, fit a response-aware kernel on
+their reduced coefficients and compare its selections on the frozen test set.
+The benchmark summary reports log-determinant spatial information gain under
+the same reference-fitted channel scales, bandwidth, and noise level. Random,
+maximin, and spatial-information designs share one reference candidate pool and
+are directly comparable. LHS is generated independently, so its information
+gain is explicitly labeled as an independent-pool diagnostic and must not be
+used for an apples-to-apples selector ranking. No information-gain diagnostic
+is a substitute for the downstream neural-operator learning curve.
 
 ## Reproduce
 

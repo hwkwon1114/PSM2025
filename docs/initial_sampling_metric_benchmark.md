@@ -1,35 +1,46 @@
-# Effect of trajectory metrics on neural-operator sample efficiency
+# Effect of spatial treatment kernels on neural-operator sample efficiency
+
+## Current model scope
+
+For the present single-pass, hardening-free simulator, traversal time and order
+are not constitutive inputs. The primary initial-design object is therefore the
+final spatial top/bottom target-metric field. Ordered-L2, Fréchet, and DTW
+designs remain as legacy negative-control baselines; they should not be given a
+physical temporal interpretation unless overlap plus an active history law
+passes an order-sensitivity test.
 
 ## Research question
 
-For a fixed simulation budget, how does the initial trajectory design change
-the accuracy, robustness, and subsequent active-learning efficiency of a neural
-operator for history-dependent forming?
+For a fixed simulation budget, how does the initial spatial treatment design
+change the accuracy, robustness, and subsequent active-learning efficiency of a
+neural operator for forming?
 
 The experiment separates three objects:
 
-1. **Representation:** the normalized zigzag action and its decoded ordered path.
-2. **Distance:** action-space Euclidean, D2 ordered L2, D2 Fréchet, or D2 DTW.
-3. **Selection:** random, Latin hypercube, or constrained farthest-first maximin.
+1. **Representation:** final spatial target-metric fields, with action and ordered-path representations retained as baselines.
+2. **Similarity:** a positive-definite spatial RBF kernel, action-space Euclidean distance, or a legacy ordered-path distance.
+3. **Selection:** random, Latin hypercube, constrained farthest-first maximin, or constrained information gain.
 
 LHS is therefore a baseline rather than a required first stage. It stratifies
-coordinates but does not optimize a trajectory metric.
+coordinates but does not optimize the spatial treatment kernel.
 
 ## Initial designs
 
-The generated pilot contains six designs of 500 paths:
+The generated pilot contains seven designs of 500 samples:
 
 - stratified random;
 - Latin hypercube;
 - action-coordinate maximin;
 - D2 ordered-L2 maximin;
-- D2 Fréchet maximin; and
-- D2 constrained-DTW maximin.
+- D2 Fréchet maximin;
+- D2 constrained-DTW maximin; and
+- spatial target-metric information gain.
 
-All methods have identical scale-class and strip-count totals. The maximin
-methods use the same feasible reference ensemble, making their comparison a
-controlled test of the distance. A later experiment can replace this discrete
-control with continuous, on-demand maximin optimization.
+All methods have identical scale-class and strip-count totals. Random, maximin,
+and spatial-information methods use the same feasible reference ensemble. LHS
+is generated independently and is evaluated as a separate space-filling
+baseline. A later experiment can replace the discrete reference ensemble with
+continuous or on-demand proposal optimization.
 
 The nested evaluation budgets are
 
@@ -50,11 +61,13 @@ d_{D_2}(T_i,T_j)=\min_{g\in D_2}d(T_i,gT_j),
 D_2=\{I,F_x,F_y,R_{180}\}.
 \]
 
-Only spatial coordinates are reflected. Process channels and traversal order
-remain ordered. Time reversal is intentionally excluded because hardening and
-residual stress make the process history-dependent. If clamps, material axes,
-or robot constraints break a reflection symmetry, remove that transformation
-from the quotient before interpreting the results physically.
+Only spatial coordinates are reflected. The current spatial-information design
+does not contain a traversal-time coordinate. Ordered-path baselines preserve
+their original order only as a negative control. If a future calibrated
+hardening or plasticity model makes order physically relevant, exclude time
+reversal but retain paired order-sensitivity tests. If clamps, material axes, or
+robot constraints break a spatial reflection symmetry, remove that
+transformation before interpreting results physically.
 
 ## Frozen response benchmark
 
@@ -65,7 +78,7 @@ acquisition. Recommended partitions are:
 - IID feasible zigzags;
 - local, medium, and near-full scale strata;
 - reflected copies for equivariance testing;
-- reversed-order pairs for history sensitivity; and
+- paired order reversals only for future history-enabled regimes; and
 - boundary and extreme-control challenges.
 
 All sampling methods must use the same training fidelity, solver tolerances,
@@ -100,8 +113,8 @@ After response labels exist, audit each input distance against response distance
 
 \[
 r_{ij}=
-\frac{\|\mathcal G(T_i)-\mathcal G(T_j)\|}
-     {d(T_i,T_j)+\epsilon}.
+\frac{\|\mathcal G(X_i)-\mathcal G(X_j)\|}
+     {d(X_i,X_j)+\epsilon}.
 \]
 
 Measure Spearman correlation, nearest-neighbor overlap, triplet-order agreement,
@@ -115,11 +128,11 @@ After comparing initialization alone, start the same active learner from every
 initial design. A generic batch acquisition is
 
 \[
-a(T)=U(T)+\lambda D(T,S)-\gamma C(T),
+a(X)=U(X)+\lambda D(X,S)-\gamma C(X),
 \]
 
-where \(U\) is ensemble epistemic uncertainty, \(D\) is diversity under a chosen
-trajectory distance, and \(C\) is fidelity-dependent cost. Freeze acquisition
+where \(U\) is ensemble epistemic uncertainty, \(D\) is diversity under the
+spatial treatment kernel, and \(C\) is fidelity-dependent cost. Freeze acquisition
 weights and batch size across initializations. Compare both absolute accuracy
 and improvement relative to the accuracy immediately before active learning.
 
@@ -133,3 +146,9 @@ or high-fidelity labels can then be allocated at the same nested budgets for the
 most promising methods. A high-fidelity label must not be silently replaced by
 a low-fidelity label in the accuracy comparison; fidelity and initialization
 method are separate experimental factors.
+
+## Related literature
+
+The current spatial-sampling framing is organized in
+[paper_list/sampling/README.md](../paper_list/sampling/README.md), with an
+open-access PDF manifest beside it.

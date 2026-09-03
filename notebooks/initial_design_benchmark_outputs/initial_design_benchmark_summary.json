@@ -22,7 +22,15 @@
           "near_full": 100
         }
       },
-      "selection_seconds": 0.0
+      "selection_seconds": 0.0,
+      "spatial_information_gain_nats_by_budget_independent_pool": {
+        "100": 355.6039901359795,
+        "200": 697.9630190349025,
+        "25": 91.6979567437085,
+        "50": 179.49217805822087,
+        "500": 1714.733603867957
+      },
+      "spatial_information_gain_nats_independent_pool": 1714.733603867957
     },
     "maximin_action_euclidean": {
       "counts": {
@@ -50,7 +58,15 @@
       "insertion_distance_q05": 1.3219043828749666,
       "minimum_pair_distance": 1.1064408366203788,
       "reference_covering_radius": 1.525612035649442,
-      "selection_seconds": 0.26330565102398396
+      "selection_seconds": 0.13409357145428658,
+      "spatial_information_gain_nats": 1756.7409826220717,
+      "spatial_information_gain_nats_by_budget": {
+        "100": 370.68846443852885,
+        "200": 723.7918516041092,
+        "25": 94.65125068662826,
+        "50": 190.27863601757755,
+        "500": 1756.7409826220717
+      }
     },
     "maximin_d2_dtw": {
       "counts": {
@@ -78,7 +94,15 @@
       "insertion_distance_q05": 0.12308435426913909,
       "minimum_pair_distance": 0.11007789538530564,
       "reference_covering_radius": 0.16864189522111378,
-      "selection_seconds": 67.4382977001369
+      "selection_seconds": 43.07428130786866,
+      "spatial_information_gain_nats": 1788.3954178049357,
+      "spatial_information_gain_nats_by_budget": {
+        "100": 376.5464223439028,
+        "200": 735.981559600563,
+        "25": 92.42916923993566,
+        "50": 189.87512111880255,
+        "500": 1788.3954178049357
+      }
     },
     "maximin_d2_frechet": {
       "counts": {
@@ -106,7 +130,15 @@
       "insertion_distance_q05": 0.3072075735969705,
       "minimum_pair_distance": 0.27792109878913335,
       "reference_covering_radius": 0.4529553037471086,
-      "selection_seconds": 72.77075937762856
+      "selection_seconds": 54.29270915593952,
+      "spatial_information_gain_nats": 1771.831077786628,
+      "spatial_information_gain_nats_by_budget": {
+        "100": 371.6554990166039,
+        "200": 730.0088569096174,
+        "25": 93.27498109567017,
+        "50": 187.08467106867337,
+        "500": 1771.831077786628
+      }
     },
     "maximin_d2_ordered_l2": {
       "counts": {
@@ -134,7 +166,15 @@
       "insertion_distance_q05": 0.25567176680329096,
       "minimum_pair_distance": 0.22839221598519124,
       "reference_covering_radius": 0.35440446791498253,
-      "selection_seconds": 2.1871092123910785
+      "selection_seconds": 1.8436131440103054,
+      "spatial_information_gain_nats": 1779.6307929876716,
+      "spatial_information_gain_nats_by_budget": {
+        "100": 379.1424514444829,
+        "200": 740.4387593575857,
+        "25": 96.6013798029882,
+        "50": 192.45452109318822,
+        "500": 1779.6307929876716
+      }
     },
     "random": {
       "counts": {
@@ -158,7 +198,95 @@
           "near_full": 100
         }
       },
-      "selection_seconds": 0.0
+      "selection_seconds": 0.0,
+      "spatial_information_gain_nats": 1682.7607282821264,
+      "spatial_information_gain_nats_by_budget": {
+        "100": 357.416865590546,
+        "200": 700.3452023580896,
+        "25": 91.99565194008724,
+        "50": 182.22764100523187,
+        "500": 1682.7607282821264
+      }
+    },
+    "spatial_information": {
+      "channel_rms_scale": [
+        0.0012830418461587214,
+        0.0005019262530954443,
+        0.0013520978951493464,
+        0.001195323864030487,
+        0.000474729095500804,
+        0.0013210851034903216
+      ],
+      "counts": {
+        "n_strips": {
+          "10": 42,
+          "11": 42,
+          "12": 42,
+          "13": 41,
+          "14": 41,
+          "3": 42,
+          "4": 41,
+          "5": 41,
+          "6": 42,
+          "7": 42,
+          "8": 42,
+          "9": 42
+        },
+        "scale_class": {
+          "local": 150,
+          "medium": 250,
+          "near_full": 100
+        }
+      },
+      "field_channels": [
+        "top_11_minus_identity",
+        "sqrt2_top_12",
+        "top_22_minus_identity",
+        "bottom_11_minus_identity",
+        "sqrt2_bottom_12",
+        "bottom_22_minus_identity"
+      ],
+      "final_conditional_variance": 0.8290481250723126,
+      "grid_shape_vu": [
+        20,
+        16
+      ],
+      "information_gain_nats": 2156.203639429552,
+      "kernel": "rbf",
+      "kernel_bandwidth": 2.0309873401946525,
+      "minimum_conditional_variance": 0.026886862714596872,
+      "noise_variance": 0.0001,
+      "raster_convergence": {
+        "comparisons": {
+          "16": {
+            "maximum_kernel_absolute_error": 0.015466493715994067,
+            "relative_feature_frobenius_error": 0.01287481741730927,
+            "relative_kernel_frobenius_error": 0.0031360445250526964
+          },
+          "8": {
+            "maximum_kernel_absolute_error": 0.03359700260820786,
+            "relative_feature_frobenius_error": 0.03172891364081936,
+            "relative_kernel_frobenius_error": 0.006763547904536259
+          }
+        },
+        "grid_shape_vu": [
+          20,
+          16
+        ],
+        "reference_bandwidth": 2.0009585165646593,
+        "reference_subsamples_per_axis": 32,
+        "sample_count": 150
+      },
+      "selection_seconds": 72.9650892522186,
+      "spatial_information_gain_nats": 2156.203639429552,
+      "spatial_information_gain_nats_by_budget": {
+        "100": 456.1238328075533,
+        "200": 903.0438988514298,
+        "25": 114.87205049590452,
+        "50": 228.8957961940381,
+        "500": 2156.203639429552
+      },
+      "subsamples_per_axis": 16
     }
   },
   "lhs_generation": {

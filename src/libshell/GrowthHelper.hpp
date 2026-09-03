@@ -16,6 +16,13 @@
 #include <unsupported/Eigen/MatrixFunctions>
 #include <stdexcept> // Updates @07/17: mapped curved-shell direction validation
 
+enum class GrowthMetricUpdate
+{
+    Multiplicative,
+    RecursiveLinearized,
+    ReferenceAdditiveLinearized
+};
+
 
 class DecomposedGrowthState
 {
@@ -710,8 +717,26 @@ struct GrowthHelper
     //
     //     a_r(new) = T^T a_r(old) T.
     //
-    // This is a sequential tensor update: overlapping passes and later cycles
-    // do not overwrite the target metric, and b_r is intentionally untouched.
+    /**
+     * updateAbarWithMaterialGrowthIncrement:
+     *
+     * Applies an incremental orthotropic growth tensor G(theta, g1, g2) in the flat
+     * material coordinate plane (u,v) to the target first fundamental form (abar) of
+     * a triangle face, represented in the discrete edge basis {e1 = v2-v1, e2 = v0-v2}.
+     *
+     * Mathematical formulation:
+     *   1. Triangle edge basis in material coordinates:
+     *      Dm = [u2 - u1,  u0 - u2] in R^(2x2)
+     *   2. Material-space stretch tensor:
+     *      G = R(theta) * diag(1+g1, 1+g2) * R(theta)^T
+     *   3. Pullback of deformation gradient to the edge coordinate chart:
+     *      T = Dm^(-1) * G * Dm
+     *   4. Metric congruence transformation:
+     *      abar_new = T^T * abar_old * T
+     *               = Dm^T * G^T * (Dm^(-T) * abar_old * Dm^(-1)) * G * Dm
+     *   5. Symmetrization and positive-definiteness verification:
+     *      abar_new = 0.5 * (abar_new + abar_new^T), lambda_min(abar_new) > 0
+     */
     static void updateAbarWithMaterialGrowthIncrement(
         const Eigen::Ref<const Eigen::MatrixXd> materialCoordinates,
         const Eigen::Ref<const Eigen::MatrixXi> face2vertices,
@@ -719,7 +744,9 @@ struct GrowthHelper
         const Real materialAngle,
         const Real growth_1,
         const Real growth_2,
-        Eigen::Matrix2d & aform)
+        Eigen::Matrix2d & aform,
+        const GrowthMetricUpdate update =
+            GrowthMetricUpdate::Multiplicative)
     {
         if(materialCoordinates.cols() < 2)
             throw std::runtime_error(
@@ -779,7 +806,16 @@ struct GrowthHelper
         const Eigen::Matrix2d G = R * L * R.transpose();
         const Eigen::Matrix2d T = Dm.inverse() * G * Dm;
 
-        aform = T.transpose() * aform * T;
+        const Eigen::Matrix2d Tdelta = T - Eigen::Matrix2d::Identity();
+        if(update == GrowthMetricUpdate::Multiplicative)
+            aform = T.transpose() * aform * T;
+        else if(update == GrowthMetricUpdate::RecursiveLinearized)
+            aform += Tdelta.transpose() * aform + aform * Tdelta;
+        else
+        {
+            const Eigen::Matrix2d a0 = Dm.transpose() * Dm;
+            aform += Tdelta.transpose() * a0 + a0 * Tdelta;
+        }
         aform = 0.5 * (aform + aform.transpose());
 
         Eigen::SelfAdjointEigenSolver<Eigen::Matrix2d> eig(aform);
