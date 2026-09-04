@@ -17,4 +17,12 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 repo_root=/gpfs/projects/p33082/PSM2025-zigzag
 cd "$repo_root"
-python python/run_equilibrium_continuation_study.py --tier all --timeout 39600
+runner=(python python/run_equilibrium_continuation_study.py --timeout 13800)
+if [[ -n "${STUDY_CASE:-}" ]]; then
+  runner+=(--case "$STUDY_CASE")
+elif [[ -n "${STUDY_TIER:-}" ]]; then
+  runner+=(--tier "$STUDY_TIER")
+else
+  runner+=(--tier all)
+fi
+"${runner[@]}"
