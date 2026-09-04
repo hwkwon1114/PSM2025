@@ -10,9 +10,10 @@
 #SBATCH --output=/gpfs/projects/p33082/PSM2025-zigzag/run/equilibrium_continuation_study/slurm_%j.out
 #SBATCH --error=/gpfs/projects/p33082/PSM2025-zigzag/run/equilibrium_continuation_study/slurm_%j.out
 
-set -euo pipefail
+set -eo pipefail
 source ~/miniforge/etc/profile.d/conda.sh
 conda activate smcpp_vtk38
+set -u
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 repo_root=/gpfs/projects/p33082/PSM2025-zigzag
