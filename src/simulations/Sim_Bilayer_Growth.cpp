@@ -949,6 +949,21 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
 
         const bool use_sequence_bc =
             sequence.boundary_conditions.enabled;
+        const std::string sequence_solve_mode =
+            parser.parse<std::string>("-sequence_solve_mode", "every_cycle");
+        if(sequence_solve_mode != "every_cycle" && sequence_solve_mode != "final_only")
+            throw std::runtime_error("-sequence_solve_mode must be every_cycle or final_only.");
+        if(use_sequence_bc && sequence_solve_mode == "final_only")
+            throw std::runtime_error("final_only currently requires boundary_conditions.enabled=false.");
+        int requested_cycles = 0;
+        for(const auto& tp : sequence.toolpaths) requested_cycles += tp.repeat;
+        int equilibrium_solves = 0;
+        std::string calibration_final_file;
+        Real calibration_energy = 0.0;
+        zigzag_sequence::json solve_records = zigzag_sequence::json::array();
+        std::ofstream history("sequence_history.csv");
+        if(!history) throw std::runtime_error("Cannot write sequence_history.csv");
+        history << "cycle,solved,hit_events,max_total_hits\n";
 
         // Normalize output tags to the actual mechanics mode rather than the
         // compatibility CLI alias. This makes a BC-disabled run identical to
@@ -1189,7 +1204,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 const std::vector<zigzag::MaterialHit>& hits,
                 const Eigen::VectorXi& hitsThisCycle,
                 const std::vector<std::vector<int>>& hitsByFace,
-                const int maxHitsPerFace) -> Real
+                const int maxHitsPerFace,
+                const zigzag_sequence::ZigZagOperationConfig& operation) -> Real
             {
                 const Eigen::MatrixXd Xcurrent =
                     mesh.getCurrentConfiguration().getVertices();
@@ -1227,8 +1243,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         Eigen::VectorXd::Zero(nFaces);
                     Eigen::VectorXd baseGbot =
                         Eigen::VectorXd::Zero(nFaces);
-                    Eigen::VectorXd baseOrtho =
-                        Eigen::VectorXd::Zero(nFaces);
+                    Eigen::VectorXd baseOrtho = Eigen::VectorXd::Zero(nFaces);
+                    Eigen::VectorXd baseOrthoBottom = Eigen::VectorXd::Zero(nFaces);
 
                     for(int face = 0; face < nFaces; ++face)
                     {
@@ -1241,7 +1257,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                             static_cast<Real>(hit.strip_idx);
                         baseGtop(face) = hit.gtop;
                         baseGbot(face) = hit.gbot;
-                        baseOrtho(face) = hit.ortho;
+                        baseOrtho(face) = operation.ortho_top.at(hit.strip_idx);
+                        baseOrthoBottom(face) = operation.ortho_bottom.at(hit.strip_idx);
                     }
 
                     Eigen::MatrixXd directions;
@@ -1295,7 +1312,9 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         "base_gbot_hit_" + suffix);
                     writer.addScalarFieldToFaces(
                         baseOrtho,
-                        "base_ortho_hit_" + suffix);
+                        "base_ortho_hit_" + suffix); // Legacy alias for top.
+                    writer.addScalarFieldToFaces(baseOrtho, "base_ortho_top_hit_" + suffix);
+                    writer.addScalarFieldToFaces(baseOrthoBottom, "base_ortho_bottom_hit_" + suffix);
                 }
 
                 writer.write(filebase);
@@ -1616,16 +1635,18 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 const std::string finalBase =
                     use_sequence_bc ? cyclePrefix : cyclePrefix + "_final";
 
-                // Every repeat starts from the previous repeat's released
-                // current geometry and receives its own mapping and solve.
-                const Real maxTangencyError =
+                // Target metrics and hardening always advance in original hit order.
+                // Skipping equilibria is an approximation to the solution branch only.
+                const bool solveThisCycle = sequence_solve_mode == "every_cycle" ||
+                                            executed_cycle == requested_cycles;
+                const Real maxTangencyError = solveThisCycle ?
                     writeSequenceMapping(
                         executed_cycle,
                         mappingBase,
                         materialHits,
                         hitsThisCycle,
                         hitsByFace,
-                        maxHitsPerFace);
+                        maxHitsPerFace, op) : 0.0;
 
                 Eigen::VectorXd incG1Top =
                     Eigen::VectorXd::Zero(nFaces);
@@ -1666,13 +1687,13 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     ++qCount;
 
                     const Real g1Top =
-                        q * hit.gtop * (1.0 + hit.ortho);
+                        q * hit.gtop * (1.0 + op.ortho_top.at(hit.strip_idx));
                     const Real g2Top =
-                        q * hit.gtop * (1.0 - hit.ortho);
+                        q * hit.gtop * (1.0 - op.ortho_top.at(hit.strip_idx));
                     const Real g1Bot =
-                        q * hit.gbot * (1.0 + hit.ortho);
+                        q * hit.gbot * (1.0 + op.ortho_bottom.at(hit.strip_idx));
                     const Real g2Bot =
-                        q * hit.gbot * (1.0 - hit.ortho);
+                        q * hit.gbot * (1.0 - op.ortho_bottom.at(hit.strip_idx));
 
                     GrowthHelper<tMesh>::
                         updateAbarWithMaterialGrowthIncrement(
@@ -1718,6 +1739,12 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         "zigzag_sequence: b_r changed unexpectedly; "
                         "metric-only treatment requires fixed reference curvature.");
 
+                history << executed_cycle << "," << (solveThisCycle ? 1 : 0) << ","
+                        << materialHits.size() << "," << totalPassCount.maxCoeff() << "\n";
+                history.flush();
+                if(!solveThisCycle) continue;
+
+                int calibration_return_code = 0;
                 Real eps_cycle = eps_init_default;
                 if(use_sequence_bc)
                     minimizeEnergyReduced(
@@ -1728,7 +1755,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         (dump_iters.empty() ? nullptr : &dump_iters),
                         max_iter);
                 else
-                    minimizeEnergy(
+                    calibration_return_code = minimizeEnergy(
                         engOps,
                         eps_cycle,
                         tol,
@@ -1736,6 +1763,13 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         (dump_iters.empty() ? nullptr : &dump_iters),
                         max_iter);
                 mesh.updateDeformedConfiguration();
+                ++equilibrium_solves;
+                if(!mesh.getCurrentConfiguration().getVertices().allFinite() ||
+                   !std::isfinite(eps_cycle))
+                    throw std::runtime_error("Sequence minimizer produced nonfinite output.");
+                solve_records.push_back({{"cycle", executed_cycle},
+                    {"return_code", calibration_return_code}, {"reported_eps", eps_cycle},
+                    {"return_code_available", !use_sequence_bc}});
 
                 const Real totalEnergy =
                     engOp_bot.getLastStretchingEnergy() +
@@ -1745,6 +1779,10 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     engOp_top.getLastBendingEnergy() +
                     engOp_top.getLastABEnergy();
 
+                if(!std::isfinite(totalEnergy))
+                    throw std::runtime_error("Sequence energy is not finite.");
+                calibration_energy = totalEnergy;
+                calibration_final_file = finalBase + ".vtp";
                 bcOutputIndex = output_index;
                 bcOutputIsRelease = false;
                 bcOutputPhysicalClampsActive = use_sequence_bc;
@@ -1961,6 +1999,28 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             << "[" << growth_type << "] completed " << executed_cycle
             << " physical cycles. Summary: "
             << summary_filename << "\n";
+
+        if(!use_sequence_bc)
+        {
+            std::string backend = "unknown";
+#if defined(USELIBLBFGS)
+            backend = "liblbfgs";
+#elif defined(USEHLBFGS)
+            backend = "hlbfgs";
+#endif
+            zigzag_sequence::json result = {
+                {"schema_version", 1}, {"completed", true},
+                {"solve_mode", sequence_solve_mode}, {"cycles", executed_cycle},
+                {"equilibrium_solves", equilibrium_solves},
+                {"initial_mesh", tag + "_cycle_000_initial.vtp"},
+                {"final_mesh", calibration_final_file}, {"total_energy", calibration_energy},
+                {"backend", backend}, {"stepwise", stepwise}, {"solves", solve_records}};
+            std::ofstream resultFile("sequence_result.json");
+            if(!resultFile) throw std::runtime_error("Cannot write sequence_result.json");
+            resultFile << result.dump(2) << "\n";
+            resultFile.close();
+            if(!resultFile) throw std::runtime_error("Failed writing sequence_result.json");
+        }
 
         // Preserve target-form history and the original b_r; do not enter the
         // legacy final mesh.init_rest(...) block below.

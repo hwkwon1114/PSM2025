@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "sheet": {
+    "size_mm": [
+      200.0,
+      300.0
+    ],
+    "thickness_mm": 0.77
+  },
+  "parameters": {
+    "gtop": {
+      "initial": 0.0004,
+      "bounds": [
+        1e-05,
+        0.01
+      ]
+    },
+    "gbot": {
+      "initial": 0.0001,
+      "bounds": [
+        1e-05,
+        0.0003
+      ]
+    },
+    "ortho_top": {
+      "initial": -0.5,
+      "bounds": [
+        -1.0,
+        1.0
+      ]
+    },
+    "ortho_bottom": {
+      "initial": -0.5,
+      "bounds": [
+        -1.0,
+        1.0
+      ]
+    }
+  },
+  "solver": {
+    "executable": "bin/shell",
+    "command_prefix": [],
+    "solve_mode": "final_only",
+    "timeout_seconds": 7200,
+    "acceptance": {
+      "max_hlbfgs_gradient_norm": 1e-07,
+      "other_backend_success_codes": {}
+    },
+    "args": {
+      "-sim": "bilayer_growth",
+      "-case": "custom",
+      "-geometry": "rectangle",
+      "-lx": 0.1,
+      "-ly": 0.15,
+      "-res": 0.01,
+      "-enable_passE": false,
+      "-nsteps": 1,
+      "-tol": 3e-12,
+      "-stepwise": false
+    }
+  },
+  "sequence_defaults": {
+    "start_mode": "left_bottom_up",
+    "profile": {
+      "mode": "uniform"
+    }
+  },
+  "hardening": {
+    "model": "voce_decay",
+    "history_variable": "hit_count",
+    "beta": 0.2231435513142097,
+    "floor": 0.0,
+    "scope": "face_shared",
+    "count_rule": "plastic_hits"
+  },
+  "cases": [
+    {
+      "id": "run6",
+      "repeat": 29,
+      "weight": 1.0,
+      "scan": "calibration/data/raw/run6.stl",
+      "scan_scale_to_mm": 1.0,
+      "target": "calibration/data/processed/run6_flipped.npz",
+      "scan_orientation": {
+        "flip_z": true,
+        "flip_xy": false
+      },
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 130.0,
+        "alpha_deg": 1.0,
+        "n_strips": 68,
+        "width_mm": 2.0,
+        "shift_uv_mm": [
+          0.0,
+          0.0
+        ],
+        "shift_frame": "material",
+        "rotation_deg": 0.0
+      }
+    }
+  ],
+  "preprocess": {
+    "spacing_mm": 2.0,
+    "edge_inset_mm": 2.0,
+    "z_outlier_floor_mm": 20.0,
+    "max_cell_z_mad_mm": 0.5,
+    "min_points": 1000
+  },
+  "registration": {
+    "rotation_bound_deg": 5.0,
+    "translation_bounds_mm": [
+      5.0,
+      5.0,
+      20.0
+    ],
+    "fit_points": 2000,
+    "icp_iterations": 30,
+    "reject_at_bound": true
+  },
+  "optimization": {
+    "seed": 2026,
+    "coarse_samples": 6,
+    "max_evaluations": 80,
+    "xtol": 0.005,
+    "ftol": 0.0001,
+    "sensitivity_step": 0.03,
+    "failure_penalty_mm": 1000000.0
+  },
+  "output_dir": "calibration/runs/run6_lower_growth_trial",
+  "report_dir": "calibration/reports/run6_lower_growth_trial"
+}

@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+runs/*
+!runs/.gitkeep
+reports/*
+!reports/.gitkeep

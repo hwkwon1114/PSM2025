@@ -1,3 +1,4 @@
 {
-    "terminal.integrated.scrollback": 3000
+    "terminal.integrated.scrollback": 3000,
+    "chatgpt.openOnStartup": true
 }
