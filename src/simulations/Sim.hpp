@@ -233,9 +233,10 @@ public:
          * have driven the achieved gradient norm to the requested threshold.
          *  - gradientTolerance is mandatory and must be finite and strictly positive.
          *    There is no "no threshold" mode: the raw codes carry no such guarantee, and
-         *    codes 2 and 3 only report that HLBFGS' own internal test fired, with
-         *    minimizeEnergy passing epsMin -- machine epsilon by default -- so in
-         *    practice they never fire and the normal outcome is code 1 or 4.
+         *    codes 2 and 3 only report that HLBFGS' own internal test fired.
+         *    Sequence callers pass their explicit tol as epsMin; code 2 can fire
+         *    above this absolute gate because its test divides by max(1,||x||).
+         *    The opt-in absolute stopping mode disables that relative test.
          *  - only codes 1-4 are eligible. Code 5 (iteration cap), the -1 "never ran"
          *    default and any unmodelled code are rejected outright.
          *  - gradientNorm must be finite and non-negative: NaN, infinity and the -1
@@ -279,13 +280,6 @@ protected:
     {
         lastMinimization = MinimizationReport();
 
-        std::cout << "[Sim] minimizeEnergy extended args received. "
-          << "stepWise=" << stepWise
-          << " eps_init=" << eps
-          << " epsMin=" << epsMin
-          << "dump_ptr=" << (dump_iters_ptr != nullptr)
-          << " max_iter=" << max_iter << std::endl;
-
 #ifdef USELIBLBFGS
         // use the LBFGS_Energy class to directly minimize the energy on the mesh with these operators
         // LBFGS does not use the hessian
@@ -300,18 +294,10 @@ protected:
 #ifdef USEHLBFGS
 
         HLBFGS_Methods::HLBFGS_Energy<tMesh, tMeshOperator, verbose> hlbfgs_wrapper(mesh, op);
-        // For debugging 0126
-        std::cout << "[Sim] setting HLBFGS controls: dump_size="
-          << (dump_iters_ptr ? dump_iters_ptr->size() : 0)
-          << " max_iter=" << max_iter << std::endl;
+        const Real absoluteStop = parser.template parse<Real>("-hlbfgs_absolute_gradient_tol", -1.0);
+        if(absoluteStop != -1.0)
+            hlbfgs_wrapper.set_absolute_gradient_tolerance(absoluteStop);
 
-        // if(dump_iters_ptr != nullptr)
-        //     hlbfgs_wrapper.set_dump_schedule(tag, *dump_iters_ptr);
-
-        // if(max_iter > 0)
-        //     hlbfgs_wrapper.set_max_iter(max_iter);
-
-        // back to original logic
         // ver-0122 
         // Optional: intermediate iteration dumps (true continuous trajectory)
         if(dump_iters_ptr != nullptr && !dump_iters_ptr->empty())
@@ -322,23 +308,29 @@ protected:
             hlbfgs_wrapper.set_max_iter(max_iter);
 
         int retval = 0;
+        int total_iters = 0;
+        int total_evals = 0;
         if(stepWise)
         {
             while(retval == 0 && eps > epsMin)
             {
                 eps *= 0.1;
                 retval = hlbfgs_wrapper.minimize(tag+"_diagnostics.dat", eps);
+                total_iters += hlbfgs_wrapper.get_lastiterations();
+                total_evals += hlbfgs_wrapper.get_lastevaluations();
             }
         }
         else
         {
             retval = hlbfgs_wrapper.minimize(tag+"_diagnostics.dat", epsMin);
+            total_iters = hlbfgs_wrapper.get_lastiterations();
+            total_evals = hlbfgs_wrapper.get_lastevaluations();
             eps = hlbfgs_wrapper.get_lastnorm();
         }
 
         lastMinimization.code = hlbfgs_wrapper.get_lastreturncode();
-        lastMinimization.iterations = hlbfgs_wrapper.get_lastiterations();
-        lastMinimization.evaluations = hlbfgs_wrapper.get_lastevaluations();
+        lastMinimization.iterations = total_iters;
+        lastMinimization.evaluations = total_evals;
         lastMinimization.gradientNorm = hlbfgs_wrapper.get_lastnorm();
 
 #else
@@ -377,6 +369,9 @@ protected:
 #ifdef USEHLBFGS
         HLBFGS_Methods::HLBFGS_Energy_Reduced<
             tMesh, tMeshOperator, verbose> hlbfgs_wrapper(mesh, op);
+        const Real absoluteStop = parser.template parse<Real>("-hlbfgs_absolute_gradient_tol", -1.0);
+        if(absoluteStop != -1.0)
+            hlbfgs_wrapper.set_absolute_gradient_tolerance(absoluteStop);
 
         if(dump_iters_ptr != nullptr && !dump_iters_ptr->empty())
             hlbfgs_wrapper.set_dump_schedule(tag, *dump_iters_ptr);
@@ -384,6 +379,8 @@ protected:
             hlbfgs_wrapper.set_max_iter(max_iter);
 
         int retval = 0;
+        int total_iters = 0;
+        int total_evals = 0;
         if(stepWise)
         {
             while(retval == 0 && eps > epsMin)
@@ -391,28 +388,35 @@ protected:
                 eps *= 0.1;
                 retval = hlbfgs_wrapper.minimize(
                     tag + "_diagnostics_reduced.dat", eps);
+                total_iters += hlbfgs_wrapper.get_lastiterations();
+                total_evals += hlbfgs_wrapper.get_lastevaluations();
             }
         }
         else
         {
             retval = hlbfgs_wrapper.minimize(
                 tag + "_diagnostics_reduced.dat", epsMin);
+            total_iters = hlbfgs_wrapper.get_lastiterations();
+            total_evals = hlbfgs_wrapper.get_lastevaluations();
             eps = hlbfgs_wrapper.get_lastnorm();
         }
 
         lastMinimization.code = hlbfgs_wrapper.get_lastreturncode();
-        lastMinimization.iterations = hlbfgs_wrapper.get_lastiterations();
-        lastMinimization.evaluations = hlbfgs_wrapper.get_lastevaluations();
+        lastMinimization.iterations = total_iters;
+        lastMinimization.evaluations = total_evals;
         lastMinimization.gradientNorm = hlbfgs_wrapper.get_lastnorm();
 
-        std::cout
-            << "[Sim] reduced solve variables: free="
-            << hlbfgs_wrapper.getNumberOfFreeVariables()
-            << ", fixed="
-            << hlbfgs_wrapper.getNumberOfFixedVariables()
-            << ", full="
-            << hlbfgs_wrapper.getNumberOfFullVariables()
-            << std::endl;
+        if constexpr (verbose)
+        {
+            std::cout
+                << "[Sim] reduced solve variables: free="
+                << hlbfgs_wrapper.getNumberOfFreeVariables()
+                << ", fixed="
+                << hlbfgs_wrapper.getNumberOfFixedVariables()
+                << ", full="
+                << hlbfgs_wrapper.getNumberOfFullVariables()
+                << std::endl;
+        }
 
         std::vector<std::pair<std::string, Real>> energies;
         op.addEnergy(energies);

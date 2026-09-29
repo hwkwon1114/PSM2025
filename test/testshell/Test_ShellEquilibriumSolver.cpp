@@ -814,3 +814,169 @@ TEST(ShellEquilibriumShellFixture, CorrectorTerminatesImmediatelyAtTheRestState)
     EXPECT_LE(report.gradientNorm, options.gradientTolerance);
     EXPECT_DOUBLE_EQ(report.energy, report.initialEnergy);
 }
+
+TEST(ShellEquilibriumShellFixture, ParallelHessianBitwiseParityAndCacheReuse)
+{
+    RectangularPlate geometry(0.5, 0.5, 0.05, {false, false}, {false, false});
+    geometry.setQuiet();
+
+    BilayerMesh mesh;
+    mesh.init(geometry, false);
+
+    const Real Young = 1.0;
+    const Real poisson = 0.3;
+    const Real thickness = 0.01;
+
+    TinyADHessian_Bilayer<BilayerMesh> hessian1(Young, poisson, thickness, 1);
+    TinyADHessian_Bilayer<BilayerMesh> hessian2(Young, poisson, thickness, 2);
+    TinyADHessian_Bilayer<BilayerMesh> hessian4(Young, poisson, thickness, 4);
+
+    const Eigen::SparseMatrix<double> H1 = hessian1.assembleHessian(mesh);
+    EXPECT_EQ(hessian1.getCacheBuilds(), 1);
+
+    const Eigen::SparseMatrix<double> H1_second = hessian1.assembleHessian(mesh);
+    EXPECT_EQ(hessian1.getCacheBuilds(), 1); // cache preserved
+
+    const Eigen::SparseMatrix<double> H2 = hessian2.assembleHessian(mesh);
+    const Eigen::SparseMatrix<double> H4 = hessian4.assembleHessian(mesh);
+
+    EXPECT_EQ(H1.rows(), H4.rows());
+    EXPECT_EQ(H1.cols(), H4.cols());
+    EXPECT_EQ(H1.nonZeros(), H4.nonZeros());
+
+    // Compare CSC index structures
+    for(int i = 0; i <= H1.cols(); ++i) {
+        EXPECT_EQ(H1.outerIndexPtr()[i], H2.outerIndexPtr()[i]);
+        EXPECT_EQ(H1.outerIndexPtr()[i], H4.outerIndexPtr()[i]);
+        EXPECT_EQ(H1.outerIndexPtr()[i], H1_second.outerIndexPtr()[i]);
+    }
+    for(int i = 0; i < H1.nonZeros(); ++i) {
+        EXPECT_EQ(H1.innerIndexPtr()[i], H2.innerIndexPtr()[i]);
+        EXPECT_EQ(H1.innerIndexPtr()[i], H4.innerIndexPtr()[i]);
+        EXPECT_EQ(H1.innerIndexPtr()[i], H1_second.innerIndexPtr()[i]);
+    }
+
+    // Strict bitwise parity: exact bit equality between 1, 2, and 4 threads
+    for(int i = 0; i < H1.nonZeros(); ++i) {
+        EXPECT_EQ(H1.valuePtr()[i], H2.valuePtr()[i]);
+        EXPECT_EQ(H1.valuePtr()[i], H4.valuePtr()[i]);
+        EXPECT_EQ(H1.valuePtr()[i], H1_second.valuePtr()[i]);
+    }
+}
+
+TEST(ShellEquilibriumShellFixture, MultiGeometryRobustnessAndParity)
+{
+    const Real Young = 1.0;
+    const Real poisson = 0.3;
+    const Real thickness = 0.01;
+
+    auto testGeometry = [&](Geometry & geometry, const std::string & geomName, const bool isFlat)
+    {
+        geometry.setQuiet();
+        BilayerMesh mesh;
+        mesh.init(geometry, !isFlat);
+
+        const int nV = mesh.getNumberOfVertices();
+        const int nE = mesh.getNumberOfEdges();
+        const int nDofs = numberOfDofs(nV, nE);
+
+        TinyADHessian_Bilayer<BilayerMesh> hessian1(Young, poisson, thickness, 1);
+        TinyADHessian_Bilayer<BilayerMesh> hessian2(Young, poisson, thickness, 2);
+        TinyADHessian_Bilayer<BilayerMesh> hessian4(Young, poisson, thickness, 4);
+
+        ASSERT_EQ(hessian1.nDofs(mesh), nDofs);
+
+        // 1. Parallel Hessian assembly bitwise parity across 1T, 2T, 4T
+        const Eigen::SparseMatrix<double> H1 = hessian1.assembleHessian(mesh);
+        const Eigen::SparseMatrix<double> H2 = hessian2.assembleHessian(mesh);
+        const Eigen::SparseMatrix<double> H4 = hessian4.assembleHessian(mesh);
+
+        EXPECT_EQ(H1.rows(), H4.rows()) << "Failed on " << geomName;
+        EXPECT_EQ(H1.cols(), H4.cols()) << "Failed on " << geomName;
+        EXPECT_EQ(H1.nonZeros(), H4.nonZeros()) << "Failed on " << geomName;
+
+        for(int i = 0; i <= H1.cols(); ++i)
+        {
+            EXPECT_EQ(H1.outerIndexPtr()[i], H2.outerIndexPtr()[i]) << "Mismatch in outerIndex at " << i << " on " << geomName;
+            EXPECT_EQ(H1.outerIndexPtr()[i], H4.outerIndexPtr()[i]) << "Mismatch in outerIndex at " << i << " on " << geomName;
+        }
+        for(int i = 0; i < H1.nonZeros(); ++i)
+        {
+            EXPECT_EQ(H1.innerIndexPtr()[i], H2.innerIndexPtr()[i]) << "Mismatch in innerIndex at " << i << " on " << geomName;
+            EXPECT_EQ(H1.innerIndexPtr()[i], H4.innerIndexPtr()[i]) << "Mismatch in innerIndex at " << i << " on " << geomName;
+            EXPECT_EQ(H1.valuePtr()[i], H2.valuePtr()[i]) << "Mismatch in value at " << i << " on " << geomName;
+            EXPECT_EQ(H1.valuePtr()[i], H4.valuePtr()[i]) << "Mismatch in value at " << i << " on " << geomName;
+        }
+
+        // 2. Parallel Hessian-vector product bitwise parity across 1T, 2T, 4T
+        DeterministicStream stream(42ull);
+        const Eigen::VectorXd v = stream.vector(nDofs);
+
+        const Eigen::VectorXd hvp1 = hessian1.hessianVectorProduct(mesh, v);
+        const Eigen::VectorXd hvp2 = hessian2.hessianVectorProduct(mesh, v);
+        const Eigen::VectorXd hvp4 = hessian4.hessianVectorProduct(mesh, v);
+
+        ASSERT_EQ(hvp1.size(), nDofs);
+        for(int i = 0; i < nDofs; ++i)
+        {
+            EXPECT_EQ(hvp1(i), hvp2(i)) << "HVP mismatch between 1T and 2T at " << i << " on " << geomName;
+            EXPECT_EQ(hvp1(i), hvp4(i)) << "HVP mismatch between 1T and 4T at " << i << " on " << geomName;
+        }
+
+        // 3. Rigid mode annihilation
+        const RigidModeProjector projector = RigidModeProjector::fromMesh(mesh);
+        EXPECT_EQ(projector.numberOfRigidModes(), 6) << "Rigid modes mismatch on " << geomName;
+
+        Eigen::VectorXd p_probe = v;
+        projector.applyInPlace(p_probe);
+        p_probe.normalize();
+        const Real referenceNorm = hessian1.hessianVectorProduct(mesh, p_probe).norm();
+        ASSERT_GT(referenceNorm, 0.0) << "Reference norm was zero on " << geomName;
+
+        for(int k = 0; k < projector.numberOfRigidModes(); ++k)
+        {
+            const Eigen::VectorXd mode = projector.basis().col(k);
+            const Real modeNorm = hessian1.hessianVectorProduct(mesh, mode).norm();
+            EXPECT_LT(modeNorm, 1e-7 * referenceNorm)
+                << "Rigid mode " << k << " failed annihilation on " << geomName;
+        }
+
+        // 4. Equilibrium rest state immediate acceptance (for planar meshes)
+        if(isFlat)
+        {
+            MaterialProperties_Iso_Constant matprop(Young, poisson, thickness);
+            CombinedOperator_Parametric<BilayerMesh, Material_Isotropic, bottom> engOp_bot(matprop);
+            CombinedOperator_Parametric<BilayerMesh, Material_Isotropic, top> engOp_top(matprop);
+            EnergyOperatorList<BilayerMesh> engOps({&engOp_bot, &engOp_top});
+
+            TrustRegionNewtonOptions options;
+            options.gradientTolerance = 1e-10;
+            options.maxIterations = 20;
+            options.initialTrustRadius = 1e-2;
+            options.vertexLengthScale = 0.05;
+            options.directorAngleScale = 0.05;
+
+            const TrustRegionNewtonReport report = solveShellEquilibrium(mesh, engOps, hessian4, options);
+            EXPECT_TRUE(report.accepted) << "Rest state solve not accepted on " << geomName;
+            EXPECT_EQ(report.status, TrustRegionStatus::GradientTolerance) << "Status not GradientTolerance on " << geomName;
+            EXPECT_LE(report.gradientNorm, options.gradientTolerance) << "Gradient norm above tolerance on " << geomName;
+        }
+        else
+        {
+            const Real gradNorm = hessian1.gradient(mesh).norm();
+            EXPECT_TRUE(std::isfinite(gradNorm));
+            EXPECT_GT(gradNorm, 0.0);
+        }
+    };
+
+    RectangularPlate rect(0.5, 0.5, 0.05, {false, false}, {false, false});
+    testGeometry(rect, "RectangularPlate", true);
+
+    CircularPlate circ(0.5, 20, false);
+    testGeometry(circ, "CircularPlate", true);
+
+    CurvedRectangularPlate_RightAngle curved(0.2, 0.2, 0.05, 0.25, 1.0);
+    testGeometry(curved, "CurvedRectangularPlate_RightAngle", false);
+}
+
+

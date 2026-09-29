@@ -1,16 +1,21 @@
-#ifndef TINYAD_HESSIAN_BILAYER_HPP
-#define TINYAD_HESSIAN_BILAYER_HPP
+#ifndef BENCHMARK_LOCAL_DIHEDRAL_CACHED_TINYAD_HESSIAN_BILAYER_HPP
+#define BENCHMARK_LOCAL_DIHEDRAL_CACHED_TINYAD_HESSIAN_BILAYER_HPP
+
+// Isolated benchmark candidate: local-dihedral AD and opt-in parallel face
+// evaluation with deterministic serial CSC scatter. Per-face arithmetic and
+// masking are retained. Never include this in production builds.
 
 /**
  * TinyADHessian_Bilayer : the EXACT analytic Hessian of the bilayer SVK non-Euclidean shell
  * energy, via TinyAD forward-mode autodiff of a scalar-templated per-face energy.
  *
- * Includes:
- *   1. Smooth signed dihedral formulation (finite second derivatives at the flat state).
- *   2. Local dihedral 12-DOF derivative reduction for accelerated AD face evaluation.
- *   3. Reusable CSC sparsity pattern cache avoiding repeated triplet allocations.
- *   4. Opt-in OpenMP parallel face evaluation with deterministic serial CSC scatter,
- *      guaranteeing bitwise-identical output across 1, 2, 4, or more threads.
+ * Ported from the pyshell/TinyAD work on the instrumentation branch, whose per-face energy was
+ * verified to match this repo's CombinedOperator_Parametric<BilayerMesh, Material_Isotropic>
+ * gradient to ~1e-15. The energy algebra, SVK coefficients, thickness prefactors, bilayer
+ * mixed-coupling sign, 21-DOF stencil, DOF layout ([x|y|z|directors], column-major), and the
+ * SMOOTH signed-dihedral form (finite second derivatives at the flat state) are all identical
+ * to CombinedOperator_Parametric, so this is the exact Hessian of the energy the forming solve
+ * minimizes -- not a finite-difference approximation (no noise floor).
  *
  * DOF layout: global index of vertex k coord d is d*nV + k; edge director e is 3*nV + e.
  * Per-face 21-DOF stencil: [v0 v1 v2 | opp(e0) opp(e1) opp(e2) | phi0 phi1 phi2].
@@ -35,29 +40,27 @@
 #endif
 
 template<typename tMesh>
-class TinyADHessian_Bilayer
+class LocalDihedralCachedTinyADHessian_Bilayer
 {
     const Real E, nu, h;
-
     struct Pattern
     {
-        const tMesh* mesh = nullptr;
-        Eigen::MatrixXi F, F2E, E2F;
+        const tMesh* mesh=nullptr;
+        Eigen::MatrixXi F,F2E,E2F;
         std::vector<char> bc;
-        std::vector<std::array<int, 21>> stencil;
+        std::vector<std::array<int,21>> stencil;
         // CSC valuePtr offsets in face/r/c order; -1 denotes a masked DOF.
-        std::vector<std::array<int, 21 * 21>> offsets;
+        std::vector<std::array<int,21*21>> offsets;
         std::vector<int> bcDiagonalOffsets;
         Eigen::SparseMatrix<double> structure;
     };
-
-    mutable std::unique_ptr<Pattern> pattern_;
-    mutable int cacheBuilds_ = 0;
-    int assemblyThreads_ = 1;
-    mutable int lastAssemblyThreads_ = 1;
-    // Parallel-only scratch: 441 doubles/face (~35.5 MiB for 10,560 faces).
+    std::unique_ptr<Pattern> pattern_;
+    int cacheBuilds_=0;
+    const int assemblyThreads_;
+    int lastAssemblyThreads_=1;
+    // Parallel-only scratch: 441 doubles/face (~35.5 MiB for 10560 faces).
     // This object, like its mesh/pattern cache, is not externally reentrant.
-    mutable std::vector<std::array<double, 21 * 21>> faceHessians_;
+    std::vector<std::array<double,21*21>> faceHessians_;
 
     // ---- per-face energy, scalar-templated for TinyAD. Verbatim from the verified pyshell
     //      builder; material constants and bbar are passed in rather than read from a member. ----
@@ -157,6 +160,7 @@ class TinyADHessian_Bilayer
 
         const Vec3A fn_unnorm = e2.cross(e0);
         const ADouble dbl_area = fn_unnorm.norm();
+        const Vec3A n_own = fn_unnorm / dbl_area;
 
         const ADouble height0 = dbl_area / e0.norm();
         const ADouble height1 = dbl_area / e1.norm();
@@ -166,51 +170,53 @@ class TinyADHessian_Bilayer
         const ADouble aF12 = e1.dot(e2);
         const ADouble aF22 = e2.dot(e2);
 
-        // Each signed dihedral sees the own face's 9 coordinates and one neighbor's
-        // opposite vertex (3), not all 21 DOFs. Lift its exact local derivatives back
-        // to 21 before the unchanged bending/stretch-bend arithmetic.
+        // Isolated diagnostic: each signed dihedral sees the own face's 9
+        // coordinates and one neighbor's opposite vertex (3), not all 21.
+        // Lift its exact local derivatives back to 21 before the unchanged
+        // bending/stretch-bend arithmetic. The duplicate own-normal work may
+        // outweigh the reduction in AD width; timing must establish a gain.
         static_assert(ADouble::k_ == 21 && !ADouble::truncated_hessian_);
         using AD12 = TinyAD::Double<12, ADouble::with_hessian_>;
-        using Vec3S = Eigen::Matrix<AD12, 3, 1>;
+        using Vec3S = Eigen::Matrix<AD12,3,1>;
         ADouble theta[3];
         for(int i = 0; i < 3; ++i)
         {
             if(!interior[i]) { theta[i] = ADouble(0.0); continue; }
-            Eigen::Matrix<double, 12, 1> local;
+            Eigen::Matrix<double,12,1> local;
             local.template head<9>() = x0.template head<9>();
-            local.template tail<3>() = x0.template segment<3>(9 + 3 * i);
-            const Eigen::Matrix<AD12, 12, 1> z = AD12::make_active(local);
-            const Vec3S w0 = z.template segment<3>(0), w1 = z.template segment<3>(3), w2 = z.template segment<3>(6);
-            const Vec3S a0 = w1 - w0, a1 = w2 - w1, a2 = w0 - w2;
-            const Vec3S ownUnnorm = a2.cross(a0);
-            const Vec3S ownNormal = ownUnnorm / ownUnnorm.norm();
+            local.template tail<3>() = x0.template segment<3>(9+3*i);
+            const Eigen::Matrix<AD12,12,1> z = AD12::make_active(local);
+            const Vec3S w0=z.template segment<3>(0),w1=z.template segment<3>(3),w2=z.template segment<3>(6);
+            const Vec3S a0=w1-w0,a1=w2-w1,a2=w0-w2;
+            const Vec3S ownUnnorm=a2.cross(a0);
+            const Vec3S ownNormal=ownUnnorm/ownUnnorm.norm();
             auto pick = [&](int k) -> Vec3S {
-                const int tag = nbrMap[i][k];
-                if(tag == 0) return w0;
-                if(tag == 1) return w1;
-                if(tag == 2) return w2;
+                const int tag=nbrMap[i][k];
+                if(tag==0)return w0;
+                if(tag==1)return w1;
+                if(tag==2)return w2;
                 return Vec3S(z.template tail<3>());
             };
-            const Vec3S nb0 = pick(0), nb1 = pick(1), nb2 = pick(2);
-            const Vec3S neighborUnnorm = (nb0 - nb2).cross(nb1 - nb0);
-            const Vec3S neighborNormal = neighborUnnorm / neighborUnnorm.norm();
-            const Vec3S ownEdges[3] = {a0, a1, a2};
-            const Vec3S edgeHat = ownEdges[i] / ownEdges[i].norm();
-            const AD12 sine = (ownNormal.cross(neighborNormal)).dot(edgeHat);
-            const AD12 cosine = ownNormal.dot(neighborNormal);
-            const AD12 angle = atan2(sine, cosine);
-            typename ADouble::GradType grad = ADouble::GradType::Zero();
-            grad.template head<9>() = angle.grad.template head<9>();
-            grad.template segment<3>(9 + 3 * i) = angle.grad.template tail<3>();
-            typename ADouble::HessType hess = ADouble::HessType::Zero();
+            const Vec3S nb0=pick(0),nb1=pick(1),nb2=pick(2);
+            const Vec3S neighborUnnorm=(nb0-nb2).cross(nb1-nb0);
+            const Vec3S neighborNormal=neighborUnnorm/neighborUnnorm.norm();
+            const Vec3S ownEdges[3]={a0,a1,a2};
+            const Vec3S edgeHat=ownEdges[i]/ownEdges[i].norm();
+            const AD12 sine=(ownNormal.cross(neighborNormal)).dot(edgeHat);
+            const AD12 cosine=ownNormal.dot(neighborNormal);
+            const AD12 angle=atan2(sine,cosine);
+            typename ADouble::GradType grad=ADouble::GradType::Zero();
+            grad.template head<9>()=angle.grad.template head<9>();
+            grad.template segment<3>(9+3*i)=angle.grad.template tail<3>();
+            typename ADouble::HessType hess=ADouble::HessType::Zero();
             if constexpr (ADouble::with_hessian_)
             {
-                hess.template topLeftCorner<9, 9>() = angle.Hess.template topLeftCorner<9, 9>();
-                hess.template block<9, 3>(0, 9 + 3 * i) = angle.Hess.template block<9, 3>(0, 9);
-                hess.template block<3, 9>(9 + 3 * i, 0) = angle.Hess.template block<3, 9>(9, 0);
-                hess.template block<3, 3>(9 + 3 * i, 9 + 3 * i) = angle.Hess.template bottomRightCorner<3, 3>();
+                hess.template topLeftCorner<9,9>()=angle.Hess.template topLeftCorner<9,9>();
+                hess.template block<9,3>(0,9+3*i)=angle.Hess.template block<9,3>(0,9);
+                hess.template block<3,9>(9+3*i,0)=angle.Hess.template block<3,9>(9,0);
+                hess.template block<3,3>(9+3*i,9+3*i)=angle.Hess.template bottomRightCorner<3,3>();
             }
-            theta[i] = ADouble::known_derivatives(angle.val, grad, hess);
+            theta[i]=ADouble::known_derivatives(angle.val,grad,hess);
         }
 
         const ADouble alpha0 = 0.5 * theta[0] + double(sgn[0]) * x(18);
@@ -290,119 +296,44 @@ class TinyADHessian_Bilayer
         return mask;
     }
 
-    void initializePattern(tMesh & mesh, const Eigen::MatrixXi & F,
-                           const Eigen::MatrixXi & F2E, const Eigen::MatrixXi & E2F,
-                           const std::vector<char> & mask) const
-    {
-        auto next = std::make_unique<Pattern>();
-        next->mesh = &mesh;
-        next->F = F;
-        next->F2E = F2E;
-        next->E2F = E2F;
-        next->bc = mask;
-        const int nv = mesh.getNumberOfVertices(), nd = nDofs(mesh), nf = mesh.getNumberOfFaces();
-        next->stencil.resize(nf);
-        std::vector<Eigen::Triplet<double>> trips;
-        trips.reserve(std::size_t(nf) * 21 * 21);
-        for(int f = 0; f < nf; ++f)
-        {
-            auto & g = next->stencil[f];
-            const int own[3] = {F(f, 0), F(f, 1), F(f, 2)};
-            for(int a = 0; a < 3; ++a)
-                for(int d = 0; d < 3; ++d)
-                    g[3 * a + d] = d * nv + own[a];
-            for(int i = 0; i < 3; ++i)
-            {
-                const int edge = F2E(f, i), fa = E2F(edge, 0), fb = E2F(edge, 1);
-                int opp = -1;
-                if(fa >= 0 && fb >= 0)
-                {
-                    const int other = (fa == f ? fb : fa);
-                    for(int k = 0; k < 3; ++k)
-                    {
-                        const int v = F(other, k);
-                        if(v != own[0] && v != own[1] && v != own[2]) opp = v;
-                    }
-                    if(opp < 0) throw std::invalid_argument("invalid face neighbor in cached Hessian");
-                }
-                for(int d = 0; d < 3; ++d) g[9 + 3 * i + d] = (opp < 0 ? -1 : d * nv + opp);
-                g[18 + i] = 3 * nv + edge;
-            }
-            for(int r = 0; r < 21; ++r)
-            {
-                if(g[r] < 0 || mask[g[r]]) continue;
-                for(int c = 0; c < 21; ++c)
-                    if(g[c] >= 0 && !mask[g[c]]) trips.emplace_back(g[r], g[c], 1.0);
-            }
-        }
-        for(int i = 0; i < nd; ++i)
-            if(mask[i]) trips.emplace_back(i, i, 1.0);
-        next->structure.resize(nd, nd);
-        next->structure.setFromTriplets(trips.begin(), trips.end());
-        next->structure.makeCompressed();
-        const int* outer = next->structure.outerIndexPtr();
-        const int* inner = next->structure.innerIndexPtr();
-        auto offset = [&](int row, int col) {
-            const int* p = std::lower_bound(inner + outer[col], inner + outer[col + 1], row);
-            if(p == inner + outer[col + 1] || *p != row)
-                throw std::logic_error("cached Hessian pattern lookup failed");
-            return int(p - inner);
-        };
-        next->offsets.resize(nf);
-        for(int f = 0; f < nf; ++f)
-        {
-            auto & dest = next->offsets[f];
-            dest.fill(-1);
-            const auto & g = next->stencil[f];
-            for(int r = 0; r < 21; ++r)
-            {
-                if(g[r] < 0 || mask[g[r]]) continue;
-                for(int c = 0; c < 21; ++c)
-                    if(g[c] >= 0 && !mask[g[c]]) dest[21 * r + c] = offset(g[r], g[c]);
-            }
-        }
-        for(int i = 0; i < nd; ++i)
-            if(mask[i]) next->bcDiagonalOffsets.push_back(offset(i, i));
-        pattern_ = std::move(next);
-        ++cacheBuilds_;
-    }
-
 public:
-    TinyADHessian_Bilayer(const Real E_, const Real nu_, const Real h_, int assemblyThreads = 1)
-    : E(E_), nu(nu_), h(h_), assemblyThreads_(std::max(1, assemblyThreads)) {}
+    LocalDihedralCachedTinyADHessian_Bilayer(const Real E_, const Real nu_, const Real h_,
+                                          const int assemblyThreads=1)
+    : E(E_), nu(nu_), h(h_), assemblyThreads_(assemblyThreads)
+    {
+        if(assemblyThreads<1)throw std::invalid_argument("Hessian assembly threads must be positive");
+#ifndef _OPENMP
+        if(assemblyThreads!=1)throw std::invalid_argument("parallel Hessian requires OpenMP");
+#endif
+    }
+    int cacheBuilds() const {return cacheBuilds_;}
+    int assemblyThreads() const {return assemblyThreads_;}
+    int lastAssemblyThreads() const {return lastAssemblyThreads_;}
 
-    int getAssemblyThreads() const { return assemblyThreads_; }
-    void setAssemblyThreads(int t) { assemblyThreads_ = std::max(1, t); }
-    int getLastAssemblyThreads() const { return lastAssemblyThreads_; }
-    int getCacheBuilds() const { return cacheBuilds_; }
-    void clearCache() const { pattern_.reset(); }
-
-    int nDofs(const tMesh & mesh) const
-    { return 3 * mesh.getNumberOfVertices() + mesh.getNumberOfEdges(); }
-
-    // ---- total energy over all faces ----
-    double computeEnergy(tMesh & mesh) const
+    // Diagnostic oracle value: sum the same face kernel used by the Hessian.
+    double energy(tMesh & mesh) const
     {
         mesh.updateDeformedConfiguration();
-        const int nv = mesh.getNumberOfVertices(), nf = mesh.getNumberOfFaces();
-        const auto & topo = mesh.getTopology();
-        const Eigen::MatrixXi F   = topo.getFace2Vertices();
-        const Eigen::MatrixXi F2E = topo.getFace2Edges();
-        const Eigen::MatrixXi E2F = topo.getEdge2Faces();
-        const Eigen::MatrixXd V   = mesh.getCurrentConfiguration().getVertices();
-        const Eigen::VectorXd phi = mesh.getCurrentConfiguration().getEdgeDirectors();
-        const tVecMat2d & abB = mesh.getRestConfiguration().template getFirstFundamentalForms<bottom>();
-        const tVecMat2d & abT = mesh.getRestConfiguration().template getFirstFundamentalForms<top>();
-        using ADg = TinyAD::Double<21, false>;
-        double sum = 0.0;
-        for(int f = 0; f < nf; ++f)
+        const int nv=mesh.getNumberOfVertices(),nf=mesh.getNumberOfFaces();
+        const auto& topo=mesh.getTopology();
+        const Eigen::MatrixXi F=topo.getFace2Vertices(),F2E=topo.getFace2Edges(),E2F=topo.getEdge2Faces();
+        const Eigen::MatrixXd V=mesh.getCurrentConfiguration().getVertices();
+        const Eigen::VectorXd phi=mesh.getCurrentConfiguration().getEdgeDirectors();
+        const tVecMat2d& abB=mesh.getRestConfiguration().template getFirstFundamentalForms<bottom>();
+        const tVecMat2d& abT=mesh.getRestConfiguration().template getFirstFundamentalForms<top>();
+        using ADg=TinyAD::Double<21,false>;
+        double sum=0;
+        for(int f=0;f<nf;++f)
         {
             int gidx[21];
-            const auto bbar = mesh.getRestConfiguration().getSecondFundamentalForm(f);
-            sum += computeFaceEnergyAD<ADg>(f, F, F2E, E2F, V, phi, abB, abT, bbar, nv, gidx).val;
+            const auto bbar=mesh.getRestConfiguration().getSecondFundamentalForm(f);
+            sum+=computeFaceEnergyAD<ADg>(f,F,F2E,E2F,V,phi,abB,abT,bbar,nv,gidx).val;
         }
         return sum;
     }
+
+    int nDofs(const tMesh & mesh) const
+    { return 3 * mesh.getNumberOfVertices() + mesh.getNumberOfEdges(); }
 
     // ---- full gradient over all DOFs (for the machine-precision verification against
     //      CombinedOperator_Parametric) ----
@@ -457,12 +388,7 @@ public:
         using ADouble = TinyAD::Double<21>;
         Eigen::VectorXd out = Eigen::VectorXd::Zero(nD);
 
-#ifdef _OPENMP
-        const bool runParallelHvp = (assemblyThreads_ > 1);
-#else
-        const bool runParallelHvp = false;
-#endif
-        if(!runParallelHvp)
+        if(assemblyThreads_ == 1)
         {
             for(int f = 0; f < nF; ++f)
             {
@@ -519,55 +445,116 @@ public:
         return out;
     }
 
+private:
+    void initializePattern(tMesh& mesh,const Eigen::MatrixXi& F,
+                           const Eigen::MatrixXi& F2E,const Eigen::MatrixXi& E2F,
+                           const std::vector<char>& mask)
+    {
+        auto next=std::make_unique<Pattern>();
+        next->mesh=&mesh;next->F=F;next->F2E=F2E;next->E2F=E2F;next->bc=mask;
+        const int nv=mesh.getNumberOfVertices(),nd=nDofs(mesh),nf=mesh.getNumberOfFaces();
+        next->stencil.resize(nf);
+        std::vector<Eigen::Triplet<double>> trips;
+        trips.reserve(std::size_t(nf)*21*21);
+        for(int f=0;f<nf;++f)
+        {
+            auto& g=next->stencil[f];
+            const int own[3]={F(f,0),F(f,1),F(f,2)};
+            for(int a=0;a<3;++a)for(int d=0;d<3;++d)g[3*a+d]=d*nv+own[a];
+            for(int i=0;i<3;++i)
+            {
+                const int edge=F2E(f,i),fa=E2F(edge,0),fb=E2F(edge,1);
+                int opp=-1;
+                if(fa>=0 && fb>=0)
+                {
+                    const int other=fa==f?fb:fa;
+                    for(int k=0;k<3;++k)
+                    {
+                        const int v=F(other,k);
+                        if(v!=own[0] && v!=own[1] && v!=own[2])opp=v;
+                    }
+                    if(opp<0)throw std::invalid_argument("invalid face neighbor in cached Hessian");
+                }
+                for(int d=0;d<3;++d)g[9+3*i+d]=opp<0?-1:d*nv+opp;
+                g[18+i]=3*nv+edge;
+            }
+            for(int r=0;r<21;++r)
+            {
+                if(g[r]<0 || mask[g[r]])continue;
+                for(int c=0;c<21;++c)
+                    if(g[c]>=0 && !mask[g[c]])trips.emplace_back(g[r],g[c],1.0);
+            }
+        }
+        for(int i=0;i<nd;++i)if(mask[i])trips.emplace_back(i,i,1.0);
+        next->structure.resize(nd,nd);
+        next->structure.setFromTriplets(trips.begin(),trips.end());
+        next->structure.makeCompressed();
+        const int* outer=next->structure.outerIndexPtr();
+        const int* inner=next->structure.innerIndexPtr();
+        auto offset=[&](int row,int col){
+            const int* p=std::lower_bound(inner+outer[col],inner+outer[col+1],row);
+            if(p==inner+outer[col+1] || *p!=row)
+                throw std::logic_error("cached Hessian pattern lookup failed");
+            return int(p-inner);
+        };
+        next->offsets.resize(nf);
+        for(int f=0;f<nf;++f)
+        {
+            auto& dest=next->offsets[f];dest.fill(-1);
+            const auto& g=next->stencil[f];
+            for(int r=0;r<21;++r)
+            {
+                if(g[r]<0 || mask[g[r]])continue;
+                for(int c=0;c<21;++c)
+                    if(g[c]>=0 && !mask[g[c]])dest[21*r+c]=offset(g[r],g[c]);
+            }
+        }
+        for(int i=0;i<nd;++i)if(mask[i])next->bcDiagonalOffsets.push_back(offset(i,i));
+        pattern_=std::move(next);++cacheBuilds_;
+    }
+
+public:
     // ---- full sparse exact Hessian; parallel evaluation, ordered CSC scatter ----
-    Eigen::SparseMatrix<double> assembleHessian(tMesh & mesh) const
+    Eigen::SparseMatrix<double> assembleHessian(tMesh& mesh)
     {
         mesh.updateDeformedConfiguration();
-        const int nv = mesh.getNumberOfVertices(), nf = mesh.getNumberOfFaces();
-        const auto & topo = mesh.getTopology();
-        const Eigen::MatrixXi F = topo.getFace2Vertices(), F2E = topo.getFace2Edges(), E2F = topo.getEdge2Faces();
-        const std::vector<char> mask = constrainedDofMask(mesh);
-        if(!pattern_) initializePattern(mesh, F, F2E, E2F, mask);
-        const auto & cache = *pattern_;
-        const auto same = [](const Eigen::MatrixXi & a, const Eigen::MatrixXi & b) {
-            return a.rows() == b.rows() && a.cols() == b.cols() && (a.array() == b.array()).all();
+        const int nv=mesh.getNumberOfVertices(),nf=mesh.getNumberOfFaces();
+        const auto& topo=mesh.getTopology();
+        const Eigen::MatrixXi F=topo.getFace2Vertices(),F2E=topo.getFace2Edges(),E2F=topo.getEdge2Faces();
+        const std::vector<char> mask=constrainedDofMask(mesh);
+        if(!pattern_)initializePattern(mesh,F,F2E,E2F,mask);
+        const auto& cache=*pattern_;
+        const auto same=[](const Eigen::MatrixXi& a,const Eigen::MatrixXi& b){
+            return a.rows()==b.rows() && a.cols()==b.cols() && (a.array()==b.array()).all();
         };
-        if(cache.mesh != &mesh || cache.structure.rows() != nDofs(mesh) ||
-           cache.stencil.size() != std::size_t(nf) || cache.bc != mask ||
-           !same(cache.F, F) || !same(cache.F2E, F2E) || !same(cache.E2F, E2F))
+        if(cache.mesh!=&mesh || cache.structure.rows()!=nDofs(mesh) ||
+           cache.stencil.size()!=std::size_t(nf) || cache.bc!=mask ||
+           !same(cache.F,F) || !same(cache.F2E,F2E) || !same(cache.E2F,E2F))
             throw std::invalid_argument("cached Hessian topology or constraint mask changed");
-
-        const Eigen::MatrixXd V   = mesh.getCurrentConfiguration().getVertices();
-        const Eigen::VectorXd phi = mesh.getCurrentConfiguration().getEdgeDirectors();
-        const tVecMat2d & abB = mesh.getRestConfiguration().template getFirstFundamentalForms<bottom>();
-        const tVecMat2d & abT = mesh.getRestConfiguration().template getFirstFundamentalForms<top>();
-
-        Eigen::SparseMatrix<double> H = cache.structure;
-        std::fill_n(H.valuePtr(), H.nonZeros(), 0.0);
-        using ADouble = TinyAD::Double<21>;
-        lastAssemblyThreads_ = 1;
-
-#ifdef _OPENMP
-        const bool runParallelAssembly = (assemblyThreads_ > 1);
-#else
-        const bool runParallelAssembly = false;
-#endif
-        if(!runParallelAssembly)
+        const Eigen::MatrixXd V=mesh.getCurrentConfiguration().getVertices();
+        const Eigen::VectorXd phi=mesh.getCurrentConfiguration().getEdgeDirectors();
+        const tVecMat2d& abB=mesh.getRestConfiguration().template getFirstFundamentalForms<bottom>();
+        const tVecMat2d& abT=mesh.getRestConfiguration().template getFirstFundamentalForms<top>();
+        Eigen::SparseMatrix<double> H=cache.structure;
+        std::fill_n(H.valuePtr(),H.nonZeros(),0.0);
+        using ADouble=TinyAD::Double<21>;
+        lastAssemblyThreads_=1;
+        if(assemblyThreads_==1)
         {
             // Preserve the original serial path, without parallel scratch allocation.
-            for(int f = 0; f < nf; ++f)
+            for(int f=0;f<nf;++f)
             {
                 int gidx[21];
-                const Eigen::Matrix2d bbar = mesh.getRestConfiguration().getSecondFundamentalForm(f);
-                const ADouble e = computeFaceEnergyAD<ADouble>(f, F, F2E, E2F, V, phi, abB, abT, bbar, nv, gidx);
-                const auto & positions = cache.offsets[f];
-                for(int r = 0; r < 21; ++r)
+                const Eigen::Matrix2d bbar=mesh.getRestConfiguration().getSecondFundamentalForm(f);
+                const ADouble e=computeFaceEnergyAD<ADouble>(f,F,F2E,E2F,V,phi,abB,abT,bbar,nv,gidx);
+                const auto& positions=cache.offsets[f];
+                for(int r=0;r<21;++r)
                 {
-                    if(gidx[r] != cache.stencil[f][r]) throw std::logic_error("cached Hessian stencil mismatch");
-                    for(int c = 0; c < 21; ++c)
+                    if(gidx[r]!=cache.stencil[f][r])throw std::logic_error("cached Hessian stencil mismatch");
+                    for(int c=0;c<21;++c)
                     {
-                        const int k = positions[21 * r + c];
-                        if(k >= 0) H.valuePtr()[k] += e.Hess(r, c);
+                        const int k=positions[21*r+c];
+                        if(k>=0)H.valuePtr()[k]+=e.Hess(r,c);
                     }
                 }
             }
@@ -576,43 +563,43 @@ public:
         else
         {
             // No mesh access or global sparse writes inside the worker loop.
-            const tVecMat2d bbars = mesh.getRestConfiguration().getSecondFundamentalForms();
+            const tVecMat2d bbars=mesh.getRestConfiguration().getSecondFundamentalForms();
             faceHessians_.resize(nf);
             std::vector<std::exception_ptr> errors(nf);
 #pragma omp parallel num_threads(assemblyThreads_)
             {
 #pragma omp single
-                lastAssemblyThreads_ = omp_get_num_threads();
+                lastAssemblyThreads_=omp_get_num_threads();
 #pragma omp for schedule(static)
-                for(int f = 0; f < nf; ++f)
+                for(int f=0;f<nf;++f)
                 {
                     // Exceptions cannot propagate across an OpenMP region. Report
                     // the first failing face in deterministic order after joining.
                     try
                     {
                         int gidx[21];
-                        const ADouble e = computeFaceEnergyAD<ADouble>(f, F, F2E, E2F, V, phi, abB, abT, bbars[f], nv, gidx);
-                        for(int r = 0; r < 21; ++r)
+                        const ADouble e=computeFaceEnergyAD<ADouble>(f,F,F2E,E2F,V,phi,abB,abT,bbars[f],nv,gidx);
+                        for(int r=0;r<21;++r)
                         {
-                            if(gidx[r] != cache.stencil[f][r]) throw std::logic_error("cached Hessian stencil mismatch");
-                            for(int c = 0; c < 21; ++c) faceHessians_[f][21 * r + c] = e.Hess(r, c);
+                            if(gidx[r]!=cache.stencil[f][r])throw std::logic_error("cached Hessian stencil mismatch");
+                            for(int c=0;c<21;++c)faceHessians_[f][21*r+c]=e.Hess(r,c);
                         }
                     }
-                    catch(...) { errors[f] = std::current_exception(); }
+                    catch(...){errors[f]=std::current_exception();}
                 }
             }
-            for(const auto & error : errors) if(error) std::rethrow_exception(error);
+            for(const auto& error:errors)if(error)std::rethrow_exception(error);
             // Exactly the serial face/r/c addition order: no atomics or reduction
             // tree, so parallelism does not change global summation order.
-            for(int f = 0; f < nf; ++f)
-                for(int j = 0; j < 21 * 21; ++j)
+            for(int f=0;f<nf;++f)
+                for(int j=0;j<21*21;++j)
                 {
-                    const int k = cache.offsets[f][j];
-                    if(k >= 0) H.valuePtr()[k] += faceHessians_[f][j];
+                    const int k=cache.offsets[f][j];
+                    if(k>=0)H.valuePtr()[k]+=faceHessians_[f][j];
                 }
         }
 #endif
-        for(int k : cache.bcDiagonalOffsets) H.valuePtr()[k] = 1.0;
+        for(int k:cache.bcDiagonalOffsets)H.valuePtr()[k]=1.0;
         return H;
     }
 };

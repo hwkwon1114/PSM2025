@@ -58,6 +58,101 @@ static std::vector<int> parse_int_list(const std::string& s)
     return out;
 }
 
+// Updates @09/05: optional prescribed-deformation input for the recurring
+// zigzag sequence. One row per mesh vertex, "vertex_index,dx,dy,dz", with the
+// displacement components in metres. A leading header line is tolerated, '#'
+// starts a comment, and commas, semicolons, tabs or spaces separate fields.
+// Every vertex index in [0, nVert) must appear exactly once and all four
+// entries must be finite; anything else is a hard error, because a partially
+// specified geometry would silently mix two different shapes.
+static Eigen::MatrixXd loadVertexDisplacementCsv(
+    const std::string& filename,
+    const int nVert)
+{
+    std::ifstream input(filename);
+    if(!input)
+        throw std::runtime_error(
+            "prescribed_deformation: cannot open -prescribed_disp_csv '" +
+            filename + "'.");
+
+    Eigen::MatrixXd displacement(nVert, 3);
+    displacement.setZero();
+    Eigen::VectorXi seen = Eigen::VectorXi::Zero(nVert);
+
+    std::string line;
+    int lineNumber = 0;
+    int rowsRead = 0;
+    bool headerSeen = false;
+    while(std::getline(input, line))
+    {
+        ++lineNumber;
+        const std::size_t comment = line.find('#');
+        if(comment != std::string::npos)
+            line.erase(comment);
+        for(char& c : line)
+            if(c == ',' || c == ';' || c == '\t' || c == '\r')
+                c = ' ';
+        if(line.find_first_not_of(' ') == std::string::npos)
+            continue;
+
+        std::istringstream fields(line);
+        long long index = -1;
+        Real dx = 0.0, dy = 0.0, dz = 0.0;
+        if(!(fields >> index >> dx >> dy >> dz))
+        {
+            std::istringstream header(line);
+            std::string label, xLabel, yLabel, zLabel, extra;
+            if(rowsRead == 0 && !headerSeen &&
+               (header >> label >> xLabel >> yLabel >> zLabel) &&
+               label == "vertex_index" && xLabel == "dx" &&
+               yLabel == "dy" && zLabel == "dz" && !(header >> extra))
+            {
+                headerSeen = true;
+                continue;
+            }
+            throw std::runtime_error(
+                "prescribed_deformation: malformed row at line " +
+                std::to_string(lineNumber) + " of '" + filename +
+                "'; expected 'vertex_index,dx,dy,dz'.");
+        }
+        std::string extra;
+        if(fields >> extra)
+            throw std::runtime_error(
+                "prescribed_deformation: extra column at line " +
+                std::to_string(lineNumber) + " of '" + filename + "'.");
+        if(index < 0 || index >= nVert)
+            throw std::runtime_error(
+                "prescribed_deformation: vertex index " +
+                std::to_string(index) + " at line " +
+                std::to_string(lineNumber) + " of '" + filename +
+                "' is outside [0," + std::to_string(nVert) + ").");
+        if(seen(static_cast<int>(index)) != 0)
+            throw std::runtime_error(
+                "prescribed_deformation: vertex index " +
+                std::to_string(index) + " appears more than once in '" +
+                filename + "'.");
+        if(!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz))
+            throw std::runtime_error(
+                "prescribed_deformation: non-finite displacement for vertex " +
+                std::to_string(index) + " in '" + filename + "'.");
+
+        displacement(static_cast<int>(index), 0) = dx;
+        displacement(static_cast<int>(index), 1) = dy;
+        displacement(static_cast<int>(index), 2) = dz;
+        seen(static_cast<int>(index)) = 1;
+        ++rowsRead;
+    }
+
+    if(rowsRead != nVert || seen.sum() != nVert)
+        throw std::runtime_error(
+            "prescribed_deformation: '" + filename + "' provided " +
+            std::to_string(rowsRead) + " valid rows for a mesh with " +
+            std::to_string(nVert) +
+            " vertices; a full per-vertex displacement field is required.");
+
+    return displacement;
+}
+
 void Sim_Bilayer_Growth::run()
 {
   const std::string runCase = parser.parse<std::string>("-case", "");
@@ -1101,7 +1196,9 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             Eigen::VectorXd gOp = Eigen::VectorXd::Zero(nDv);
             engOps.compute(mesh, gOp);
 
-            TinyADHessian_Bilayer<tMesh> tad(E, nu, h_total);
+            const int hessian_threads =
+                std::max(1, parser.parse<int>("-hessian_threads", 1));
+            TinyADHessian_Bilayer<tMesh> tad(E, nu, h_total, hessian_threads);
             const Eigen::VectorXd gAD = tad.gradient(mesh);
 
             const double gdiff  = (gOp - gAD).cwiseAbs().maxCoeff();
@@ -1136,10 +1233,21 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         const std::string equilibrium_solver =
             parser.parse<std::string>("-equilibrium_solver", "hlbfgs");
         if(equilibrium_solver != "hlbfgs" &&
-           equilibrium_solver != "trust_region")
+           equilibrium_solver != "trust_region" &&
+           equilibrium_solver != "hybrid")
             throw std::runtime_error(
-                "zigzag_sequence: -equilibrium_solver must be 'hlbfgs' "
-                "or 'trust_region'.");
+                "zigzag_sequence: -equilibrium_solver must be 'hlbfgs', "
+                "'trust_region', or 'hybrid'.");
+        const int hybrid_warmup_iters =
+            parser.parse<int>("-hybrid_warmup_iters", 1000);
+        const Real hybrid_gate_tol =
+            parser.parse<Real>("-hybrid_gate_tol", 1e-4);
+        if(hybrid_warmup_iters < 0)
+            throw std::runtime_error(
+                "zigzag_sequence: -hybrid_warmup_iters must be non-negative.");
+        if(!std::isfinite(hybrid_gate_tol) || hybrid_gate_tol <= 0.0)
+            throw std::runtime_error(
+                "zigzag_sequence: -hybrid_gate_tol must be finite and > 0.");
         const Real equilibrium_gradient_tolerance =
             parser.parse<Real>("-equilibrium_grad_tol", 10.0 * tol);
         if(!std::isfinite(equilibrium_gradient_tolerance) ||
@@ -1188,6 +1296,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             parser.parse<Real>("-trust_director_scale", 1.0);
         trustRegionOptions.cg.maxIterations =
             parser.parse<int>("-trust_cg_max_iterations", 250);
+        const int hessian_threads =
+            std::max(1, parser.parse<int>("-hessian_threads", 1));
         const bool track_sequence_stability =
             parser.parse<bool>("-sequence_stability", false);
         ShellEquilibrium::SmallestRitzPairOptions stabilityOptions;
@@ -1223,6 +1333,83 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             throw std::runtime_error(
                 "zigzag_sequence: adaptive continuation requires "
                 "-sequence_minimize_every 1 so every physical path is equilibrated.");
+
+        // ---- optional prescribed deformation at a physical-cycle boundary ----
+        // Disabled unless -prescribed_at_cycle >= 0, so every existing run is
+        // bit-for-bit unchanged. When enabled it rewrites the CURRENT vertex
+        // DOFs once, at the boundary after physical cycle K, before cycle K+1's
+        // toolpath mapping and load. The retained target metrics a_r(top/bot),
+        // the reference curvature b_r, and the per-face pass history are left
+        // untouched: this imposes an initial state for the next path, it is not
+        // a maintained displacement boundary condition and it is not a
+        // stress-free reset.
+        const int prescribed_at_cycle =
+            parser.parse<int>("-prescribed_at_cycle", -1);
+        const bool prescribed_enabled = prescribed_at_cycle >= 0;
+        const std::string prescribed_disp_csv =
+            parser.parse<std::string>("-prescribed_disp_csv", "");
+        const std::string prescribed_shape =
+            parser.parse<std::string>("-prescribed_shape", "none");
+        const Real prescribed_amplitude =
+            parser.parse<Real>("-prescribed_amplitude", 0.0);
+        const std::string prescribed_reference =
+            parser.parse<std::string>("-prescribed_reference", "rest");
+        const bool prescribed_reequilibrate =
+            parser.parse<bool>("-prescribed_reequilibrate", false);
+        const std::string prescribed_reeq_solver =
+            parser.parse<std::string>(
+                "-prescribed_reeq_solver", equilibrium_solver);
+        const Real prescribed_reeq_grad_tol =
+            parser.parse<Real>(
+                "-prescribed_reeq_grad_tol", equilibrium_gradient_tolerance);
+        const std::string prescribed_tag =
+            parser.parse<std::string>("-prescribed_tag", "prescribed");
+        if(prescribed_enabled)
+        {
+            const bool has_csv = !prescribed_disp_csv.empty();
+            const bool has_shape = prescribed_shape != "none";
+            if(has_csv == has_shape)
+                throw std::runtime_error(
+                    "prescribed_deformation: supply exactly one of "
+                    "-prescribed_disp_csv <file> or -prescribed_shape "
+                    "<crown|saddle>.");
+            if(has_shape &&
+               prescribed_shape != "crown" &&
+               prescribed_shape != "saddle")
+                throw std::runtime_error(
+                    "prescribed_deformation: -prescribed_shape must be "
+                    "'none', 'crown', or 'saddle'.");
+            if(has_shape &&
+               (!std::isfinite(prescribed_amplitude) ||
+                prescribed_amplitude == 0.0))
+                throw std::runtime_error(
+                    "prescribed_deformation: -prescribed_amplitude must be "
+                    "finite and non-zero when -prescribed_shape is used.");
+            if(prescribed_reference != "rest" &&
+               prescribed_reference != "current")
+                throw std::runtime_error(
+                    "prescribed_deformation: -prescribed_reference must be "
+                    "'rest' (x_new = X_rest + U) or 'current' "
+                    "(x_new = X_current + U).");
+            if(prescribed_reeq_solver != "hlbfgs" &&
+               prescribed_reeq_solver != "trust_region" &&
+               prescribed_reeq_solver != "hybrid")
+                throw std::runtime_error(
+                    "prescribed_deformation: -prescribed_reeq_solver must be "
+                    "'hlbfgs', 'trust_region', or 'hybrid'.");
+            if(!std::isfinite(prescribed_reeq_grad_tol) ||
+               prescribed_reeq_grad_tol <= 0.0)
+                throw std::runtime_error(
+                    "prescribed_deformation: -prescribed_reeq_grad_tol must be "
+                    "finite and > 0.");
+        }
+        else if(!prescribed_disp_csv.empty() ||
+                prescribed_shape != "none" ||
+                prescribed_reequilibrate)
+            throw std::runtime_error(
+                "prescribed_deformation: -prescribed_disp_csv, "
+                "-prescribed_shape and -prescribed_reequilibrate require "
+                "-prescribed_at_cycle <k>; refusing to silently ignore them.");
 
         const std::string summary_filename =
             use_sequence_bc ? "cycle_summary.csv" : tag + "_summary.csv";
@@ -1444,6 +1631,10 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 return maxTangencyError;
             };
 
+        // Set only while an imposed prescribed state is exported, so the
+        // cycle-0 output of an unmodified run keeps its exact field list.
+        bool forceStateCurvature = false;
+
         auto writeSequenceState =
             [&](const int executed_cycle,
                 const std::string& filebase,
@@ -1580,7 +1771,10 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 writer.addScalarFieldToFaces(
                     bRefDrift, "bbar_reference_drift_norm");
 
-                if(executed_cycle > 0)
+                // Curvature is skipped for the flat cycle-0 output. A
+                // prescribed state can be curved at any boundary, including
+                // k = 0, so it opts in explicitly.
+                if(executed_cycle > 0 || forceStateCurvature)
                 {
                     Eigen::VectorXd gauss(nFaces);
                     Eigen::VectorXd mean(nFaces);
@@ -1674,6 +1868,443 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         for(const auto& scheduled : sequence.toolpaths)
             total_sequence_cycles += scheduled.repeat;
 
+        if(prescribed_enabled &&
+           prescribed_at_cycle >= total_sequence_cycles)
+            throw std::runtime_error(
+                "prescribed_deformation: -prescribed_at_cycle " +
+                std::to_string(prescribed_at_cycle) +
+                " has no following physical cycle; the sequence executes " +
+                std::to_string(total_sequence_cycles) +
+                " cycles, so valid boundaries are 0.." +
+                std::to_string(total_sequence_cycles - 1) +
+                " (k means 'after cycle k, before cycle k+1').");
+
+        // Imposes the prescribed geometry on the CURRENT vertex DOFs at the
+        // boundary after physical cycle 'boundary_cycle'. a_r(top/bottom), b_r
+        // and totalPassCount are deliberately never touched here, so the
+        // elastic energy functional is exactly the one the sequence had already
+        // accumulated: the imposed geometry is a new initial state for the next
+        // toolpath, not a stress-free configuration and not a constraint that
+        // is held during the following solve.
+        int prescribedAppliedCount = 0;
+        auto imposePrescribedDeformation =
+            [&](const int boundary_cycle)
+            {
+                ++prescribedAppliedCount;
+                const int nEdges = mesh.getNumberOfEdges();
+                const int nDofs = 3 * nVert + nEdges;
+                const std::string boundaryLabel =
+                    helpers::ToString(boundary_cycle, 3);
+                const std::string imposedBase =
+                    tag + "_" + prescribed_tag + "_after_cycle_" +
+                    boundaryLabel + "_imposed";
+                const std::string reeqBase =
+                    tag + "_" + prescribed_tag + "_after_cycle_" +
+                    boundaryLabel + "_reequilibrated";
+
+                const Eigen::MatrixXd Xrest =
+                    mesh.getRestConfiguration().getVertices();
+                const Eigen::MatrixXd Xpre =
+                    mesh.getCurrentConfiguration().getVertices();
+
+                Eigen::MatrixXd requested(nVert, 3);
+                requested.setZero();
+                if(!prescribed_disp_csv.empty())
+                    requested =
+                        loadVertexDisplacementCsv(prescribed_disp_csv, nVert);
+                else
+                {
+                    // Smooth analytic z-displacement over the material domain,
+                    // for controlled runs where generating a full CSV is not
+                    // worth it. Identical convention as the CSV path.
+                    const Real uMin = materialCoordinates.col(0).minCoeff();
+                    const Real uMax = materialCoordinates.col(0).maxCoeff();
+                    const Real vMin = materialCoordinates.col(1).minCoeff();
+                    const Real vMax = materialCoordinates.col(1).maxCoeff();
+                    const Real uHalf = 0.5 * (uMax - uMin);
+                    const Real vHalf = 0.5 * (vMax - vMin);
+                    if(uHalf <= 0.0 || vHalf <= 0.0)
+                        throw std::runtime_error(
+                            "prescribed_deformation: degenerate material "
+                            "bounding box; cannot build an analytic shape.");
+                    const Real uMid = 0.5 * (uMax + uMin);
+                    const Real vMid = 0.5 * (vMax + vMin);
+                    for(int i = 0; i < nVert; ++i)
+                    {
+                        const Real un =
+                            (materialCoordinates(i,0) - uMid) / uHalf;
+                        const Real vn =
+                            (materialCoordinates(i,1) - vMid) / vHalf;
+                        requested(i,2) =
+                            prescribed_shape == "crown" ?
+                                prescribed_amplitude *
+                                std::cos(0.5 * M_PI * un) *
+                                std::cos(0.5 * M_PI * vn) :
+                                prescribed_amplitude * (un*un - vn*vn);
+                    }
+                }
+
+                const Eigen::MatrixXd& base =
+                    prescribed_reference == "rest" ? Xrest : Xpre;
+
+                const Eigen::Ref<const Eigen::MatrixXb> vertexBC =
+                    mesh.getBoundaryConditions()
+                        .getVertexBoundaryConditions();
+                const bool hasVertexBC = (vertexBC.rows() == nVert);
+
+                Eigen::Ref<Eigen::MatrixXd> vertices =
+                    mesh.getCurrentConfiguration().getVertices();
+                int blockedDofs = 0;
+                Real maxBlockedRequest = 0.0;
+                for(int i = 0; i < nVert; ++i)
+                    for(int j = 0; j < 3; ++j)
+                    {
+                        const Real target = base(i,j) + requested(i,j);
+                        if(!std::isfinite(target))
+                            throw std::runtime_error(
+                                "prescribed_deformation: non-finite target "
+                                "coordinate for vertex " + std::to_string(i) +
+                                ".");
+                        if(hasVertexBC && vertexBC(i,j))
+                        {
+                            // A fixed DOF stays where the boundary conditions
+                            // put it; the request is reported, never applied.
+                            ++blockedDofs;
+                            maxBlockedRequest = std::max(
+                                maxBlockedRequest,
+                                std::abs(target - Xpre(i,j)));
+                            continue;
+                        }
+                        vertices(i,j) = target;
+                    }
+                mesh.updateDeformedConfiguration();
+
+                // Residual of the imposed state under the retained metrics,
+                // restricted to the free DOFs. A large value is expected and is
+                // exactly the point: the imposed shape is not an equilibrium.
+                auto freeGradientNorm = [&]() -> Real
+                {
+                    Eigen::VectorXd gradient = Eigen::VectorXd::Zero(nDofs);
+                    engOps.compute(mesh, gradient);
+                    const Eigen::Ref<const Eigen::VectorXb> edgeBC =
+                        mesh.getBoundaryConditions()
+                            .getEdgeBoundaryConditions();
+                    const bool hasEdgeBC = (edgeBC.size() == nEdges);
+                    Real sum = 0.0;
+                    for(int i = 0; i < nVert; ++i)
+                        for(int j = 0; j < 3; ++j)
+                            if(!(hasVertexBC && vertexBC(i,j)))
+                                sum += gradient(j*nVert + i) *
+                                       gradient(j*nVert + i);
+                    for(int e = 0; e < nEdges; ++e)
+                        if(!(hasEdgeBC && edgeBC(e)))
+                            sum += gradient(3*nVert + e) *
+                                   gradient(3*nVert + e);
+                    return std::sqrt(sum);
+                };
+
+                // Full per-vertex state export, keyed by vertex index, in
+                // metres. U_from_rest is the displacement from the reference
+                // geometry; U_step is the change produced by this imposition.
+                auto exportStateCsv =
+                    [&](const std::string& filename)
+                    {
+                        std::ofstream out(filename);
+                        if(!out)
+                            throw std::runtime_error(
+                                "prescribed_deformation: cannot open " +
+                                filename);
+                        out << std::setprecision(17);
+                        out << "vertex_index,material_u,material_v,x,y,z,"
+                            << "U_from_rest_x,U_from_rest_y,U_from_rest_z,"
+                            << "U_step_x,U_step_y,U_step_z,"
+                            << "requested_dx,requested_dy,requested_dz,"
+                            << "bc_fixed_x,bc_fixed_y,bc_fixed_z\n";
+                        const Eigen::MatrixXd Xnow =
+                            mesh.getCurrentConfiguration().getVertices();
+                        for(int i = 0; i < nVert; ++i)
+                        {
+                            out << i << ","
+                                << materialCoordinates(i,0) << ","
+                                << materialCoordinates(i,1) << ","
+                                << Xnow(i,0) << ","
+                                << Xnow(i,1) << ","
+                                << Xnow(i,2) << ","
+                                << (Xnow(i,0) - Xrest(i,0)) << ","
+                                << (Xnow(i,1) - Xrest(i,1)) << ","
+                                << (Xnow(i,2) - Xrest(i,2)) << ","
+                                << (Xnow(i,0) - Xpre(i,0)) << ","
+                                << (Xnow(i,1) - Xpre(i,1)) << ","
+                                << (Xnow(i,2) - Xpre(i,2)) << ","
+                                << requested(i,0) << ","
+                                << requested(i,1) << ","
+                                << requested(i,2) << ",";
+                            for(int j = 0; j < 3; ++j)
+                                out << ((hasVertexBC && vertexBC(i,j)) ? 1 : 0)
+                                    << (j == 2 ? '\n' : ',');
+                        }
+                    };
+
+                // Summary row reusing the sequence schema: hit statistics are
+                // zero because no toolpath was applied.
+                auto writePrescribedSummaryRow =
+                    [&](const std::string& kind,
+                        const std::string& filebase,
+                        const Real energy)
+                    {
+                        const Eigen::MatrixXd Xnow =
+                            mesh.getCurrentConfiguration().getVertices();
+                        const Eigen::MatrixXd U = Xnow - Xrest;
+                        Real maxDrift = 0.0;
+                        const tVecMat2d& bforms =
+                            mesh.getRestConfiguration()
+                                .getSecondFundamentalForms();
+                        for(int face = 0; face < nFaces; ++face)
+                            maxDrift = std::max(
+                                maxDrift,
+                                (bforms[face] - initialBforms[face]).norm());
+                        if(use_sequence_bc)
+                            summary
+                                << boundary_cycle << ","  // output_index
+                                << 0 << ","               // is_release_state
+                                << 1 << ",";              // clamps active
+                        summary
+                            << boundary_cycle << ","
+                            << csvQuote(kind) << ","
+                            // toolpath_sequence_index, repeat_index,
+                            // repeat_count, operation_count, hit_event_count,
+                            // covered_face_count, max_hits_on_one_face
+                            << 0 << "," << 0 << "," << 0 << "," << 0 << ","
+                            << 0 << "," << 0 << "," << 0 << ","
+                            // The retained pass history is reported as-is: no
+                            // toolpath ran, but nothing was reset either.
+                            << totalPassCount.maxCoeff() << ","
+                            // hardening min/mean/max, top/bottom increments
+                            << 0.0 << "," << 0.0 << "," << 0.0 << ","
+                            << 0.0 << "," << 0.0 << ","
+                            << U.rowwise().norm().maxCoeff() << ","
+                            << U.col(2).minCoeff() << ","
+                            << U.col(2).maxCoeff() << ","
+                            << energy << ","
+                            << 0.0 << ","
+                            << maxDrift << ","
+                            << csvQuote("") << ","
+                            << csvQuote(filebase + ".vtp") << "\n";
+                        summary.flush();
+                    };
+
+                const Real imposedEnergy = engOps.compute(mesh);
+                const Real imposedGradient = freeGradientNorm();
+
+                convergenceSummary
+                    << boundary_cycle << ",0,prescribed_imposed,0,1,1,0,0,"
+                    << prescribed_reeq_solver << ",-1,0,0,"
+                    << imposedGradient << ",0," << imposedEnergy << "\n";
+                convergenceSummary.flush();
+
+                bcOutputIndex = boundary_cycle;
+                bcOutputIsRelease = false;
+                bcOutputPhysicalClampsActive = use_sequence_bc;
+                bcOutputGaugeActive = false;
+                forceStateCurvature = true;
+                writeSequenceState(
+                    boundary_cycle,
+                    imposedBase,
+                    zeroHits,
+                    zeroField,
+                    zeroField,
+                    zeroField,
+                    zeroField,
+                    zeroField,
+                    zeroField);
+                exportStateCsv(imposedBase + "_vertices.csv");
+                writePrescribedSummaryRow(
+                    "PRESCRIBED_IMPOSED", imposedBase, imposedEnergy);
+                if(write_cycle_state)
+                    mesh.writeToFile(imposedBase + "_state");
+
+                std::cout
+                    << "[prescribed_deformation] boundary_after_cycle="
+                    << boundary_cycle
+                    << ", source="
+                    << (prescribed_disp_csv.empty() ?
+                        ("analytic:" + prescribed_shape) :
+                        ("csv:" + prescribed_disp_csv))
+                    << ", reference=" << prescribed_reference
+                    << ", max_requested_norm="
+                    << requested.rowwise().norm().maxCoeff()
+                    << ", blocked_fixed_dofs=" << blockedDofs
+                    << ", max_blocked_request=" << maxBlockedRequest
+                    << ", edge_directors_retained=" << nEdges
+                    << ", energy=" << imposedEnergy
+                    << ", free_gradient_norm=" << imposedGradient
+                    << ", abar_top_bot_unchanged=1, bbar_unchanged=1"
+                    << ", pass_history_unchanged=1"
+                    << ", reequilibrate="
+                    << (prescribed_reequilibrate ? 1 : 0)
+                    << "\n";
+
+                if(prescribed_reequilibrate)
+                {
+                    // Same retained target state: only the current DOFs move.
+                    int code = -1;
+                    int iterations = 0;
+                    int evaluations = 0;
+                    Real gradient =
+                        std::numeric_limits<Real>::quiet_NaN();
+                    bool accepted = false;
+                    Real energy = std::numeric_limits<Real>::quiet_NaN();
+
+                    if(prescribed_reeq_solver == "hlbfgs")
+                    {
+                        Real eps_reeq = eps_init_default;
+                        if(use_sequence_bc)
+                            minimizeEnergyReduced(
+                                engOps,
+                                eps_reeq,
+                                tol,
+                                stepwise,
+                                nullptr,
+                                max_iter);
+                        else
+                            minimizeEnergy(
+                                engOps,
+                                eps_reeq,
+                                tol,
+                                stepwise,
+                                nullptr,
+                                max_iter);
+                        mesh.updateDeformedConfiguration();
+                        code = lastMinimization.code;
+                        iterations = lastMinimization.iterations;
+                        evaluations = lastMinimization.evaluations;
+                        gradient = lastMinimization.gradientNorm;
+                        accepted = lastMinimization.accepted(
+                            prescribed_reeq_grad_tol);
+                        energy = engOps.compute(mesh);
+                    }
+                    else if(prescribed_reeq_solver == "hybrid")
+                    {
+                        int lbfgs_iters = 0;
+                        int lbfgs_evals = 0;
+                        if(hybrid_warmup_iters > 0)
+                        {
+                            Real eps_reeq = eps_init_default;
+                            if(use_sequence_bc)
+                                minimizeEnergyReduced(
+                                    engOps,
+                                    eps_reeq,
+                                    hybrid_gate_tol,
+                                    false,
+                                    nullptr,
+                                    hybrid_warmup_iters);
+                            else
+                                minimizeEnergy(
+                                    engOps,
+                                    eps_reeq,
+                                    hybrid_gate_tol,
+                                    false,
+                                    nullptr,
+                                    hybrid_warmup_iters);
+                            mesh.updateDeformedConfiguration();
+                            lbfgs_iters = lastMinimization.iterations;
+                            lbfgs_evals = lastMinimization.evaluations;
+                        }
+
+                        TinyADHessian_Bilayer<tMesh> reeqHessian(
+                            E, nu, h_total, hessian_threads);
+                        ShellEquilibrium::TrustRegionNewtonOptions reeqOptions =
+                            trustRegionOptions;
+                        reeqOptions.gradientTolerance =
+                            prescribed_reeq_grad_tol;
+                        const ShellEquilibrium::TrustRegionNewtonReport report =
+                            ShellEquilibrium::solveShellEquilibrium(
+                                mesh,
+                                engOps,
+                                reeqHessian,
+                                reeqOptions);
+                        code = static_cast<int>(report.status);
+                        iterations = lbfgs_iters + report.iterations;
+                        evaluations =
+                            lbfgs_evals + report.energyEvaluations +
+                            report.gradientEvaluations;
+                        gradient = report.gradientNorm;
+                        accepted = report.accepted;
+                        energy = report.energy;
+                    }
+                    else
+                    {
+                        TinyADHessian_Bilayer<tMesh> reeqHessian(
+                            E, nu, h_total, hessian_threads);
+                        ShellEquilibrium::TrustRegionNewtonOptions reeqOptions =
+                            trustRegionOptions;
+                        reeqOptions.gradientTolerance =
+                            prescribed_reeq_grad_tol;
+                        const ShellEquilibrium::TrustRegionNewtonReport report =
+                            ShellEquilibrium::solveShellEquilibrium(
+                                mesh,
+                                engOps,
+                                reeqHessian,
+                                reeqOptions);
+                        code = static_cast<int>(report.status);
+                        iterations = report.iterations;
+                        evaluations =
+                            report.energyEvaluations +
+                            report.gradientEvaluations;
+                        gradient = report.gradientNorm;
+                        accepted = report.accepted;
+                        energy = report.energy;
+                    }
+
+                    convergenceSummary
+                        << boundary_cycle << ",1,prescribed_reeq,1,1,1,0,0,"
+                        << prescribed_reeq_solver << ","
+                        << code << ","
+                        << iterations << ","
+                        << evaluations << ","
+                        << gradient << ","
+                        << (accepted ? 1 : 0) << ","
+                        << energy << "\n";
+                    convergenceSummary.flush();
+
+                    if(!accepted)
+                        throw std::runtime_error(
+                            "prescribed_deformation: re-equilibration at the "
+                            "prescribed state failed the strict residual test "
+                            "(solver=" + prescribed_reeq_solver +
+                            ", code=" + std::to_string(code) +
+                            ", gradient_norm=" + std::to_string(gradient) +
+                            ", tolerance=" +
+                            std::to_string(prescribed_reeq_grad_tol) + ").");
+
+                    writeSequenceState(
+                        boundary_cycle,
+                        reeqBase,
+                        zeroHits,
+                        zeroField,
+                        zeroField,
+                        zeroField,
+                        zeroField,
+                        zeroField,
+                        zeroField);
+                    exportStateCsv(reeqBase + "_vertices.csv");
+                    writePrescribedSummaryRow(
+                        "PRESCRIBED_REEQ", reeqBase, energy);
+                    if(write_cycle_state)
+                        mesh.writeToFile(reeqBase + "_state");
+
+                    std::cout
+                        << "[prescribed_deformation] re-equilibrated at the "
+                        << "retained target state: solver="
+                        << prescribed_reeq_solver
+                        << ", iterations=" << iterations
+                        << ", gradient_norm=" << gradient
+                        << ", tolerance=" << prescribed_reeq_grad_tol
+                        << ", energy=" << energy << "\n";
+                }
+                forceStateCurvature = false;
+            };
+
         for(const auto& toolpath : sequence.toolpaths)
         {
             ++toolpath_sequence_index;
@@ -1766,6 +2397,12 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 // Reset before mapping so cold-start diagnostics describe the
                 // geometry actually passed to the nonlinear minimizer.
                 ++executed_cycle;
+                // Prescribed geometry lands before this cycle's mapping and
+                // load, so the toolpath is projected onto the imposed shape
+                // and the imposed state is the initial guess for the solve.
+                if(prescribed_enabled &&
+                   executed_cycle == prescribed_at_cycle + 1)
+                    imposePrescribedDeformation(prescribed_at_cycle);
                 // BC output index 000 is reserved for the initial geometry.
                 // Therefore physical cycle k is written as cycle_k.
                 const int output_index = executed_cycle;
@@ -1940,7 +2577,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 if(minimize_this_cycle)
                 {
                     TinyADHessian_Bilayer<tMesh> exactHessian(
-                        E, nu, h_total);
+                        E, nu, h_total, hessian_threads);
                     Real acceptedLambda = 0.0;
                     Real stepSize = adaptive_continuation ?
                         continuation_initial_step : 1.0;
@@ -1990,6 +2627,53 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                             solveConverged = lastMinimization.accepted(
                                 equilibrium_gradient_tolerance);
                             totalEnergy = engOps.compute(mesh);
+                        }
+                        else if(equilibrium_solver == "hybrid")
+                        {
+                            int lbfgs_iters = 0;
+                            int lbfgs_evals = 0;
+                            if(hybrid_warmup_iters > 0)
+                            {
+                                Real eps_cycle = eps_init_default;
+                                const std::vector<int>* trialDumps =
+                                    adaptive_continuation ? nullptr :
+                                    (dump_iters.empty() ? nullptr : &dump_iters);
+                                if(use_sequence_bc)
+                                    minimizeEnergyReduced(
+                                        engOps,
+                                        eps_cycle,
+                                        hybrid_gate_tol,
+                                        false,
+                                        trialDumps,
+                                        hybrid_warmup_iters);
+                                else
+                                    minimizeEnergy(
+                                        engOps,
+                                        eps_cycle,
+                                        hybrid_gate_tol,
+                                        false,
+                                        trialDumps,
+                                        hybrid_warmup_iters);
+                                mesh.updateDeformedConfiguration();
+                                lbfgs_iters = lastMinimization.iterations;
+                                lbfgs_evals = lastMinimization.evaluations;
+                            }
+
+                            const ShellEquilibrium::TrustRegionNewtonReport
+                                report =
+                                    ShellEquilibrium::solveShellEquilibrium(
+                                        mesh,
+                                        engOps,
+                                        exactHessian,
+                                        trustRegionOptions);
+                            solveCode = static_cast<int>(report.status);
+                            solveIterations = lbfgs_iters + report.iterations;
+                            solveEvaluations =
+                                lbfgs_evals + report.energyEvaluations +
+                                report.gradientEvaluations;
+                            solveGradient = report.gradientNorm;
+                            solveConverged = report.accepted;
+                            totalEnergy = report.energy;
                         }
                         else
                         {
@@ -2074,7 +2758,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 if(minimize_this_cycle && track_sequence_stability)
                 {
                     TinyADHessian_Bilayer<tMesh> stabilityHessian(
-                        E, nu, h_total);
+                        E, nu, h_total, hessian_threads);
                     const ShellEquilibrium::RigidModeProjector projector =
                         ShellEquilibrium::RigidModeProjector::fromMesh(mesh);
                     const ShellEquilibrium::RitzPairReport stability =
@@ -2209,6 +2893,13 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             }
         }
 
+        if(prescribed_enabled && prescribedAppliedCount != 1)
+            throw std::runtime_error(
+                "prescribed_deformation: requested boundary after cycle " +
+                std::to_string(prescribed_at_cycle) +
+                " was imposed " + std::to_string(prescribedAppliedCount) +
+                " times instead of exactly once.");
+
 
         if(use_sequence_bc &&
            sequence.boundary_conditions.release_after_final_cycle)
@@ -2243,9 +2934,43 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     equilibrium_gradient_tolerance);
                 releaseEnergy = engOps.compute(mesh);
             }
+            else if(equilibrium_solver == "hybrid")
+            {
+                int lbfgs_iters = 0;
+                int lbfgs_evals = 0;
+                if(hybrid_warmup_iters > 0)
+                {
+                    Real eps_release = eps_init_default;
+                    minimizeEnergyReduced(
+                        engOps,
+                        eps_release,
+                        hybrid_gate_tol,
+                        false,
+                        (dump_iters.empty() ? nullptr : &dump_iters),
+                        hybrid_warmup_iters);
+                    mesh.updateDeformedConfiguration();
+                    lbfgs_iters = lastMinimization.iterations;
+                    lbfgs_evals = lastMinimization.evaluations;
+                }
+
+                TinyADHessian_Bilayer<tMesh> releaseHessian(
+                    E, nu, h_total, hessian_threads);
+                const ShellEquilibrium::TrustRegionNewtonReport report =
+                    ShellEquilibrium::solveShellEquilibrium(
+                        mesh, engOps, releaseHessian, trustRegionOptions);
+                releaseCode = static_cast<int>(report.status);
+                releaseIterations = lbfgs_iters + report.iterations;
+                releaseEvaluations =
+                    lbfgs_evals + report.energyEvaluations +
+                    report.gradientEvaluations;
+                releaseGradient = report.gradientNorm;
+                releaseAccepted = report.accepted;
+                releaseEnergy = report.energy;
+            }
             else
             {
-                TinyADHessian_Bilayer<tMesh> releaseHessian(E, nu, h_total);
+                TinyADHessian_Bilayer<tMesh> releaseHessian(
+                    E, nu, h_total, hessian_threads);
                 const ShellEquilibrium::TrustRegionNewtonReport report =
                     ShellEquilibrium::solveShellEquilibrium(
                         mesh, engOps, releaseHessian, trustRegionOptions);
@@ -2373,7 +3098,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         const bool seed_escape   = parser.parse<bool>("-seed_escape", false);
         if(certify_final || seed_escape)
         {
-            TinyADHessian_Bilayer<tMesh> tad(E, nu, h_total);
+            TinyADHessian_Bilayer<tMesh> tad(E, nu, h_total, hessian_threads);
             const int nVv = mesh.getNumberOfVertices();
             const int nDv = 3 * nVv + mesh.getNumberOfEdges();
             std::mt19937 rng(3);
@@ -2476,8 +3201,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
       growthRates_t = Eigen::VectorXd::Constant(nFaces, growthRate_t);
     }
     else if (growth_type == "chess"){
-      Real CenterX;
-      Real CenterY;
+      Real CenterX = 0.0;
+      Real CenterY = 0.0;
 
       for (int i=0; i<nVert; ++i){
         if ((std::abs(Vertices(i,0))<10e-9 && std::abs(Vertices(i,1))<10e-9)){
@@ -2562,7 +3287,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
 
     else if (growth_type == "patch") {
       const Real Lx = parser.parse<Real>("-lx", 0.5);
-      const Real Ly = parser.parse<Real>("-ly", 0.5);
+      [[maybe_unused]] const Real Ly = parser.parse<Real>("-ly", 0.5);
 
       const Real patch_lx = parser.parse<Real>("-patch_lx", 0.120);
       const Real patch_ly = parser.parse<Real>("-patch_ly", 0.010);
@@ -3045,8 +3770,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         const Real theta = growthAngle;
 
         // Tangent direction of the lines
-        const Real tx = std::cos(theta);
-        const Real ty = std::sin(theta);
+        [[maybe_unused]] const Real tx = std::cos(theta);
+        [[maybe_unused]] const Real ty = std::sin(theta);
 
         // Normal direction across the lines
         const Real nx_dir = -std::sin(theta);

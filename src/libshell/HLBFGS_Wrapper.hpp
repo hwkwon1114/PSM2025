@@ -11,6 +11,8 @@
 
 #ifdef USEHLBFGS
 
+#include <cmath>
+#include <stdexcept>
 #include "HLBFGS.h"
 #include "Profiler.hpp"
 #include "WriteVTK.hpp"
@@ -28,6 +30,7 @@ namespace HLBFGS_Methods
     class HLBFGS_Wrapper
     {
     protected:
+        Real absolute_gradient_tolerance = -1.0;
         
         /**
          * Default setup of HLBFGS parameters
@@ -81,6 +84,13 @@ namespace HLBFGS_Methods
             parameter[2] = 0.9; // gtol
             parameter[5] = eps; // nondim accuracy : ||G||/max(1,||X||)
             parameter[6] = 1e-16; // dim accuracy : ||G||
+            if(absolute_gradient_tolerance > 0.0)
+            {
+                // Opt-in: match the sequence's absolute residual gate. A zero
+                // relative threshold only fires for an exactly zero gradient.
+                parameter[5] = 0.0;
+                parameter[6] = absolute_gradient_tolerance;
+            }
             
             info[3] = 1;
             info[4] = 1e9;
@@ -94,6 +104,12 @@ namespace HLBFGS_Methods
         }
         
     public:
+        void set_absolute_gradient_tolerance(const Real tolerance)
+        {
+            if(!std::isfinite(tolerance) || tolerance <= 0.0)
+                throw std::invalid_argument("HLBFGS absolute gradient tolerance must be finite and positive");
+            absolute_gradient_tolerance = tolerance;
+        }
         
         /**
          * evaluate one instance of the cost function and compute energy and gradient
@@ -126,7 +142,7 @@ namespace HLBFGS_Methods
      * 
      * performs a reinterpret cast of void * to HLBFGS_Wrapper* in order to access all internal variables inside the evaluate method
      */
-    static void evaluate(void * instance, int N, double* x, double *prev_x, double* f, double* g)
+    static inline void evaluate(void * instance, int N, double* x, double *prev_x, double* f, double* g)
     {
         HLBFGS_Wrapper * myHLBFGS = reinterpret_cast<HLBFGS_Wrapper*>(instance);
         myHLBFGS->evaluate(N, x, prev_x, f, g);
@@ -137,7 +153,7 @@ namespace HLBFGS_Methods
      * 
      * performs a reinterpret cast of void * to HLBFGS_Wrapper* in order to access all internal variables inside the evaluate method
      */
-    static void newiteration(void * instance, int iter, int call_iter, double *x, double* f, double *g,  double* gnorm)
+    static inline void newiteration(void * instance, int iter, int call_iter, double *x, double* f, double *g,  double* gnorm)
     {
         HLBFGS_Wrapper * myHLBFGS = reinterpret_cast<HLBFGS_Wrapper*>(instance);
         myHLBFGS->newiteration(iter, call_iter, x, f, g, gnorm);
@@ -256,6 +272,22 @@ namespace HLBFGS_Methods
             last_iterations = info[2];
             last_evaluations = info[1];
 
+            if(absolute_gradient_tolerance > 0.0)
+            {
+                // Recompute at the returned configuration, rather than trusting
+                // a cached callback norm after a line-search termination.
+                mesh.updateDeformedConfiguration();
+                Eigen::VectorXd checkedGradient = Eigen::VectorXd::Zero(nVariables);
+                op.compute(mesh, checkedGradient);
+                const Real callbackNorm = last_gnorm;
+                last_gnorm = checkedGradient.norm();
+                if(verbose)
+                {
+                    const Real xnorm = Eigen::Map<Eigen::VectorXd>(x, nVariables).norm();
+                    std::printf("[absolute_stop] callback=%.17e recomputed=%.17e xnorm=%.17e target=%.17e\n",
+                        callbackNorm, last_gnorm, xnorm, absolute_gradient_tolerance);
+                }
+            }
             if(verbose) std::cout << "HLBFGS return value = " << ret << std::endl;
             const Real energy1 = op.compute(mesh);
             if(verbose) printf("Energy went from %10.10e to %10.10e, using epsilon = %e, final eps = %e \n", energy0, energy1, eps, last_gnorm);

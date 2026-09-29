@@ -8,7 +8,10 @@
 
 #include "ComputeHausdorffDistance.hpp"
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
 #include <igl/hausdorff.h>
+#pragma GCC diagnostic pop
 #include <Eigen/Geometry>
 #include "WriteVTK.hpp"
 

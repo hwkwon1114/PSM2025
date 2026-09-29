@@ -183,6 +183,21 @@ public:
         scatterReducedToMesh(reducedVariables.data());
         mesh.updateDeformedConfiguration();
         const Real energy1 = op.compute(mesh);
+        if(absolute_gradient_tolerance > 0.0)
+        {
+            fullGradient.setZero();
+            op.compute(mesh, fullGradient);
+            Real squaredNorm = 0.0;
+            for(const auto index : freeIndices)
+                squaredNorm += fullGradient(index) * fullGradient(index);
+            const Real callbackNorm = last_gnorm;
+            last_gnorm = std::sqrt(squaredNorm);
+            if(verbose)
+            {
+                std::printf("[absolute_stop_reduced] callback=%.17e recomputed=%.17e target=%.17e\n",
+                    callbackNorm, last_gnorm, absolute_gradient_tolerance);
+            }
+        }
 
         if(verbose)
         {
