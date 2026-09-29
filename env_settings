@@ -530,9 +530,9 @@ time ./shell \
 
 # mkdir for run folders
 cd ~/workspace/src/PSM2025
-mkdir -p run/recurJSON_test10/
-cp bin/shell run/recurJSON_test10/
-cd run/recurJSON_test10
+mkdir -p run/TestBC_test2/
+cp bin/shell run/TestBC_test2/
+cd run/TestBC_test2
 
 # Minor
 cd build_cmake
@@ -628,5 +628,95 @@ time ./shell \
   -cycle_file zigzag_sequence_example.json \
   -enable_passE false \
   -nsteps 1 \
+  -export_stl false \
+  -tol 3e-12
+
+
+# Cases with BC, JSON ver with correct geometry
+time ./shell \
+  -sim bilayer_growth \
+  -case custom \
+  -geometry rectangle \
+  -lx 0.15 \
+  -ly 0.15 \
+  -res 0.01 \
+  -h_total 0.0005 \
+  -growth_type zigzag_sequence_BC \
+  -cycle_file zigzag_sequence_BC_test1.json \
+  -enable_passE false \
+  -nsteps 1 \
+  -cycle_write_state false \
+  -export_stl false \
+  -tol 3e-12
+
+
+# More calibration tests, based on experimental results
+# useful cheats
+cd ~/workspace/src/PSM2025
+mkdir -p run_validations/four_quads_2/
+cp bin/shell run_validations/four_quads_2/
+cd run_validations/four_quads_2
+
+time ./shell \
+  -sim bilayer_growth \
+  -case custom \
+  -geometry rectangle \
+  -lx 0.158 \
+  -ly 0.158 \
+  -res 0.01 \
+  -h_total 0.0005 \
+  -growth_type zigzag_sequence \
+  -cycle_file zigzag_sequence.json \
+  -enable_passE false \
+  -nsteps 1 \
+  -cycle_write_state false \
+  -export_stl false \
+  -tol 3e-12
+
+time ./shell \
+  -sim bilayer_growth \
+  -case custom \
+  -geometry rectangle \
+  -lx 0.15 \
+  -ly 0.15 \
+  -res 0.01 \
+  -h_total 0.0005 \
+  -growth_type zigzag_sequence_BC \
+  -cycle_file zigzag_sequence_BC.json \
+  -enable_passE false \
+  -nsteps 1 \
+  -cycle_write_state false \
+  -export_stl false \
+  -tol 3e-12
+
+time ./shell \
+  -sim bilayer_growth \
+  -case custom \
+  -geometry rectangle \
+  -lx 0.158 \
+  -ly 0.158 \
+  -res 0.01 \
+  -h_total 0.00077 \
+  -growth_type zigzag_sequence \
+  -cycle_file zigzag_sequence.json \
+  -enable_passE false \
+  -nsteps 1 \
+  -cycle_write_state false \
+  -export_stl false \
+  -tol 3e-12
+
+time ./shell \
+  -sim bilayer_growth \
+  -case custom \
+  -geometry rectangle \
+  -lx 0.102 \
+  -ly 0.102 \
+  -res 0.01 \
+  -h_total 0.00077 \
+  -growth_type zigzag_sequence \
+  -cycle_file zigzag_sequence.json \
+  -enable_passE false \
+  -nsteps 1 \
+  -cycle_write_state false \
   -export_stl false \
   -tol 3e-12

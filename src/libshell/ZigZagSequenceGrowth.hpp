@@ -89,7 +89,8 @@ struct ZigZagOperationConfig {
 
     std::vector<double> gtop;
     std::vector<double> gbot;
-    std::vector<double> ortho;
+    std::vector<double> ortho; // Legacy carrier for material-hit collection.
+    std::vector<double> ortho_top, ortho_bottom;
     // Optional zero-based indices selecting physical straight strips from
     // the generated zigzag. Empty means all strips.
     std::vector<int> active_strips;
@@ -524,7 +525,7 @@ inline SequenceConfig loadSequenceJson(const std::string& filename)
             operation,
             {"type", "lv_mm", "alpha_deg", "n_strips", "width_mm",
              "center_uv_mm", "shift_uv_mm", "shift_frame", "rotation_deg",
-             "gtop", "gbot", "ortho", "profile", "active_strips"},
+             "gtop", "gbot", "ortho", "ortho_top", "ortho_bottom", "profile", "active_strips"},
             context + ".operation");
 
         if(getStringOrDefault(operation, "type", "zigzag") != "zigzag")
@@ -563,8 +564,28 @@ inline SequenceConfig loadSequenceJson(const std::string& filename)
             operation, "gtop", op.n_strips, true, 0.0);
         op.gbot = readScalarOrExactList(
             operation, "gbot", op.n_strips, false, 0.0);
-        op.ortho = readScalarOrExactList(
-            operation, "ortho", op.n_strips, false, 0.0);
+        const bool separate = operation.contains("ortho_top") ||
+                              operation.contains("ortho_bottom");
+        if(separate && (operation.contains("ortho") ||
+                        !operation.contains("ortho_top") ||
+                        !operation.contains("ortho_bottom")))
+            throw std::runtime_error(context +
+                ": supply either ortho, or BOTH ortho_top and ortho_bottom.");
+        if(separate)
+        {
+            op.ortho_top = readScalarOrExactList(
+                operation, "ortho_top", op.n_strips, true, 0.0);
+            op.ortho_bottom = readScalarOrExactList(
+                operation, "ortho_bottom", op.n_strips, true, 0.0);
+        }
+        else
+        {
+            op.ortho_top = readScalarOrExactList(
+                operation, "ortho", op.n_strips, false, 0.0);
+            op.ortho_bottom = op.ortho_top;
+        }
+        op.ortho = op.ortho_top;
+
         if(operation.contains("active_strips"))
         {
             const auto& active = operation.at("active_strips");
@@ -588,14 +609,16 @@ inline SequenceConfig loadSequenceJson(const std::string& filename)
 
         for(int i = 0; i < op.n_strips; ++i)
         {
-            if(std::abs(op.ortho[i]) > 1.0)
+            if(!std::isfinite(op.gtop[i]) || !std::isfinite(op.gbot[i]) ||
+               !std::isfinite(op.ortho_top[i]) || !std::isfinite(op.ortho_bottom[i]) ||
+               std::abs(op.ortho_top[i]) > 1.0 || std::abs(op.ortho_bottom[i]) > 1.0)
                 throw std::runtime_error(
-                    context + ": every ortho value must be in [-1,1].");
+                    context + ": growth must be finite; layer ortho must be finite in [-1,1].");
 
-            const double g1t = op.gtop[i] * (1.0 + op.ortho[i]);
-            const double g2t = op.gtop[i] * (1.0 - op.ortho[i]);
-            const double g1b = op.gbot[i] * (1.0 + op.ortho[i]);
-            const double g2b = op.gbot[i] * (1.0 - op.ortho[i]);
+            const double g1t = op.gtop[i] * (1.0 + op.ortho_top[i]);
+            const double g2t = op.gtop[i] * (1.0 - op.ortho_top[i]);
+            const double g1b = op.gbot[i] * (1.0 + op.ortho_bottom[i]);
+            const double g2b = op.gbot[i] * (1.0 - op.ortho_bottom[i]);
             if(1.0 + g1t <= 0.0 || 1.0 + g2t <= 0.0 ||
                1.0 + g1b <= 0.0 || 1.0 + g2b <= 0.0)
                 throw std::runtime_error(
