@@ -57,3 +57,12 @@ uq_runs/
 scratch_*
 core
 core.*
+Testing/
+argumentparser.log
+.obsidian/
+.omp/
+calibration/data/raw/*
+calibration/data/processed/*
+/bilayer_zigzag_sequence_*.csv
+/sequence_history.csv
+
