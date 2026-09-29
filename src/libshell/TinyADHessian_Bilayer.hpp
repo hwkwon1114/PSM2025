@@ -375,6 +375,9 @@ public:
     void setAssemblyThreads(int t) { assemblyThreads_ = std::max(1, t); }
     int getLastAssemblyThreads() const { return lastAssemblyThreads_; }
     int getCacheBuilds() const { return cacheBuilds_; }
+    int cacheBuilds() const { return cacheBuilds_; }
+    int assemblyThreads() const { return assemblyThreads_; }
+    int lastAssemblyThreads() const { return lastAssemblyThreads_; }
     void clearCache() const { pattern_.reset(); }
 
     int nDofs(const tMesh & mesh) const
