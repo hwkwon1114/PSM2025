@@ -3250,7 +3250,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             resultFile.close();
             if(!resultFile) throw std::runtime_error("Failed writing sequence_result.json");
         }
-        }
 
         // Preserve target-form history and the original b_r; do not enter the
         // legacy final mesh.init_rest(...) block below.

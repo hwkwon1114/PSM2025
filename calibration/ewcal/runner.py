@@ -101,10 +101,10 @@ def check_output(config, case, folder):
         code = solve['return_code']
         if not solve.get('return_code_available', False) or code < 0:
             raise SolverFailure(f'Unacceptable minimizer return code: {code}')
-        if m['backend'] == 'hlbfgs' and not m['stepwise']:
+        if m['backend'] in ('hlbfgs', 'hybrid') and not m['stepwise']:
             norm = solve['reported_eps']
             if not np.isfinite(norm) or norm > checks['max_hlbfgs_gradient_norm'] or norm < 0:
-                raise SolverFailure(f'HLBFGS last gradient norm {norm} exceeds configured acceptance')
+                raise SolverFailure(f"{m['backend']} last gradient norm {norm} exceeds configured acceptance")
         else:
             codes = checks.get('other_backend_success_codes', {}).get(m['backend'])
             if codes is None or code not in codes:
