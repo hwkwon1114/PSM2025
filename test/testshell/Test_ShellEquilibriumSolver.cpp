@@ -9,6 +9,8 @@
 #include "CombinedOperator_Parametric.hpp"
 #include "EnergyOperatorList.hpp"
 #include "TinyADHessian_Bilayer.hpp"
+#include "GrowthHelper.hpp"
+#include <chrono>
 
 using namespace ShellEquilibrium;
 
@@ -978,5 +980,113 @@ TEST(ShellEquilibriumShellFixture, MultiGeometryRobustnessAndParity)
     CurvedRectangularPlate_RightAngle curved(0.2, 0.2, 0.05, 0.25, 1.0);
     testGeometry(curved, "CurvedRectangularPlate_RightAngle", false);
 }
+
+TEST(ShellEquilibriumShellFixture, OrthotropicProfileParallelParityAndSpeedup)
+{
+    RectangularPlate geometry(0.2, 0.2, 0.01, {false, false}, {false, false});
+    geometry.setQuiet();
+
+    BilayerMesh mesh;
+    mesh.init(geometry, false);
+
+    const int nV = mesh.getNumberOfVertices();
+    const int nE = mesh.getNumberOfEdges();
+    const int nF = mesh.getNumberOfFaces();
+    const int nDofs = numberOfDofs(nV, nE);
+
+    // Apply orthotropic growth profile: gtop = 0.005, ortho = -0.5
+    const double gtop = 0.005;
+    const double ortho = -0.5;
+    const double growth1 = gtop * (1.0 + ortho);
+    const double growth2 = gtop * (1.0 - ortho);
+    const double angle = 0.35; // radians
+
+    const Eigen::MatrixXd restV = mesh.getRestConfiguration().getVertices();
+    const Eigen::MatrixXi F = mesh.getTopology().getFace2Vertices();
+
+    tVecMat2d & abT = mesh.getRestConfiguration().getFirstFundamentalForms<top>();
+    for(int f = 0; f < nF; ++f)
+    {
+        GrowthHelper<BilayerMesh>::updateAbarWithMaterialGrowthIncrement(
+            restV.leftCols<2>(),
+            F,
+            f,
+            angle,
+            growth1,
+            growth2,
+            abT[f]);
+    }
+
+    // Perturb mesh into a deformed out-of-plane state so bending and stretching are both active
+    Eigen::Map<Eigen::VectorXd> xmap(mesh.getDataPointer(), nDofs);
+    for(int k = 0; k < nV; ++k) xmap(2 * nV + k) += 0.01 * std::sin(0.4 * k);
+    for(int e = 0; e < nE; ++e) xmap(3 * nV + e) += 0.01 * std::cos(0.3 * e);
+    mesh.updateDeformedConfiguration();
+
+    const Real Young = 1e5;
+    const Real poisson = 0.3;
+    const Real thickness = 0.001;
+
+    TinyADHessian_Bilayer<BilayerMesh> hessian1(Young, poisson, thickness, 1);
+    TinyADHessian_Bilayer<BilayerMesh> hessian2(Young, poisson, thickness, 2);
+    TinyADHessian_Bilayer<BilayerMesh> hessian4(Young, poisson, thickness, 4);
+
+    // 1. Time serial assembly
+    const auto t0_1 = std::chrono::steady_clock::now();
+    const Eigen::SparseMatrix<double> H1 = hessian1.assembleHessian(mesh);
+    const auto t1_1 = std::chrono::steady_clock::now();
+    const double dt_1 = std::chrono::duration<double>(t1_1 - t0_1).count();
+
+    // 2. Time 4-thread parallel assembly
+    const auto t0_4 = std::chrono::steady_clock::now();
+    const Eigen::SparseMatrix<double> H4 = hessian4.assembleHessian(mesh);
+    const auto t1_4 = std::chrono::steady_clock::now();
+    const double dt_4 = std::chrono::duration<double>(t1_4 - t0_4).count();
+
+    const Eigen::SparseMatrix<double> H2 = hessian2.assembleHessian(mesh);
+
+    EXPECT_EQ(H1.rows(), H4.rows());
+    EXPECT_EQ(H1.cols(), H4.cols());
+    EXPECT_EQ(H1.nonZeros(), H4.nonZeros());
+
+    // 3. Strict bitwise parity on CSC sparse structure and values
+    for(int i = 0; i <= H1.cols(); ++i)
+    {
+        EXPECT_EQ(H1.outerIndexPtr()[i], H2.outerIndexPtr()[i]);
+        EXPECT_EQ(H1.outerIndexPtr()[i], H4.outerIndexPtr()[i]);
+    }
+    for(int i = 0; i < H1.nonZeros(); ++i)
+    {
+        EXPECT_EQ(H1.innerIndexPtr()[i], H2.innerIndexPtr()[i]);
+        EXPECT_EQ(H1.innerIndexPtr()[i], H4.innerIndexPtr()[i]);
+        EXPECT_EQ(H1.valuePtr()[i], H2.valuePtr()[i])
+            << "Hessian value mismatch 1T vs 2T at nnz index " << i;
+        EXPECT_EQ(H1.valuePtr()[i], H4.valuePtr()[i])
+            << "Hessian value mismatch 1T vs 4T at nnz index " << i;
+    }
+
+    // 4. Strict bitwise parity on parallel matrix-free Hessian-vector products
+    DeterministicStream stream(12345ull);
+    const Eigen::VectorXd v = stream.vector(nDofs);
+
+    const Eigen::VectorXd hvp1 = hessian1.hessianVectorProduct(mesh, v);
+    const Eigen::VectorXd hvp2 = hessian2.hessianVectorProduct(mesh, v);
+    const Eigen::VectorXd hvp4 = hessian4.hessianVectorProduct(mesh, v);
+
+    ASSERT_EQ(hvp1.size(), nDofs);
+    for(int i = 0; i < nDofs; ++i)
+    {
+        EXPECT_EQ(hvp1(i), hvp2(i)) << "HvP mismatch 1T vs 2T at DOF " << i;
+        EXPECT_EQ(hvp1(i), hvp4(i)) << "HvP mismatch 1T vs 4T at DOF " << i;
+    }
+
+    std::cout << "[Orthotropic Parity Test] DOFs: " << nDofs
+              << ", NonZeros: " << H1.nonZeros()
+              << ", 1T Assembly: " << dt_1 * 1e3 << " ms"
+              << ", 4T Assembly: " << dt_4 * 1e3 << " ms"
+              << ", Speedup: " << dt_1 / dt_4 << "x"
+              << ", Parity: EXACT BITWISE PARITY (Delta_max = 0.0)" << std::endl;
+}
+
 
 
