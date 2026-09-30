@@ -16,6 +16,7 @@ conda activate smcpp_vtk38
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 WT=/gpfs/projects/p33082/PSM2025-zigzag
+TRAJ=$WT/trajectories
 RUN=$WT/run/zz_seq_demo
 
 echo "==== growth-continuation study: same cumulative growth, finer increments, tol 1e-8 ===="
@@ -27,7 +28,7 @@ run_case () {  # name json tol
   /usr/bin/time -f "WALL %e s" "$WT/bin/shell" \
     -sim bilayer_growth -case custom -geometry rectangle \
     -lx 0.13 -ly 0.16 -res 0.008 -h_total 0.0005 \
-    -growth_type zigzag_sequence -cycle_file "$RUN/$json" \
+    -growth_type zigzag_sequence -cycle_file "$TRAJ/$json" \
     -enable_passE false -nsteps 1 -tol "$tol" -minimizer hlbfgs \
     -max_iter 50000 -basename "$name" -export_stl false > run.log 2>&1 || true
   local wall=$(grep -oE "WALL [0-9.]+ s" run.log | tail -1)

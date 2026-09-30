@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+
+  "units": {
+    "length": "mm",
+    "angle": "deg",
+    "growth": "engineering_strain"
+  },
+
+  "hardening": {
+    "model": "voce_decay",
+    "history_variable": "hit_count",
+    "beta": 0.223143551,
+    "floor": 0.0,
+    "scope": "face_shared",
+    "count_rule": "plastic_hits"
+  },
+
+  "defaults": {
+    "start_mode": "left_bottom_up",
+    "profile": {
+      "mode": "center_peak",
+      "top_end_ratio": 0.4,
+      "top_profile_power": 2.0
+    }
+  },
+
+  "toolpaths": [
+    {
+      "id": "wheel_pass",
+      "enabled": true,
+      "repeat": 5,
+
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 120.0,
+        "alpha_deg": 7.0,
+        "n_strips": 8,
+        "width_mm": 12.0,
+        "shift_frame": "material",
+        "rotation_deg": 0.0,
+        "gtop": 0.005,
+        "gbot": 0.0,
+        "ortho": 0.0
+      }
+    }
+  ]
+}

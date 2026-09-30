@@ -27,7 +27,7 @@ set -u
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 WT=/gpfs/projects/p33082/PSM2025-zigzag
-CFG=$WT/scripts/certification_benchmarks
+CFG=$WT/trajectories
 RUN=$WT/run/sensitivity
 RES_DIR=$RUN/results
 mkdir -p "$RES_DIR"

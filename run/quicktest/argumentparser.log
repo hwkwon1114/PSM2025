@@ -1,1 +1,0 @@
--case basic_disk -h 0.01 -innerR 0.05 -res 128 -s1 0.05 -s2 0.0 -sim monolayer_growth -R 1.000000 -growthcase ortho -growthangle 0.000000 -interp_logeucl false -E 1.000000 

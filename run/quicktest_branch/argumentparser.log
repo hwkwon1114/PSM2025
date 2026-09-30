@@ -1,1 +1,0 @@
--case custom -geometry rectangle -growth_angle 0.0 -growth_bot -0.001 -growth_top 0.001 -growth_type homo -h_total 0.0005 -lx 0.05 -ly 0.05 -nsteps 10 -ortho_coeff 0.0 -res 0.05 -sim bilayer_growth -margin_x 0.000000 -margin_y 0.000000 

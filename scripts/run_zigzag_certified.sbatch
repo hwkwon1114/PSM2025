@@ -43,7 +43,7 @@ conda activate smcpp_vtk38   # activation scripts use unbound vars; enable -u on
 set -u
 
 WT=/gpfs/projects/p33082/PSM2025-zigzag
-CFG=$WT/scripts/certification_benchmarks
+CFG=$WT/trajectories
 RUN=$WT/run/zigzag_production
 mkdir -p "$RUN"
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK

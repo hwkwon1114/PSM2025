@@ -5,7 +5,7 @@ set -u -o pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 solver=${PSM_HLBFGS_SOLVER:-$repo_root/bin/shell}
-config=${PSM_HLBFGS_CONFIG:-$repo_root/scripts/certification_benchmarks/putong_1step.json}
+config=${PSM_HLBFGS_CONFIG:-$repo_root/trajectories/putong_1step.json}
 output_root=${PSM_HLBFGS_OUTPUT:-$repo_root/run/hlbfgs_resolution_sweep}
 resolutions=${PSM_HLBFGS_RESOLUTIONS:-"0.08 0.06 0.05 0.04 0.035 0.03 0.025 0.02 0.015"}
 

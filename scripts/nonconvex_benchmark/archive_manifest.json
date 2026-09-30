@@ -1,0 +1,116 @@
+[
+  {
+    "legacy": "scripts/newton_matched_pilot.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/newton_matched_pilot.sbatch",
+    "sha256": "c59e8559b63406817910b4b2954d6ef984ec1d0b5b8d35483d84fdb4b12a21ee",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/cached_curved_timing.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/cached_curved_timing.sbatch",
+    "sha256": "2e9cdd283ffb2ce18f6713c9d94c63a97a949caf8e1ba82e201a0a0f34f8cda8",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/backend_investigation.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/backend_investigation.sbatch",
+    "sha256": "eff5a6d06a7f32cc1ccee348ff8d62640153665f8c212fd515f208f9eab2073d",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/cached_tinyad_qualification.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/cached_tinyad_qualification.sbatch",
+    "sha256": "e343c4e144a12bc6ce2615aeeac264e22ff7a03a424fbb5c86e893abc1891d9b",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/ordering_investigation.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/ordering_investigation.sbatch",
+    "sha256": "39436c33ee5f5903b4cb3c556f884e483db95f02b21d1955a2c30277c704512a",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/nonconvex_preflight_repair.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/nonconvex_preflight_repair.sbatch",
+    "sha256": "e289171199aa3654874b1394a3075950462159cdca212e3ec74a744fc5893308",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/local_dihedral_abi_smoke.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/local_dihedral_abi_smoke.sbatch",
+    "sha256": "1217a64f058a6893eedb68fc741fbdd1ae944f0ac4d37c334ec7980c24a1bd5c",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/local_dihedral_sanitize.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/local_dihedral_sanitize.sbatch",
+    "sha256": "d1d3a4786c7eff0a479d135a6c21996b2505c49ea79befec2dc87604a06e9a89",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/split_cached_hessian_qualification.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/split_cached_hessian_qualification.sbatch",
+    "sha256": "c5e76a89eacde829f07b5be503208335d14aeaa5d2eab13da1bb7f41c64a1bb6",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/nonconvex_screen.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/nonconvex_screen.sbatch",
+    "sha256": "729455e5489337a62107cc6fb26cd6201e217d2e2730091a9d2dfebed58a4eba",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/local_dihedral_full.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/local_dihedral_full.sbatch",
+    "sha256": "3d2cb980cecf35a2a9d00780a0c699b865fc1bf3bcb124e2bc0d03fc0804a08a",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/local_dihedral_stacktrace.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/local_dihedral_stacktrace.sbatch",
+    "sha256": "167c3c0d6adc02f76daf916454b762bd119e89757c4aa6fb99d7f0431bd89b45",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/cholmod_matched_pilot.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/cholmod_matched_pilot.sbatch",
+    "sha256": "70cb90baf580d938c02aebbbaf7f1a6ade62f4aad03a11ce0de47a7b8b022a4f",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/cached_tinyad_preflight_continuation.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/cached_tinyad_preflight_continuation.sbatch",
+    "sha256": "58cfebe4df066b03a5ef668305f35a43e9a79da313fb707279e6faae3a218fc1",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/local_dihedral_full_continuation.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/local_dihedral_full_continuation.sbatch",
+    "sha256": "fff37ce1d6f8902451bd3cb99c90671644a4b449e79b43f09fc73a6c11f75dff",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/profile_frozen_factorization.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/profile_frozen_factorization.sbatch",
+    "sha256": "b216863c24a60da114d4a92e3681fe567ee7c84dca59769d2e7a2c0a02336ff7",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/cached_curved_timing_continuation.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/cached_curved_timing_continuation.sbatch",
+    "sha256": "f89069672ed6801dd0a96b66850adb7176d36e195bae15400d5d8125d9a564f2",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/local_dihedral_smoke.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/local_dihedral_smoke.sbatch",
+    "sha256": "87833e0a8f0696297565658a8502f03e861a72ba8b237af5435c86298482bc37",
+    "status": "historical; no rerun authorization"
+  },
+  {
+    "legacy": "scripts/cholmod_integration.sbatch",
+    "canonical": "scripts/nonconvex_benchmark/archive/cholmod_integration.sbatch",
+    "sha256": "54bedbfccff361b042fe1cb991a8baa83290b093a4b2725a7cf189828791e313",
+    "status": "historical; no rerun authorization"
+  }
+]

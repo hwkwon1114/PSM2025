@@ -64,5 +64,8 @@ argumentparser.log
 calibration/data/raw/*
 calibration/data/processed/*
 /bilayer_zigzag_sequence_*.csv
+/bilayer_zigzag_sequence_*.vtp
+/sequence_*.csv
+/sequence_*.json
 /sequence_history.csv
 

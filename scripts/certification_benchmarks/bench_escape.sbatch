@@ -16,6 +16,7 @@ conda activate smcpp_vtk38
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 WT=/gpfs/projects/p33082/PSM2025-zigzag
+TRAJ=$WT/trajectories
 RUN=$WT/run/zz_seq_demo
 
 echo "==== BUILD ===="
@@ -27,7 +28,7 @@ echo "==== CASE escape_demo : continuation (30x0.0098 @1e-8) + certified saddle-
 /usr/bin/time -f "WALL %e s" "$WT/bin/shell" \
   -sim bilayer_growth -case custom -geometry rectangle \
   -lx 0.13 -ly 0.16 -res 0.008 -h_total 0.0005 \
-  -growth_type zigzag_sequence -cycle_file "$RUN/zigzag_cont30.json" \
+  -growth_type zigzag_sequence -cycle_file "$TRAJ/zigzag_cont30.json" \
   -enable_passE false -nsteps 1 -tol 1e-8 -minimizer hlbfgs \
   -max_iter 50000 -seed_escape true -seed_max 12 \
   -basename escape_demo -export_stl false 2>&1 | \

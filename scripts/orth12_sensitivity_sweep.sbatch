@@ -19,7 +19,7 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 repo_root=/gpfs/projects/p33082/PSM2025-zigzag
 output_root=$repo_root/run/orth12_sensitivity
-cycle_file=$repo_root/scripts/certification_benchmarks/orthogonal_opposite_sides_12cycle.json
+cycle_file=$repo_root/trajectories/archive/orthogonal_opposite_sides_12cycle.json
 
 tolerances=(1e-10 3e-11 1e-11 3e-12 1e-12)
 resolutions=(0.03 0.025 0.02 0.015 0.01)
