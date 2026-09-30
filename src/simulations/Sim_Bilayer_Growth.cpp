@@ -2590,7 +2590,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     }
                 };
 
-                history << executed_cycle << "," << (solveThisCycle ? 1 : 0) << ","
+                const bool actually_solved = solveThisCycle && minimize_this_cycle;
+                history << executed_cycle << "," << (actually_solved ? 1 : 0) << ","
                         << materialHits.size() << "," << totalPassCount.maxCoeff() << "\n";
                 history.flush();
                 if(!solveThisCycle) continue;
@@ -2824,6 +2825,11 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         << executed_cycle
                         << ",0,nan,nan,nan,0,not_evaluated,0,0\n";
                 stabilitySummary.flush();
+
+                if(!minimize_this_cycle)
+                {
+                    totalEnergy = engOps.compute(mesh);
+                }
 
                 if(!std::isfinite(totalEnergy))
                     throw std::runtime_error("Sequence energy is not finite.");
@@ -3171,6 +3177,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             const int  seed_max  = parser.parse<int>("-seed_max", 12);
             const Real tolEsc    = parser.parse<Real>("-tol", 1e-12);
             int esc = 0;
+            Real finalEscapedEnergy = calibration_energy;
             while(true)
             {
                 mesh.updateDeformedConfiguration();
@@ -3222,7 +3229,35 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 printf("[seed_escape] escape %d accepted: E %.6e -> %.6e   max|z|=%.4e\n",
                        esc + 1, Ecur, bestE, z_now);
                 fflush(stdout);
+                finalEscapedEnergy = bestE;
                 ++esc;
+            }
+
+            if(esc > 0)
+            {
+                calibration_energy = finalEscapedEnergy;
+                std::string escapeBase = calibration_final_file;
+                if(escapeBase.size() >= 4 && escapeBase.substr(escapeBase.size() - 4) == ".vtp")
+                    escapeBase = escapeBase.substr(0, escapeBase.size() - 4);
+                escapeBase += "_escaped";
+                writeSequenceState(
+                    executed_cycle,
+                    escapeBase,
+                    zeroHits,
+                    zeroField,
+                    zeroField,
+                    zeroField,
+                    zeroField,
+                    Eigen::VectorXd::Zero(nFaces),
+                    Eigen::VectorXd::Zero(nFaces));
+                calibration_final_file = escapeBase + ".vtp";
+                solve_records.push_back({
+                    {"cycle", executed_cycle},
+                    {"stage", "seed_escape"},
+                    {"escapes_accepted", esc},
+                    {"energy", finalEscapedEnergy}});
+                printf("[seed_escape] updated final calibration state: E=%.6e file=%s\n",
+                       calibration_energy, calibration_final_file.c_str());
             }
         }
 

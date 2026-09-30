@@ -34,10 +34,11 @@ budgets: `docs/nonconvex_solver_benchmark_plan.md`.
 
 ## Historical launchers
 
-`archive/` contains 19 superseded pilot/diagnostic launchers, byte-preserved.
-They are evidence of earlier protocols, **not a suggested execution sequence**.
-Top-level compatibility symlinks preserve old references and script self-copy
-paths. `archive_manifest.json` records their paths and hashes. No frozen source
+`archive/` contains superseded pilot and diagnostic qualification launchers, byte-preserved.
+They are evidence of earlier benchmark iterations and require frozen source bundles from `run/nonconvex_solver_benchmark/`;
+they are **not runnable on clean production checkouts**. Active production benchmarks use `test_adaptive_geometries.sbatch`
+or certified production solvers (`scripts/run_zigzag_certified.sbatch`).
+`archive_manifest.json` records historical paths and hashes. No frozen source
 snapshot in `run/` was modified; no failed/completed cell is reopened by cleanup.
 
 Do not merge these scripts into one parameterized runner without testing each

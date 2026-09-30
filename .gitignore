@@ -39,6 +39,27 @@ bin/*
 # Reference PDFs (copyrighted; keep README.md map only, not the papers)
 paper_list/*.pdf
 paper_list/**/*.pdf
+docs/papers/*.pdf
+docs/papers/**/*.pdf
+docs/*.pdf
+docs/*.png
+!docs/figures/*.png
+!docs/figures/*.pdf
+docs/*_preview/
+docs/*_checked/
+docs/notebooks/
+docs/optimization_diagnostics/
+docs/shell_mechanics_teaching_note*
+docs/trajectory_information_world_model_math*
+docs/Home.md
+docs/Experiment index.md
+docs/Note template.md
+docs/One recurring cycle.md
+docs/Open questions.md
+docs/Rest and current state.md
+docs/reorganization_manifest.json
+docs/global_energy_optimization_jax_review.md
+docs/sequence_ablation_numerical_review.md
 
 # Build logs
 bld.log

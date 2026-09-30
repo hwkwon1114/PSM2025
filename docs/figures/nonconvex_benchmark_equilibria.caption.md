@@ -1,0 +1,6 @@
+# Figure 3: Non-Convex Benchmark Equilibria and Adaptive Curvature Handoff
+
+Evaluation of the adaptive curvature gate (`RobustCurvatureGate`) on large-scale non-convex shell benchmark geometries (10,560 faces, 32,267 degrees of freedom):
+- **(a, d) 3D Equilibrium Deformation**: Final converged stationary configuration rendered with true physical coordinates (colored by out-of-plane vertical deflection $Z$, showing cylindrical and saddle/twisted curvature profiles up to $50$ mm deflection).
+- **(b, e) Physical Gradient Norm Trajectory**: Logarithmic convergence of the physical gradient norm $\|\nabla E\|$ as a function of optimizer attempts. `cylinder_x_plus` certified positive unshifted restricted pivots ($\mathbf{H}_r \succ 0$) and transitioned to Newton at attempt 500; `twist_plus` certified and transitioned at attempt 800. Unshifted direct Cholesky steps ($\lambda = 0.0$) achieve rapid quadratic convergence to machine zero ($4.3\times 10^{-16}$ N and $3.3\times 10^{-15}$ N), satisfying the strict acceptance floor ($5\times 10^{-14}$ N).
+- **(c, f) Energy Relaxation**: Monotonic decay of excess energy $\Delta E = E - E_{\mathrm{final}}$ toward stationary equilibrium ($E_{\mathrm{final}} = 2.763\times 10^{-11}$ J).
