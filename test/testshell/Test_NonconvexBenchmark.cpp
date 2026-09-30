@@ -9,6 +9,7 @@
 #include "EnergyOperatorList.hpp"
 #include <tbb/global_control.h>
 #include <filesystem>
+#include <cstdlib>
 
 using namespace NonconvexBenchmark;
 namespace
@@ -60,11 +61,34 @@ Config controls(const std::string& method)
 }
 void run(Engine& engine,int max=5000)
 {for(int i=0;i<max && engine.state().status=="ready";++i)engine.step();}
+static std::vector<std::string>& tempDirs()
+{
+    static auto* dirs = new std::vector<std::string>();
+    return *dirs;
+}
+
 std::string directory()
 {
     char name[]="checkpoint_test_XXXXXX";
-    const char* p=::mkdtemp(name);if(!p)throw std::runtime_error("mkdtemp failed");return p;
+    const char* p=::mkdtemp(name);if(!p)throw std::runtime_error("mkdtemp failed");
+    tempDirs().push_back(p);
+    return p;
 }
+
+struct TempDirCleanup : public ::testing::Environment
+{
+    void TearDown() override
+    {
+        for(const auto& d : tempDirs())
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(d, ec);
+        }
+        tempDirs().clear();
+    }
+};
+
+static ::testing::Environment* const temp_env = ::testing::AddGlobalTestEnvironment(new TempDirCleanup);
 struct NativeStop{};
 struct NativeTrace
 {
