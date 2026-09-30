@@ -1,0 +1,10 @@
+{
+  "source": "docs/reports/shell_mechanics_teaching_note.md",
+  "source_sha256": "9a89bf630b224c0779d3cd9039871042ed0d60f7e9387da71880eb3afaaf56b6",
+  "pdf_sha256": "09b903127389154d7da62c4e50d16b9153115a81ea71b635f386c16405ab4518",
+  "pages": 11,
+  "python": "3.8.20",
+  "matplotlib": "3.7.5",
+  "figures": "Analytic x^2, -x^2, x^3 illustrations only; no experimental or solver data",
+  "layout": "Body text bounds and pairwise overlap checked; PDF visual inspection separate."
+}

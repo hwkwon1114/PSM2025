@@ -14,7 +14,7 @@ For an initially flat, stress-free plate:
 
 A zero metric would describe zero lengths in every surface direction and would be singular. It is not the metric of a flat plate. **Flat means no curvature, not no size.**
 
-This guide describes the flat-start `zigzag_sequence` workflow used in our experiments. Other branches, curved reference geometries, and physical boundary conditions can change initialization. For JSON syntax and command options, see [the sequence reference](../README_ZigZag_Sequence.md).
+This guide describes the flat-start `zigzag_sequence` workflow used in our experiments. Other branches, curved reference geometries, and physical boundary conditions can change initialization. For JSON syntax and command options, see [the sequence reference](zigzag_sequence_format.md).
 
 ## 2. What is actually stored?
 

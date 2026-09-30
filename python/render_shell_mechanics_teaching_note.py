@@ -20,7 +20,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[1]
-SOURCE=ROOT/'reports/shell_mechanics_teaching_note.md'
+SOURCE = ROOT / 'docs' / 'reports' / 'shell_mechanics_teaching_note.md'
 OUTPUT=SOURCE.with_suffix('.pdf')
 
 class Page:

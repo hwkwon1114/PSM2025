@@ -150,5 +150,5 @@ method are separate experimental factors.
 ## Related literature
 
 The current spatial-sampling framing is organized in
-[paper_list/sampling/README.md](../paper_list/sampling/README.md), with an
+[papers/sampling/README.md](../papers/sampling/README.md), with an
 open-access PDF manifest beside it.

@@ -2,7 +2,7 @@ i# Sequential Toolpath Ablation v2 — Corrected Results
 
 ## Scope and provenance
 
-This report implements `reports/sequence_ablation_v2_spec.md` and supersedes the numerical conclusions in `reports/sequence_ablation_report.md`.
+This report implements `sequence_ablation_v2_spec.md` and supersedes the numerical conclusions in `sequence_ablation_report.md`.
 
 All solver cases ran serially with `OMP_NUM_THREADS=8`. Inputs, commands, logs, manifests, convergence histories, VTP outputs, executable checksums, source revision/status, and derived tables are stored under `run/sequence_ablation_v2/`. The completed dataset contains the 28 runs in the corrected matrix.
 

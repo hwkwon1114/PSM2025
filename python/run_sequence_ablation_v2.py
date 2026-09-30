@@ -180,7 +180,7 @@ def main() -> None:
     if not selected:
         raise SystemExit("no matching cases")
     RUN_ROOT.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(ROOT / "reports" / "sequence_ablation_v2_spec.md", RUN_ROOT / "spec.md")
+    shutil.copy2(ROOT / "docs" / "reports" / "sequence_ablation_v2_spec.md", RUN_ROOT / "spec.md")
     for case in selected:
         run_case(case, args.timeout, args.force)
 

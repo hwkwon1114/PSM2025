@@ -43,7 +43,7 @@ Changing optimizers cannot determine the missing constitutive law. Conversely, c
 - `src/simulations/Sim_Bilayer_Growth.cpp:1135-1141` permits only HLBFGS. The statement that Newton methods enter a “wrong physical basin” is a code comment/assertion, not experimental identification of the physical branch.
 - `src/libshell/TinyADHessian_Bilayer.hpp:255-316` already provides exact-gradient and matrix-free Hessian-vector products for the discrete energy.
 - `src/simulations/Sim_Bilayer_Growth.cpp:2077-2136` uses a fixed-count power iteration without rigid-mode projection or an eigenpair residual. It is a diagnostic, not a rigorous stability certificate.
-- The corrected ablation report found a `51.95 µm` maximum all-pairs repeatability floor and unresolved mesh dependence (`reports/sequence_ablation_v2_report.md`).
+- The corrected ablation report found a `51.95 µm` maximum all-pairs repeatability floor and unresolved mesh dependence (`sequence_ablation_v2_report.md`).
 
 ### Inference
 

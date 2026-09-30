@@ -5,6 +5,8 @@
 **Job:** SLURM array 9924300 (45 tasks, 10-wide concurrency)
 **Script:** `scripts/sensitivity_sweep.sbatch`
 
+> **Correction after raw-log audit (2026-09-23):** all nine exact-Newton runs at `tol=1e-10/1e-12/1e-14` stopped after **100 outer iterations**, with reported gradients **4.86e-10–5.17e-10**, above their requested tolerances. Their identical endpoints therefore do **not** demonstrate converged higher-energy minima or tolerance robustness. The claims below of a Newton “true fixed point,” certified distinct equilibria, and physically right/wrong basins are superseded interpretations, preserved here only as history. Raw numbers/outputs are unchanged. The old `MINIMUM` label is not a substitute for stationarity or global/physical validation. See the [current correction and algorithm conclusions](../../reports/global_energy_optimization_jax_review.md#correction-from-archived-newton-logs) and [15-case termination audit](../../run/sensitivity/results/newton_termination_audit.json). No reruns were performed.
+
 > Historical note (2026-08-21): Newton-family optimizers were removed from the
 > production code after this study showed that they select the wrong physical
 > basin. The numerical results below are retained as decision evidence. The
