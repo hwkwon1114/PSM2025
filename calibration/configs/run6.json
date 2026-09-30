@@ -17,7 +17,7 @@
       "-sim": "bilayer_growth", "-case": "custom", "-geometry": "rectangle",
       "-lx": 0.1, "-ly": 0.15, "-res": 0.01,
       "-enable_passE": false, "-nsteps": 1, "-tol": 3e-12,
-      "-stepwise": false
+      "-stepwise": false, "-hessian_threads": 4
     }
   },
   "sequence_defaults": {"start_mode": "left_bottom_up", "profile": {"mode": "uniform"}},

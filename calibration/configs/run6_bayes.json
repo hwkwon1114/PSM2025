@@ -56,7 +56,8 @@
       "-enable_passE": false,
       "-nsteps": 1,
       "-tol": 3e-12,
-      "-stepwise": false
+      "-stepwise": false,
+      "-hessian_threads": 4
     }
   },
   "sequence_defaults": {
