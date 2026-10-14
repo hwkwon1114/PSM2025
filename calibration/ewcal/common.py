@@ -26,6 +26,9 @@ def save_json(path, value):
     tmp.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
     os.replace(tmp, path)
 
+def load_json(path):
+    return json.loads(Path(path).read_text())
+
 def load_config(path):
     c = json.loads(Path(path).read_text())
     if c.get('schema_version') != 1:

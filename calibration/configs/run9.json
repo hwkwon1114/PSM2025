@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "sheet": {
+    "size_mm": [
+      200,
+      300
+    ],
+    "thickness_mm": 0.77
+  },
+  "parameters": {
+    "gtop": {
+      "initial": 0.001,
+      "bounds": [
+        0.00005,
+        0.01
+      ]
+    },
+    "gbot": {
+      "initial": 0.0003,
+      "bounds": [
+        1e-05,
+        0.001
+      ]
+    },
+    "ortho_top": {
+      "initial": -0.46,
+      "bounds": [
+        -1.0,
+        1.0
+      ]
+    },
+    "ortho_bottom": {
+      "initial": 0.0,
+      "bounds": [
+        -1.0,
+        1.0
+      ]
+    }
+  },
+  "solver": {
+    "executable": "run/native_shape_refinement/build_9060950/bin/shell",
+    "command_prefix": [],
+    "solve_mode": "final_only",
+    "timeout_seconds": 3600,
+    "acceptance": {
+      "max_hlbfgs_gradient_norm": 1e-7,
+      "other_backend_success_codes": {},
+      "max_native_hybrid_gradient_norm": 5e-14
+    },
+    "args": {
+      "-sim": "bilayer_growth",
+      "-case": "custom",
+      "-geometry": "rectangle",
+      "-lx": 0.1,
+      "-ly": 0.15,
+      "-res": 0.01,
+      "-enable_passE": false,
+      "-nsteps": 1,
+      "-tol": 3e-12,
+      "-stepwise": false,
+      "-hessian_threads": 8,
+      "-equilibrium_solver": "native_hybrid",
+      "-native_hybrid_warmup_attempts": 2000,
+      "-native_hybrid_grad_tol": 5e-14,
+      "-equilibrium_grad_tol": 5e-14,
+      "-sequence_adaptive": true,
+      "-native_hybrid_seconds": 3600,
+      "-native_hybrid_export_state": true
+    }
+  },
+  "sequence_defaults": {
+    "start_mode": "left_bottom_up",
+    "profile": {
+      "mode": "uniform"
+    }
+  },
+  "hardening": {
+    "model": "voce_decay",
+    "history_variable": "hit_count",
+    "beta": 0.2231435513142097,
+    "floor": 0,
+    "scope": "face_shared",
+    "count_rule": "plastic_hits"
+  },
+  "cases": [
+    {
+      "id": "run9",
+      "repeat": 33,
+      "weight": 1,
+      "scan": "calibration/data/raw/Run_9.stl",
+      "scan_scale_to_mm": 1,
+      "target": "calibration/data/processed/run9_oriented.npz",
+      "scan_orientation": {
+        "flip_z": false,
+        "flip_xy": false,
+        "basis_columns": [
+          [
+            0.999326385848079,
+            0.03524185875254713,
+            -0.010236500353233853
+          ],
+          [
+            0.0354339703616547,
+            -0.9991868955443485,
+            0.019234903609234816
+          ],
+          [
+            -0.009550303253070845,
+            -0.019584666556076356,
+            -0.9997625880896234
+          ]
+        ]
+      },
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 187.5,
+        "alpha_deg": 1,
+        "n_strips": 32,
+        "width_mm": 2,
+        "shift_uv_mm": [
+          0,
+          0
+        ],
+        "shift_frame": "material",
+        "rotation_deg": 0
+      }
+    }
+  ],
+  "preprocess": {
+    "spacing_mm": 2,
+    "edge_inset_mm": 2,
+    "z_outlier_floor_mm": 20,
+    "max_cell_z_mad_mm": 0.5,
+    "min_points": 1000
+  },
+  "registration": {
+    "method": "material_reference",
+    "metric": "symmetric",
+    "require_state_export": true
+  },
+  "optimization": {
+    "seed": 2026,
+    "coarse_samples": 5,
+    "max_evaluations": 120,
+    "xtol": 0.005,
+    "ftol": 0.0001,
+    "sensitivity_step": 0.03,
+    "failure_penalty_mm": 1000000
+  },
+  "bayesian": {
+    "initial_points": 5,
+    "candidate_pool": 2048,
+    "local_candidates": 512,
+    "failure_radius": 0,
+    "min_separation": 0.08,
+    "lhs_optimization": "random-cd"
+  },
+  "require_state_export": true,
+  "expected_reference_area_mm2": 60000,
+  "area_tolerance_rel": 0.01,
+  "output_dir": "run/run9_transfer_expanded",
+  "report_dir": "run/run9_transfer_expanded/report"
+}

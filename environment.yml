@@ -1,0 +1,23 @@
+name: psm2025-zigzag
+channels:
+  - conda-forge
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.10
+  - cmake>=3.24
+  - ninja
+  - eigen>=3.4
+  - suitesparse
+  - numpy>=1.24
+  - scipy>=1.10
+  - matplotlib>=3.7
+  - vtk>=9.2
+  - pytorch>=2.2
+  - botorch>=0.10
+  - gpytorch>=1.11
+  - ipykernel
+  - ipython
+  - pip
+  - pip:
+      - pyvista>=0.40

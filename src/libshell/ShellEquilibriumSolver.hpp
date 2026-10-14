@@ -44,6 +44,7 @@
  */
 
 #include "common.hpp"
+#include "SparseDirectFactorization.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -818,7 +819,8 @@ namespace ShellEquilibrium
         GradientTolerance,
         TrustRegionCollapsed,
         MaxIterations,
-        NonFiniteState
+        NonFiniteState,
+        SparseFactorizationFailed
     };
 
     inline const char * toString(const TrustRegionStatus status)
@@ -829,12 +831,20 @@ namespace ShellEquilibrium
             case TrustRegionStatus::TrustRegionCollapsed: return "trust-region-collapsed";
             case TrustRegionStatus::MaxIterations:        return "max-iterations";
             case TrustRegionStatus::NonFiniteState:       return "non-finite-state";
+            case TrustRegionStatus::SparseFactorizationFailed: return "sparse-factorization-failed";
         }
         return "unknown";
     }
 
+    enum class TrustRegionNewtonBackend
+    {
+        MatrixFreeCG,
+        SparseDirect
+    };
+
     struct TrustRegionNewtonOptions
     {
+        TrustRegionNewtonBackend backend = TrustRegionNewtonBackend::MatrixFreeCG;
         Real gradientTolerance = 1e-8;      //!< on ||P grad E||_2
         int maxIterations = 100;
         Real initialTrustRadius = 1e-2;     //!< in the metric norm ||.||_M
@@ -846,6 +856,11 @@ namespace ShellEquilibrium
         Real shrinkFactor = 0.25;
         Real expandFactor = 2.0;
         SteihaugOptions cg = SteihaugOptions();
+        Real directPivotFloor = 1e-12;      //!< relative positive-pivot floor for sparse Cholesky
+        Real directLinearTolerance = 1e-8;  //!< relative residual gate for the sparse solve
+        int directMaxShiftAttempts = 16;
+        Real directShiftMultiplier = 10.0;
+        int directSolverThreads = 1;
 
         // only used by the mesh entry points, to build the default block metric
         Real vertexLengthScale = 1.0;       //!< characteristic vertex displacement (length)
@@ -870,6 +885,9 @@ namespace ShellEquilibrium
         int gradientEvaluations = 0;
         int hessianVectorProducts = 0;
         int cgIterations = 0;
+        int hessianAssemblies = 0;
+        int directFactorizationAttempts = 0;
+        Real diagonalShift = 0.0;
         int negativeCurvatureSteps = 0;        //!< outer iterations whose CG hit negative curvature
         Real smallestCurvature = std::numeric_limits<Real>::infinity(); //!< min p.Hp / p.Mp seen
         int rigidModes = 0;                    //!< set by the mesh entry points
@@ -1027,6 +1045,273 @@ namespace ShellEquilibrium
         return report;
     }
 
+    /*! Sparse direct trust-region Newton method. It assembles the exact Hessian once at
+     *  each base state, then uses shifted sparse Cholesky factorizations to obtain a
+     *  descent direction. The step is projected onto the admissible subspace and clipped
+     *  to the same diagonal-metric trust region used by the matrix-free method.
+     *
+     *  The input problem additionally provides
+     *      Eigen::SparseMatrix<double> hessianMatrix()
+     *  and the Hessian must contain explicit diagonal entries (TinyADHessian_Bilayer does).
+     *  A positive diagonal shift handles both rigid null modes and negative curvature.
+     */
+    template<typename tProblem, typename tProjection>
+    TrustRegionNewtonReport trustRegionNewtonDirect(tProblem & problem,
+                                                    tProjection && project,
+                                                    const Eigen::VectorXd & metricDiagonal,
+                                                    const TrustRegionNewtonOptions & options = TrustRegionNewtonOptions())
+    {
+        const int nDofs = problem.numberOfDofs();
+        const Real controls[] = {options.initialTrustRadius, options.maxTrustRadius,
+            options.minTrustRadius, options.gradientTolerance, options.directPivotFloor,
+            options.directLinearTolerance, options.directShiftMultiplier, options.acceptanceRatio,
+            options.shrinkThreshold, options.expandThreshold, options.shrinkFactor, options.expandFactor};
+        for(const Real value : controls)
+            if(!std::isfinite(value))
+                throw std::invalid_argument("ShellEquilibrium::trustRegionNewtonDirect: nonfinite control");
+        if(!(options.shrinkFactor > 0.0 && options.shrinkFactor < 1.0) ||
+           !(options.expandFactor > 1.0) || options.acceptanceRatio < 0.0 ||
+           options.shrinkThreshold < options.acceptanceRatio ||
+           options.expandThreshold < options.shrinkThreshold || options.maxIterations < 0)
+            throw std::invalid_argument("ShellEquilibrium::trustRegionNewtonDirect: invalid update controls");
+        if(metricDiagonal.size() != nDofs || !metricDiagonal.allFinite() ||
+           (metricDiagonal.size() && !(metricDiagonal.minCoeff() > 0.0)))
+            throw std::invalid_argument("ShellEquilibrium::trustRegionNewtonDirect: invalid metric");
+        if(!(options.initialTrustRadius > 0.0) || !(options.maxTrustRadius >= options.initialTrustRadius) ||
+           !(options.minTrustRadius > 0.0) || !(options.gradientTolerance > 0.0))
+            throw std::invalid_argument("ShellEquilibrium::trustRegionNewtonDirect: invalid trust-region controls");
+        if(!(options.directPivotFloor > 0.0) || !(options.directLinearTolerance > 0.0) ||
+           options.directMaxShiftAttempts < 1 || !(options.directShiftMultiplier > 1.0) ||
+           options.directSolverThreads < 1)
+            throw std::invalid_argument("ShellEquilibrium::trustRegionNewtonDirect: invalid direct-solver controls");
+
+        TrustRegionNewtonReport report;
+        Eigen::VectorXd base = problem.state();
+        if(base.size() != nDofs || !base.allFinite())
+        {
+            report.status = TrustRegionStatus::NonFiniteState;
+            return report;
+        }
+        Real energy = problem.energy();
+        ++report.energyEvaluations;
+        report.initialEnergy = report.energy = energy;
+        Real radius = options.initialTrustRadius;
+        report.trustRadius = radius;
+        Eigen::VectorXd gradient;
+        bool gradientIsStale = true;
+        bool analyzed = false;
+        std::vector<int> patternOuter, patternInner;
+        SparseDirectFactorization factorization(options.directSolverThreads);
+
+        for(int iteration = 0; iteration < options.maxIterations; ++iteration)
+        {
+            report.iterations = iteration + 1;
+            if(gradientIsStale)
+            {
+                detail::refreshProjection(project);
+                gradient = problem.gradient();
+                ++report.gradientEvaluations;
+                if(gradient.size() != nDofs || !gradient.allFinite())
+                {
+                    report.status = TrustRegionStatus::NonFiniteState;
+                    break;
+                }
+                project(gradient);
+                gradientIsStale = false;
+            }
+            report.gradientNorm = gradient.norm();
+            if(iteration == 0) report.initialGradientNorm = report.gradientNorm;
+            report.gradientNormMetric = std::sqrt(std::max(0.0,
+                gradient.cwiseQuotient(metricDiagonal).dot(gradient)));
+            if(!std::isfinite(report.gradientNorm) || !std::isfinite(energy))
+            {
+                report.status = TrustRegionStatus::NonFiniteState;
+                break;
+            }
+            if(report.gradientNorm <= options.gradientTolerance)
+            {
+                report.status = TrustRegionStatus::GradientTolerance;
+                break;
+            }
+
+            Eigen::SparseMatrix<double> hessian = problem.hessianMatrix();
+            ++report.hessianAssemblies;
+            if(hessian.rows() != nDofs || hessian.cols() != nDofs || !hessian.isCompressed())
+                throw std::invalid_argument("ShellEquilibrium::trustRegionNewtonDirect: invalid assembled Hessian");
+            bool finiteHessian = true;
+            Real entryScale = 0.0;
+            for(int k = 0; k < hessian.nonZeros(); ++k)
+            {
+                finiteHessian = finiteHessian && std::isfinite(hessian.valuePtr()[k]);
+                entryScale = std::max(entryScale, std::abs(hessian.valuePtr()[k]));
+            }
+            if(!finiteHessian)
+            {
+                report.status = TrustRegionStatus::NonFiniteState;
+                break;
+            }
+            for(int column = 0; column < nDofs; ++column)
+            {
+                bool diagonalFound = false;
+                for(Eigen::SparseMatrix<double>::InnerIterator it(hessian, column); it; ++it)
+                {
+                    if(it.row() == column) diagonalFound = true;
+                    if(std::abs(it.value() - hessian.coeff(column, it.row())) >
+                       1e-12 * std::max<Real>(entryScale, 1e-300))
+                        throw std::invalid_argument("Sparse direct equilibrium requires a symmetric Hessian");
+                }
+                if(!diagonalFound)
+                    throw std::invalid_argument("Sparse direct equilibrium requires explicit Hessian diagonals");
+            }
+            if(!analyzed)
+            {
+                factorization.analyzePattern(hessian);
+                patternOuter.assign(hessian.outerIndexPtr(), hessian.outerIndexPtr() + hessian.cols() + 1);
+                patternInner.assign(hessian.innerIndexPtr(), hessian.innerIndexPtr() + hessian.nonZeros());
+                analyzed = true;
+            }
+            else if(patternOuter.size() != static_cast<size_t>(hessian.cols() + 1) ||
+                    patternInner.size() != static_cast<size_t>(hessian.nonZeros()) ||
+                    !std::equal(patternOuter.begin(), patternOuter.end(), hessian.outerIndexPtr()) ||
+                    !std::equal(patternInner.begin(), patternInner.end(), hessian.innerIndexPtr()))
+                throw std::logic_error("ShellEquilibrium::trustRegionNewtonDirect: Hessian sparsity pattern changed");
+
+            Real scale = 0.0;
+            for(int i = 0; i < nDofs; ++i)
+                scale = std::max(scale, std::abs(hessian.coeff(i, i)));
+            if(!(scale > 0.0) || !std::isfinite(scale)) scale = 1.0;
+            const Real pivotFloor = options.directPivotFloor * scale;
+            Real shift = 0.0;
+            Eigen::SparseMatrix<double> shifted;
+            Eigen::VectorXd rawStep;
+            bool solved = false;
+            for(int attempt = 0; attempt < options.directMaxShiftAttempts; ++attempt)
+            {
+                shifted = hessian;
+                if(shift != 0.0)
+                    for(int i = 0; i < nDofs; ++i)
+                        shifted.coeffRef(i, i) += shift;
+                shifted.makeCompressed();
+                ++report.directFactorizationAttempts;
+                if(factorization.factorize(shifted, pivotFloor))
+                {
+                    rawStep = factorization.solve(-gradient);
+                    const Real residual = (shifted * rawStep + gradient).norm() /
+                        std::max<Real>(gradient.norm(), 1e-300);
+                    if(rawStep.allFinite() && std::isfinite(residual) &&
+                       residual <= options.directLinearTolerance)
+                    {
+                        solved = true;
+                        break;
+                    }
+                }
+                shift = (shift == 0.0 ? 10.0 * pivotFloor : shift * options.directShiftMultiplier);
+                if(!(shift > 0.0) || !std::isfinite(shift)) break;
+            }
+            if(!solved)
+            {
+                report.status = TrustRegionStatus::SparseFactorizationFailed;
+                break;
+            }
+            report.diagonalShift = shift;
+
+            Eigen::VectorXd step = rawStep;
+            project(step);
+            Real stepMetricNorm = std::sqrt(std::max(0.0, step.cwiseProduct(metricDiagonal).dot(step)));
+            bool boundaryReached = false;
+            if(stepMetricNorm > radius)
+            {
+                step *= radius / stepMetricNorm;
+                stepMetricNorm = radius;
+                boundaryReached = true;
+            }
+            Eigen::VectorXd hessianStep = hessian * step;
+            project(hessianStep);
+            Real predictedReduction = -(gradient.dot(step) + 0.5 * step.dot(hessianStep));
+            if(!(predictedReduction > 0.0) || !(stepMetricNorm > 0.0) ||
+               !std::isfinite(predictedReduction) || !step.allFinite())
+            {
+                ++report.rejectedSteps;
+                radius *= options.shrinkFactor;
+                report.trustRadius = radius;
+                if(radius < options.minTrustRadius)
+                {
+                    report.status = TrustRegionStatus::TrustRegionCollapsed;
+                    break;
+                }
+                continue;
+            }
+
+            Real trialEnergy;
+            try
+            {
+                problem.setState(base + step);
+                trialEnergy = problem.energy();
+                ++report.energyEvaluations;
+            }
+            catch(...)
+            {
+                // Restore the accepted configuration before propagating trial failures.
+                // Failure of this restoration is unrecoverable for the problem interface.
+                problem.setState(base);
+                throw;
+            }
+            const Real actualReduction = energy - trialEnergy;
+            const Real ratio = actualReduction / predictedReduction;
+            if(std::isfinite(trialEnergy) && std::isfinite(ratio) && ratio >= options.acceptanceRatio)
+            {
+                base += step;
+                energy = trialEnergy;
+                report.energy = energy;
+                ++report.acceptedSteps;
+                gradientIsStale = true;
+            }
+            else
+            {
+                problem.setState(base);
+                ++report.rejectedSteps;
+            }
+
+            if(!std::isfinite(ratio) || ratio < options.shrinkThreshold)
+                radius = options.shrinkFactor * stepMetricNorm;
+            else if(ratio > options.expandThreshold && boundaryReached)
+                radius = std::min(options.expandFactor * radius, options.maxTrustRadius);
+            report.trustRadius = radius;
+            report.lastStepMetricNorm = stepMetricNorm;
+            if(radius < options.minTrustRadius)
+            {
+                report.status = TrustRegionStatus::TrustRegionCollapsed;
+                break;
+            }
+        }
+
+        if(gradientIsStale && report.status != TrustRegionStatus::NonFiniteState)
+        {
+            detail::refreshProjection(project);
+            gradient = problem.gradient();
+            ++report.gradientEvaluations;
+            if(gradient.size() != nDofs || !gradient.allFinite())
+            {
+                report.status = TrustRegionStatus::NonFiniteState;
+                report.gradientNorm = report.gradientNormMetric = std::numeric_limits<Real>::infinity();
+            }
+            else
+            {
+                project(gradient);
+                report.gradientNorm = gradient.norm();
+                if(report.iterations == 0) report.initialGradientNorm = report.gradientNorm;
+                report.gradientNormMetric = std::sqrt(std::max(0.0,
+                    gradient.cwiseQuotient(metricDiagonal).dot(gradient)));
+                if(std::isfinite(report.gradientNorm) && report.gradientNorm <= options.gradientTolerance)
+                    report.status = TrustRegionStatus::GradientTolerance;
+            }
+        }
+        report.accepted = report.status == TrustRegionStatus::GradientTolerance &&
+                          std::isfinite(report.gradientNorm) &&
+                          report.gradientNorm <= options.gradientTolerance && std::isfinite(report.energy);
+        return report;
+    }
+
     // -----------------------------------------------------------------------------------
     // Mesh binding
     // -----------------------------------------------------------------------------------
@@ -1080,6 +1365,11 @@ namespace ShellEquilibrium
         {
             return hessianOperator.hessianVectorProduct(mesh, v);
         }
+
+        Eigen::SparseMatrix<double> hessianMatrix()
+        {
+            return hessianOperator.assembleHessian(mesh);
+        }
     };
 
     /*! Trust-region Newton-CG equilibrium correction of a shell, with an explicit projector and
@@ -1093,7 +1383,16 @@ namespace ShellEquilibrium
                                                   const TrustRegionNewtonOptions & options = TrustRegionNewtonOptions())
     {
         MeshEquilibriumProblem<tMesh, tEnergyOperator, tHessianOperator> problem(mesh, energyOperator, hessianOperator);
-        TrustRegionNewtonReport report = trustRegionNewtonCG(problem, projector, metricDiagonal, options);
+        TrustRegionNewtonReport report;
+        if(options.backend == TrustRegionNewtonBackend::SparseDirect)
+        {
+            if constexpr(requires { hessianOperator.assembleHessian(mesh); })
+                report = trustRegionNewtonDirect(problem, projector, metricDiagonal, options);
+            else
+                throw std::invalid_argument("Sparse direct equilibrium requires assembleHessian(mesh)");
+        }
+        else
+            report = trustRegionNewtonCG(problem, projector, metricDiagonal, options);
         report.rigidModes = projector.numberOfRigidModes();
         return report;
     }
@@ -1111,7 +1410,16 @@ namespace ShellEquilibrium
         MeshRigidModeProjection<tMesh> projection(mesh);
         const Eigen::VectorXd metric = blockDiagonalMetric(mesh.getNumberOfVertices(), mesh.getNumberOfEdges(),
                                                            options.vertexLengthScale, options.directorAngleScale);
-        TrustRegionNewtonReport report = trustRegionNewtonCG(problem, projection, metric, options);
+        TrustRegionNewtonReport report;
+        if(options.backend == TrustRegionNewtonBackend::SparseDirect)
+        {
+            if constexpr(requires { hessianOperator.assembleHessian(mesh); })
+                report = trustRegionNewtonDirect(problem, projection, metric, options);
+            else
+                throw std::invalid_argument("Sparse direct equilibrium requires assembleHessian(mesh)");
+        }
+        else
+            report = trustRegionNewtonCG(problem, projection, metric, options);
         report.rigidModes = projection.projector().numberOfRigidModes();
         return report;
     }

@@ -1,5 +1,9 @@
 # Ignore the SLURM run workspace (convergence/sensitivity studies, raw outputs)
 scratch/
+archive/
+.pi/
+package-lock.json
+/*.stl
 
 # Ignore the build, lib, doc dirs and run/* scripts
 build

@@ -265,6 +265,55 @@ namespace
 // rigid-mode projector
 // ===========================================================================================
 
+TEST(ShellEquilibriumSparseDirect, SolvesAQuadraticProblemWithinTheTrustRegion)
+{
+    struct QuadraticProblem
+    {
+        Eigen::SparseMatrix<double> H;
+        Eigen::VectorXd b;
+        Eigen::VectorXd x;
+        int numberOfDofs() const { return static_cast<int>(x.size()); }
+        Eigen::VectorXd state() const { return x; }
+        void setState(const Eigen::VectorXd & value) { x = value; }
+        Real energy() { return 0.5 * x.dot(H * x) - b.dot(x); }
+        Eigen::VectorXd gradient() { return H * x - b; }
+        Eigen::SparseMatrix<double> hessianMatrix() { return H; }
+    } problem;
+
+    std::vector<Eigen::Triplet<double>> entries = {
+        {0, 0, 4.0}, {0, 1, 1.0}, {1, 0, 1.0}, {1, 1, 3.5},
+        {1, 2, 0.5}, {2, 1, 0.5}, {2, 2, 2.0}};
+    problem.H.resize(3, 3);
+    problem.H.setFromTriplets(entries.begin(), entries.end());
+    problem.H.makeCompressed();
+    const Eigen::VectorXd target = (Eigen::VectorXd(3) << 1.0, -2.0, 0.5).finished();
+    problem.b = problem.H * target;
+    problem.x = Eigen::VectorXd::Zero(3);
+
+    TrustRegionNewtonOptions options;
+    options.gradientTolerance = 1e-12;
+    options.maxIterations = 100;
+    options.initialTrustRadius = 0.2;
+    options.maxTrustRadius = 4.0;
+    options.minTrustRadius = 1e-12;
+    options.directLinearTolerance = 1e-12;
+    options.directSolverThreads = 1;
+    const Eigen::VectorXd metric = Eigen::VectorXd::Ones(3);
+    const auto identityProjection = [](Eigen::VectorXd &) {};
+
+    const TrustRegionNewtonReport report =
+        trustRegionNewtonDirect(problem, identityProjection, metric, options);
+
+    EXPECT_TRUE(report.accepted) << toString(report.status);
+    EXPECT_EQ(report.status, TrustRegionStatus::GradientTolerance);
+    EXPECT_LE(report.gradientNorm, options.gradientTolerance);
+    EXPECT_LT((problem.state() - target).norm(), 1e-11);
+    EXPECT_GT(report.hessianAssemblies, 0);
+    EXPECT_GT(report.directFactorizationAttempts, 0);
+    EXPECT_EQ(report.hessianVectorProducts, 0);
+    EXPECT_EQ(report.cgIterations, 0);
+}
+
 TEST(ShellEquilibriumProjector, FreeShellRemovesEveryRigidModeAndIsIdempotent)
 {
     const int nVertices = 7;

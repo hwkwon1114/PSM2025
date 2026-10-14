@@ -77,6 +77,7 @@ class RealSolverCliTests(unittest.TestCase):
                 "-lx", "0.1", "-ly", "0.15", "-res", "0.05",
                 "-growth_type", "zigzag_sequence",
                 "-cycle_file", str(seq_path),
+                "-equilibrium_solver", "hlbfgs",
                 "-sequence_adaptive", "false",
                 "-sequence_solve_mode", "final_only",
                 "-max_iter", "5",
@@ -87,6 +88,7 @@ class RealSolverCliTests(unittest.TestCase):
 
             config = load_config(ROOT / "calibration/configs/run6.json")
             config["solver"]["solve_mode"] = "final_only"
+            config["solver"]["args"]["-equilibrium_solver"] = "hlbfgs"
             config["solver"]["acceptance"]["max_hlbfgs_gradient_norm"] = 1e-4
             case = config["cases"][0]
             case["repeat"] = 2

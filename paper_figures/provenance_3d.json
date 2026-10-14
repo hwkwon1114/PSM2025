@@ -1,0 +1,227 @@
+{
+  "status": "rendered",
+  "slurm_job": "3614581",
+  "description": "3D views: Attempt 153 (optimal expanded BO calibration on Run 6 and validated transfer to Run 9)",
+  "attempt_id": 153,
+  "input_sha256": {
+    "run/run6_expanded_bo/evaluations/attempt_0153/case_00/comparison.npz": "97f2852bd88bc7b67012d23b6b7b38330c69d7c36806d4eb5f18d608e9cae440",
+    "run/run6_expanded_bo/evaluations/attempt_0153/case_00/prediction_mm.vtp": "db9935f7c0a724d2b2647c72cca77d5d60dbc51b2779ae61ab622029281d9384",
+    "run/run6_expanded_bo/evaluations/attempt_0153/case_00/bilayer_zigzag_sequence_native_hybrid_state.json": "ab6c1749e268d3a037992d16b4af6b15baf3a54a64599dafb61c9c8373022039",
+    "run/run6_expanded_bo/evaluations/attempt_0153/case_00/sequence.json": "349db20d29579704247fb50b152e73feeb8d868a5603ccf5b0bec5d426279a53",
+    "run/run6_expanded_bo/evaluations/attempt_0153/result.json": "6a572f82af1903d13bb48a834a311df0fd77ea895aa685251e6a7bdd02b06778",
+    "calibration/data/raw/run6_zigzag_path.csv": "9913ec8e6b0672bc58b69ce2146da285ce4a68409b1e44d2728f2a9493f15602",
+    "run/run9_transfer_expanded/evaluations/attempt_9901/case_00/comparison.npz": "86f058e55cfcb3b4012d8a614dbdd166a6178e86edf1e5971f9793293ec67523",
+    "run/run9_transfer_expanded/evaluations/attempt_9901/case_00/prediction_mm.vtp": "5c4e3ded7692c497ce09d440932977820247a2347afeb5e543df4617a6f2f61b",
+    "run/run9_transfer_expanded/evaluations/attempt_9901/case_00/bilayer_zigzag_sequence_native_hybrid_state.json": "94ec39ce0a04d95d49dde8c6849cda6429debb399aa5e885a3ee7ece4575609e",
+    "run/run9_transfer_expanded/evaluations/attempt_9901/case_00/sequence.json": "2507e534f9a7ed61fa7de1f1e21e46a25a85e875b545d101b225f725e41b7cba",
+    "run/run9_transfer_expanded/evaluations/attempt_9901/result.json": "c4a6be0d570e15352d901537a2b48306571b05daf53c98bb85ff11c8c66f32ce",
+    "calibration/data/raw/run9_zigzag_path.csv": "fe54d3080384f773a398e0fa80215633434aae70945c1b9dc0b439c0aec15f29"
+  },
+  "script_sha256": "4fe52a3175ed56ef65b30a9bb944b36d9466963455c3f4a476024da31524a613",
+  "statistics": [
+    {
+      "name": "run6",
+      "repeat": 29,
+      "length_mm": 130.0,
+      "accepted_scan_points": 14504,
+      "supported_points": 14504,
+      "unsupported_points": 0,
+      "prediction_vertices": 15251,
+      "minimum_projected_triangle_area_mm2": 1.9818413506567958,
+      "mean_signed_dz_mm": 0.07198956865810366,
+      "rms_dz_mm": 0.6546701971674285,
+      "p95_absolute_dz_mm": 1.2317724876295064,
+      "dz_range_mm": [
+        -1.2408816910772131,
+        2.2012317228687897
+      ],
+      "scan_height_range_mm": [
+        -4.588740303076734,
+        2.361545491832576
+      ],
+      "model_height_range_mm": [
+        -4.639748104361411,
+        2.736586419556269
+      ],
+      "metrics": {
+        "rms_target_to_sim_mm": 0.6531592396535594,
+        "rms_sim_to_target_weighted_mm": 1.543446389720413,
+        "rms_symmetric_mm": 1.1850830667691175,
+        "reference_area_quadrature_rms_mm": 1.543446389720413,
+        "reference_area_mm2": 60000.0,
+        "p95_target_to_sim_mm": 1.2290203646266142,
+        "max_target_to_sim_mm": 2.19667731842199,
+        "p95_sim_to_target_mm": 2.0573507493761634,
+        "max_sim_to_target_mm": 4.613160653494288,
+        "rms_mm": 1.1850830667691175,
+        "scoring_method": "material_reference",
+        "shape_scored": true,
+        "simulation_transform": {
+          "row_vector_rotation": [
+            [
+              1.0000000000000004,
+              -1.0295063523283774e-16,
+              9.618321490602564e-15
+            ],
+            [
+              1.029505540389294e-16,
+              1.0000000000000002,
+              -1.1116343339624983e-14
+            ],
+            [
+              -9.618321490602564e-15,
+              1.1116343339624988e-14,
+              1.0
+            ]
+          ],
+          "translation_mm": [
+            -8.839525557481614e-07,
+            -1.7193430645732795e-06,
+            -0.037582855715353816
+          ],
+          "centroid_original_mm": [
+            8.839525561096448e-07,
+            1.719343064155495e-06,
+            0.037582855715353816
+          ],
+          "singular_values": [
+            115915317.7186691,
+            51794657.8865426,
+            0.0
+          ],
+          "direction_condition_ratio": 0.44683186748666137,
+          "determinant": 1.0000000000000007,
+          "max_edge_length_change_mm": 3.952393967665557e-14
+        },
+        "scan_centroid_original_mm": [
+          -0.00042540385757370956,
+          0.0004218499435342593,
+          0.16974940481046225
+        ]
+      },
+      "parameters": {
+        "gtop": 0.0002707846657674896,
+        "gbot": 3.4596472597085075e-05,
+        "ortho_top": -0.6245194974886215,
+        "ortho_bottom": 0.24900349954284007
+      }
+    },
+    {
+      "name": "run9",
+      "repeat": 33,
+      "length_mm": 187.5,
+      "accepted_scan_points": 14468,
+      "supported_points": 14468,
+      "unsupported_points": 0,
+      "prediction_vertices": 15251,
+      "minimum_projected_triangle_area_mm2": 1.991407375680812,
+      "mean_signed_dz_mm": 0.06411190189456434,
+      "rms_dz_mm": 1.067019394636579,
+      "p95_absolute_dz_mm": 1.9835307249406684,
+      "dz_range_mm": [
+        -3.471572865955982,
+        2.496933860754541
+      ],
+      "scan_height_range_mm": [
+        -5.565340718319909,
+        3.8526754026967667
+      ],
+      "model_height_range_mm": [
+        -3.9017150504874065,
+        2.593323313089751
+      ],
+      "metrics": {
+        "rms_target_to_sim_mm": 1.0652726882649417,
+        "rms_sim_to_target_weighted_mm": 1.6329883777967955,
+        "rms_symmetric_mm": 1.378669094159767,
+        "reference_area_quadrature_rms_mm": 1.6329883777967955,
+        "reference_area_mm2": 60000.0,
+        "p95_target_to_sim_mm": 1.9819431081822798,
+        "max_target_to_sim_mm": 3.466455037696151,
+        "p95_sim_to_target_mm": 2.451361898810587,
+        "max_sim_to_target_mm": 5.566546964950834,
+        "rms_mm": 1.378669094159767,
+        "scoring_method": "material_reference",
+        "shape_scored": true,
+        "simulation_transform": {
+          "row_vector_rotation": [
+            [
+              1.0000000000000002,
+              -2.8112517164960314e-17,
+              3.890958118685133e-16
+            ],
+            [
+              2.8112471082594694e-17,
+              1.0000000000000002,
+              -8.835211457128989e-15
+            ],
+            [
+              -3.890958118685131e-16,
+              8.835211457128989e-15,
+              1.0
+            ]
+          ],
+          "translation_mm": [
+            -1.2209828435354892e-07,
+            -3.2896204415576706e-06,
+            -0.032750702142384944
+          ],
+          "centroid_original_mm": [
+            1.2209828436629197e-07,
+            3.28962044126831e-06,
+            0.032750702142384944
+          ],
+          "singular_values": [
+            115913638.86157072,
+            51798502.998098485,
+            0.0
+          ],
+          "direction_condition_ratio": 0.4468715114703507,
+          "determinant": 1.0000000000000004,
+          "max_edge_length_change_mm": 2.930988785010413e-14
+        },
+        "scan_centroid_original_mm": [
+          0.12000451109910003,
+          -0.2825310831475499,
+          0.42454580174044804
+        ]
+      },
+      "parameters": {
+        "gtop": 0.0002707846657674896,
+        "gbot": 3.4596472597085075e-05,
+        "ortho_top": -0.6245194974886215,
+        "ortho_bottom": 0.24900349954284007
+      }
+    }
+  ],
+  "residual_color_limits_mm": [
+    -3.471572865955982,
+    3.471572865955982
+  ],
+  "views": {
+    "isometric": {
+      "elev_deg": 25,
+      "azim_deg": -55
+    },
+    "end_on_profile": {
+      "elev_deg": 10,
+      "azim_deg": -15
+    },
+    "shape_overlay": {
+      "elev_deg": 25,
+      "azim_deg": -55
+    }
+  },
+  "aspect_ratios": {
+    "run6": [
+      1.0,
+      1.3,
+      0.35
+    ],
+    "run9": [
+      1.0,
+      1.8,
+      0.35
+    ]
+  }
+}

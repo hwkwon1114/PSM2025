@@ -16,6 +16,9 @@
 #include "EnergyOperatorList.hpp"
 #include "TinyADHessian_Bilayer.hpp"
 #include "ShellEquilibriumSolver.hpp"
+#ifdef SHELL_WITH_NATIVE_HYBRID
+#include "NativeHybridShellSolver.hpp"
+#endif
 #include <random>
 #include "ComputeCurvatures.hpp"
 
@@ -1178,6 +1181,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         tVecMat2d& aformsTop =
             mesh.getRestConfiguration()
                 .getFirstFundamentalForms<top>();
+        const tVecMat2d initialAformsBot = aformsBot;
+        const tVecMat2d initialAformsTop = aformsTop;
         const tVecMat2d initialBforms =
             mesh.getRestConfiguration().getSecondFundamentalForms();
 
@@ -1249,10 +1254,14 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             parser.parse<std::string>("-equilibrium_solver", "hlbfgs");
         if(equilibrium_solver != "hlbfgs" &&
            equilibrium_solver != "trust_region" &&
-           equilibrium_solver != "hybrid")
+           equilibrium_solver != "hybrid" && equilibrium_solver != "native_hybrid")
             throw std::runtime_error(
                 "zigzag_sequence: -equilibrium_solver must be 'hlbfgs', "
-                "'trust_region', or 'hybrid'.");
+                "'trust_region', 'hybrid', or 'native_hybrid'.");
+#ifndef SHELL_WITH_NATIVE_HYBRID
+        if(equilibrium_solver == "native_hybrid")
+            throw std::runtime_error("native_hybrid requires ENABLE_NATIVE_HYBRID=ON and CHOLMOD");
+#endif
         const int hybrid_warmup_iters =
             parser.parse<int>("-hybrid_warmup_iters", 1000);
         const Real hybrid_gate_tol =
@@ -1269,6 +1278,95 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
            equilibrium_gradient_tolerance <= 0.0)
             throw std::runtime_error(
                 "zigzag_sequence: -equilibrium_grad_tol must be finite and > 0.");
+        const int hessian_threads =
+            std::max(1, parser.parse<int>("-hessian_threads", 1));
+        zigzag_sequence::json lastNativeReport;
+#ifdef SHELL_WITH_NATIVE_HYBRID
+        auto runNativeHybrid = [&](const Real acceptanceTolerance, const bool isTerminalEndpoint = false)
+        {
+            ShellNativeHybrid::HybridOptions options;
+            options.warmupAttempts = parser.parse<int>("-native_hybrid_warmup_attempts", 2000);
+            options.hessianThreads = hessian_threads;
+            const Real timeoutSeconds = parser.parse<Real>("-native_hybrid_seconds", 3600.0);
+            if(!std::isfinite(timeoutSeconds) || timeoutSeconds <= 0.0)
+                throw std::runtime_error("native_hybrid seconds budget must be finite and positive");
+            options.seconds = timeoutSeconds;
+            const std::string handoff = parser.parse<std::string>("-native_hybrid_handoff", "fixed");
+            if(handoff!="fixed" && handoff!="adaptive")
+                throw std::runtime_error("native_hybrid handoff must be fixed or adaptive");
+            options.handoff.adaptive = handoff=="adaptive";
+            options.handoff.minimumWarmup = parser.parse<int>("-native_hybrid_min_warmup", 50);
+            options.handoff.window = parser.parse<int>("-native_hybrid_window", 20);
+            options.handoff.plateauRatio = parser.parse<Real>("-native_hybrid_plateau_ratio", .90);
+            options.handoff.relativeGradient = parser.parse<Real>("-native_hybrid_relative_gradient", .01);
+            options.handoff.validate();
+            const Real requested = parser.parse<Real>("-native_hybrid_grad_tol", 5e-14);
+            if(!std::isfinite(requested) || requested <= 0 || requested > 1e-13)
+                throw std::runtime_error("native_hybrid gradient target must be finite, positive and <=1e-13");
+            options.gradientTolerance = std::min(requested, acceptanceTolerance);
+            const auto report = ShellNativeHybrid::solveNativeHybridShell(
+                mesh, engOps, E, nu, h_total, options);
+            printf("[native_hybrid] phase=%s live_handoff=%d warmup_attempts=%d total_attempts=%d total_evaluations=%d total_hessians=%d status=%s curvature=%s accepted=%d energy=%.17g gradient=%.17g\n",
+                report.phase.c_str(), int(report.transitioned),
+                report.lbfgsAttempts,
+                report.terminal.attempts, report.evaluations(),
+                report.terminal.hessians + report.verificationHessians,
+                report.terminal.status.c_str(), report.curvature.c_str(), int(report.accepted),
+                report.energy, report.gradientNorm);
+            fflush(stdout);
+            lastNativeReport = report.proof(options.gradientTolerance);
+            std::ofstream nativeProof(tag + "_native_hybrid_proof.jsonl", std::ios::app);
+            report.writeProof(nativeProof, options.gradientTolerance);
+            // Opt-in diagnostic export only: read the selected, independently
+            // checked state without altering optimizer/mesh/acceptance behavior.
+            // Only written once for the final accepted equilibrium endpoint.
+            if(parser.parse<bool>("-native_hybrid_export_state", false) && isTerminalEndpoint && report.accepted)
+            {
+                auto matrixJson = [](const auto& matrix)
+                {
+                    zigzag_sequence::json rows = zigzag_sequence::json::array();
+                    for(int i = 0; i < matrix.rows(); ++i)
+                    {
+                        zigzag_sequence::json row = zigzag_sequence::json::array();
+                        for(int j = 0; j < matrix.cols(); ++j)
+                            row.push_back(matrix(i,j));
+                        rows.push_back(std::move(row));
+                    }
+                    return rows;
+                };
+                auto formsJson = [&](const tVecMat2d& forms)
+                {
+                    zigzag_sequence::json result = zigzag_sequence::json::array();
+                    for(const auto& form : forms) result.push_back(matrixJson(form));
+                    return result;
+                };
+                const std::string statePath = tag + "_native_hybrid_state.json";
+                std::ifstream previous(statePath);
+                if(previous.good())
+                    throw std::runtime_error("Refusing to replace native hybrid state export");
+                zigzag_sequence::json state = {
+                    {"schema_version", 1}, {"units", "metres"},
+                    {"scope", "selected endpoint; diagnostic, not a restart checkpoint"},
+                    {"proof", lastNativeReport},
+                    {"positions", matrixJson(mesh.getCurrentConfiguration().getVertices())},
+                    {"reference_positions", matrixJson(mesh.getRestConfiguration().getVertices())},
+                    {"material_uv", matrixJson(materialCoordinates)},
+                    {"faces", matrixJson(mesh.getTopology().getFace2Vertices())},
+                    {"edges", matrixJson(mesh.getTopology().getEdge2Vertices())},
+                    {"selected_dofs", matrixJson(report.selected)},
+                    {"abar_bottom", formsJson(mesh.getRestConfiguration().template getFirstFundamentalForms<bottom>())},
+                    {"abar_top", formsJson(mesh.getRestConfiguration().template getFirstFundamentalForms<top>())},
+                    {"bbar", formsJson(mesh.getRestConfiguration().getSecondFundamentalForms())},
+                    {"material", {{"young", E}, {"nu", nu}, {"thickness", h_total}}}};
+                std::ofstream stateFile(statePath);
+                if(!stateFile) throw std::runtime_error("Cannot open native hybrid state export");
+                stateFile << state.dump() << '\n';
+                stateFile.close();
+                if(!stateFile) throw std::runtime_error("Failed writing native hybrid state export");
+            }
+            return report;
+        };
+#endif
         const bool adaptive_continuation =
             parser.parse<bool>("-sequence_adaptive", true);
         const Real continuation_initial_step =
@@ -1296,6 +1394,19 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             throw std::runtime_error(
                 "zigzag_sequence: invalid adaptive-continuation controls.");
         ShellEquilibrium::TrustRegionNewtonOptions trustRegionOptions;
+        const std::string trust_newton_backend = parser.parse<std::string>(
+            "-trust_newton_backend", "cg");
+        if(trust_newton_backend != "cg" && trust_newton_backend != "direct")
+            throw std::runtime_error(
+                "zigzag_sequence: -trust_newton_backend must be 'cg' or 'direct'.");
+        trustRegionOptions.backend = trust_newton_backend == "direct"
+            ? ShellEquilibrium::TrustRegionNewtonBackend::SparseDirect
+            : ShellEquilibrium::TrustRegionNewtonBackend::MatrixFreeCG;
+        trustRegionOptions.directPivotFloor = parser.parse<Real>("-direct_pivot_floor", 1e-12);
+        trustRegionOptions.directLinearTolerance = parser.parse<Real>("-direct_linear_tol", 1e-8);
+        trustRegionOptions.directMaxShiftAttempts = parser.parse<int>("-direct_max_shift_attempts", 16);
+        trustRegionOptions.directShiftMultiplier = parser.parse<Real>("-direct_shift_multiplier", 10.0);
+        trustRegionOptions.directSolverThreads = std::max(1, parser.parse<int>("-direct_solver_threads", hessian_threads));
         trustRegionOptions.gradientTolerance = equilibrium_gradient_tolerance;
         trustRegionOptions.maxIterations =
             parser.parse<int>("-trust_max_iterations", 100);
@@ -1311,8 +1422,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             parser.parse<Real>("-trust_director_scale", 1.0);
         trustRegionOptions.cg.maxIterations =
             parser.parse<int>("-trust_cg_max_iterations", 250);
-        const int hessian_threads =
-            std::max(1, parser.parse<int>("-hessian_threads", 1));
         const bool track_sequence_stability =
             parser.parse<bool>("-sequence_stability", false);
         ShellEquilibrium::SmallestRitzPairOptions stabilityOptions;
@@ -1408,10 +1517,14 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     "(x_new = X_current + U).");
             if(prescribed_reeq_solver != "hlbfgs" &&
                prescribed_reeq_solver != "trust_region" &&
-               prescribed_reeq_solver != "hybrid")
+               prescribed_reeq_solver != "hybrid" && prescribed_reeq_solver != "native_hybrid")
                 throw std::runtime_error(
                     "prescribed_deformation: -prescribed_reeq_solver must be "
-                    "'hlbfgs', 'trust_region', or 'hybrid'.");
+                    "'hlbfgs', 'trust_region', 'hybrid', or 'native_hybrid'.");
+#ifndef SHELL_WITH_NATIVE_HYBRID
+            if(prescribed_reeq_solver == "native_hybrid")
+                throw std::runtime_error("native_hybrid requires ENABLE_NATIVE_HYBRID=ON and CHOLMOD");
+#endif
             if(!std::isfinite(prescribed_reeq_grad_tol) ||
                prescribed_reeq_grad_tol <= 0.0)
                 throw std::runtime_error(
@@ -2202,6 +2315,14 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                             prescribed_reeq_grad_tol);
                         energy = engOps.compute(mesh);
                     }
+                    else if(prescribed_reeq_solver == "native_hybrid")
+                    {
+#ifdef SHELL_WITH_NATIVE_HYBRID
+                        const auto report = runNativeHybrid(prescribed_reeq_grad_tol, false);
+                        code = report.code(); iterations = report.iterations(); evaluations = report.evaluations();
+                        gradient = report.gradientNorm; accepted = report.accepted; energy = report.energy;
+#endif
+                    }
                     else if(prescribed_reeq_solver == "hybrid")
                     {
                         int lbfgs_iters = 0;
@@ -2456,8 +2577,12 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         hitsByFace,
                         maxHitsPerFace,
                         op) : 0.0;
-                const tVecMat2d pathStartAformsTop = aformsTop;
-                const tVecMat2d pathStartAformsBot = aformsBot;
+                const tVecMat2d pathStartAformsTop =
+                    (sequence_solve_mode == "final_only" && adaptive_continuation) ?
+                        initialAformsTop : aformsTop;
+                const tVecMat2d pathStartAformsBot =
+                    (sequence_solve_mode == "final_only" && adaptive_continuation) ?
+                        initialAformsBot : aformsBot;
                 const Eigen::VectorXi pathStartPassCount = totalPassCount;
                 const int pathDofCount =
                     3 * mesh.getNumberOfVertices() + mesh.getNumberOfEdges();
@@ -2606,6 +2731,51 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 {
                     TinyADHessian_Bilayer<tMesh> exactHessian(
                         E, nu, h_total, hessian_threads);
+                    const bool verifyHybridOracle = parser.parse<bool>("-hybrid_verify_oracle", false);
+                    const auto verifyOracle = [&](const char *phase)
+                    {
+                        if(!verifyHybridOracle) return;
+                        const int nd = exactHessian.nDofs(mesh);
+                        Eigen::VectorXd independent = Eigen::VectorXd::Zero(nd);
+                        const Real referenceEnergy = engOps.compute(mesh, independent);
+                        const Real energyOnly = engOps.compute(mesh);
+                        const Eigen::VectorXd raw = exactHessian.gradient(mesh);
+                        const auto H = exactHessian.assembleHessian(mesh);
+                        if(!std::isfinite(referenceEnergy) || !std::isfinite(energyOnly) ||
+                           !independent.allFinite() || !raw.allFinite() ||
+                           !Eigen::Map<const Eigen::VectorXd>(mesh.getDataPointer(), nd).allFinite())
+                            throw std::runtime_error("hybrid oracle: nonfinite state, energy or gradient");
+                        Real scale = 0.0, asymmetry = 0.0;
+                        for(int col = 0; col < nd; ++col)
+                        {
+                            bool diagonal = false;
+                            for(Eigen::SparseMatrix<double>::InnerIterator it(H, col); it; ++it)
+                            {
+                                if(!std::isfinite(it.value()))
+                                    throw std::runtime_error("hybrid oracle: nonfinite Hessian");
+                                diagonal = diagonal || it.row() == col;
+                                scale = std::max(scale, std::abs(it.value()));
+                                asymmetry = std::max(asymmetry, std::abs(it.value() - H.coeff(col, it.row())));
+                            }
+                            if(!diagonal) throw std::runtime_error("hybrid oracle: missing Hessian diagonal");
+                        }
+                        const Real gradientError = (raw - independent).norm();
+                        const Real energyError = std::abs(referenceEnergy - energyOnly);
+                        Eigen::VectorXd probe(nd);
+                        for(int i = 0; i < nd; ++i) probe[i] = std::sin(0.37 * (i + 1));
+                        const Eigen::VectorXd hv = exactHessian.hessianVectorProduct(mesh, probe);
+                        const Real hvError = (H * probe - hv).norm();
+                        if(!hv.allFinite() || gradientError > 1e-10 * independent.norm() + 1e-18 ||
+                           energyError > 1e-12 * std::abs(referenceEnergy) + 1e-24 ||
+                           asymmetry > 1e-12 * scale || hvError > 1e-11 * hv.norm() + 1e-18)
+                            throw std::runtime_error("hybrid oracle: operator consistency gate failed");
+                        Eigen::VectorXd projected = raw;
+                        ShellEquilibrium::RigidModeProjector::fromMesh(mesh).applyInPlace(projected);
+                        printf("[hybrid_oracle] phase=%s cycle=%d energy=%.17g raw_g=%.17g projected_g=%.17g gradient_error=%.3e energy_error=%.3e symmetry_error=%.3e hv_error=%.3e PASS\n",
+                            phase, executed_cycle, energyOnly, raw.norm(), projected.norm(),
+                            gradientError, energyError, asymmetry, hvError);
+                        fflush(stdout);
+                    };
                     Real acceptedLambda = 0.0;
                     Real stepSize = adaptive_continuation ?
                         continuation_initial_step : 1.0;
@@ -2621,6 +2791,13 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         const Real trialLambda =
                             std::min<Real>(1.0, acceptedLambda + stepSize);
                         setPathLoad(trialLambda);
+                        if(equilibrium_solver == "native_hybrid" && trialLambda == 1.0)
+                        {
+                            // Qualify the exact final metrics, not a rounded
+                            // start + (end-start) interpolation later replaced.
+                            aformsTop = pathEndAformsTop;
+                            aformsBot = pathEndAformsBot;
+                        }
                         pathState = acceptedState;
                         mesh.updateDeformedConfiguration();
 
@@ -2656,6 +2833,19 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                                 equilibrium_gradient_tolerance);
                             totalEnergy = engOps.compute(mesh);
                         }
+                        else if(equilibrium_solver == "native_hybrid")
+                        {
+#ifdef SHELL_WITH_NATIVE_HYBRID
+                            verifyOracle("before_native_hybrid");
+                            const bool isTerminalEndpoint =
+                                (!use_sequence_bc && executed_cycle == requested_cycles && trialLambda >= 1.0);
+                            const auto report = runNativeHybrid(equilibrium_gradient_tolerance, isTerminalEndpoint);
+                            verifyOracle("after_native_hybrid");
+                            solveCode = report.code(); solveIterations = report.iterations();
+                            solveEvaluations = report.evaluations(); solveGradient = report.gradientNorm;
+                            solveConverged = report.accepted; totalEnergy = report.energy;
+#endif
+                        }
                         else if(equilibrium_solver == "hybrid")
                         {
                             int lbfgs_iters = 0;
@@ -2687,6 +2877,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                                 lbfgs_evals = lastMinimization.evaluations;
                             }
 
+                            verifyOracle("after_warmup");
                             const ShellEquilibrium::TrustRegionNewtonReport
                                 report =
                                     ShellEquilibrium::solveShellEquilibrium(
@@ -2694,6 +2885,13 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                                         engOps,
                                         exactHessian,
                                         trustRegionOptions);
+                            verifyOracle("after_newton");
+                            printf("[hybrid_finish] backend=%s warmup_iters=%d newton_iters=%d accepted=%d rejected=%d assemblies=%d factors=%d final_shift=%.17g status=%s gradient=%.17g\n",
+                                trust_newton_backend.c_str(), lbfgs_iters, report.iterations,
+                                report.acceptedSteps, report.rejectedSteps, report.hessianAssemblies,
+                                report.directFactorizationAttempts, report.diagonalShift,
+                                ShellEquilibrium::toString(report.status), report.gradientNorm);
+                            fflush(stdout);
                             solveCode = static_cast<int>(report.status);
                             solveIterations = lbfgs_iters + report.iterations;
                             solveEvaluations =
@@ -2778,6 +2976,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     solve_records.push_back({{"cycle", executed_cycle},
                         {"return_code", solveCode}, {"reported_eps", solveGradient},
                         {"return_code_available", !use_sequence_bc}});
+                    if(equilibrium_solver == "native_hybrid")
+                        solve_records.back()["native_hybrid"] = lastNativeReport;
                 }
                 else
                 {
@@ -2974,6 +3174,15 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 releaseAccepted = lastMinimization.accepted(
                     equilibrium_gradient_tolerance);
                 releaseEnergy = engOps.compute(mesh);
+            }
+            else if(equilibrium_solver == "native_hybrid")
+            {
+#ifdef SHELL_WITH_NATIVE_HYBRID
+                const auto report = runNativeHybrid(equilibrium_gradient_tolerance, true);
+                releaseCode = report.code(); releaseIterations = report.iterations();
+                releaseEvaluations = report.evaluations(); releaseGradient = report.gradientNorm;
+                releaseAccepted = report.accepted; releaseEnergy = report.energy;
+#endif
             }
             else if(equilibrium_solver == "hybrid")
             {

@@ -31,5 +31,19 @@ def main():
     m={'schema_version':1,'completed':True,'cycles':cycles,'solve_mode':mode,'equilibrium_solves':len(solves),
        'initial_mesh':'initial.vtp','final_mesh':'final.vtp','total_energy':.01,'backend':'hlbfgs','stepwise':False,
        'solves':[{'cycle':c,'return_code':0,'reported_eps':1e-12,'return_code_available':True} for c in solves]}
+    m['backend'] = args.get('-equilibrium_solver', 'hlbfgs')
+    if m['backend'] == 'native_hybrid':
+        for solve in m['solves']:
+            solve['reported_eps'] = 1e-15
+            solve['native_hybrid'] = {'accepted': True, 'termination': 'gradient_target',
+                'phase': 'sparse_newton', 'transitioned': True, 'curvature': 'positive_pivots',
+                'gradient_norm': 1e-15, 'gradient_tolerance': 5e-14, 'energy': .01,
+                'verification_evaluations': 1, 'verification_hessians': 1}
+    if args.get('-native_hybrid_export_state') == 'true' and args.get('-mock_no_export') != 'true':
+        st = {'schema_version': 1, 'units': 'metres', 'reference_positions': p.tolist(),
+              'positions': q.tolist(), 'faces': triangles}
+        if args.get('-mock_corrupt_units') == 'true':
+            st['units'] = 'mm'
+        Path('bilayer_zigzag_sequence_native_hybrid_state.json').write_text(json.dumps(st))
     Path('sequence_result.json').write_text(json.dumps(m));return 0
 if __name__=='__main__':sys.exit(main())

@@ -11,6 +11,19 @@
 
 ---
 
+## Evidence correction — 2026-10-05
+
+Researcher requested rigorous reconstruction of the successful hybrid recipe and evaluation of a rule across toolpaths. The saved-record audit (`python/audit_hybrid_recipe.py`, compute job 8668301, `run/sparse_direct_build/historical_recipe_audit.json`) supersedes the universal handoff claims below; it does not rerun or independently certify endpoints.
+
+- The historical success was **native benchmark L-BFGS, 2,000 live attempts, then scaled fresh-QR restricted CHOLMOD Newton**, optimizing only the fixed final ABC target. Production HLBFGS + projected full shifted Eigen-Newton is a different implementation; cycle-by-cycle continuation is a different search strategy.
+- Job 7654342: positive start accepted in 141.702 s, 75 Newton records, zero shifted records; negative start accepted in 132.886 s, **66** Newton records, **one** shifted record. Native energies are **2.7628811376911087e-11 / 2.7630298005324946e-11**. Both have `positive_pivots` final diagnostics. These are model-normalized energies/residuals, not identified SI material predictions.
+- Job 7724432 (1,500 attempts) also accepted: 162.845 s, 92 Newton records, one shifted, native residual 1.2612818921767034e-17. Thus 2,000 is not an identified necessary boundary.
+- Jobs 7723876 (200) and 7724431 (1,000) have **no terminal result/completion artifact**, and stale `running` ledgers. Their last durable states have 202/89 Newton records, 185/75 shifted records, residuals 3.822760852086322e-11 / 3.2484929378928623e-11. They are incomplete observations, **not converged fits or comparable accepted timing endpoints**. The 200-attempt checkpoint's recorded elapsed is 346.578 s, not the table's 215.4 s. The 1,000-attempt last recorded shift is 3.0160048251843805e-06. Its reported convergence claim is withdrawn.
+- Job 7829108: adaptive handoffs actually occurred at **500 / 800 attempts** for cylinder-x/twist starts; both accepted, 93/83 Newton records, zero shifted records, charged time 161.514/169.158 s. Total Hessian counts 106/108 include curvature probes. These starts share one ABC target: **no across-toolpath generalization or matched advantage over fixed switching is established**.
+- An unshifted positive restricted Hessian at one state does not certify a convex basin, future unshifted steps, quadratic convergence, or global optimality. A prescribed warmup count cannot guarantee any of these. Parallel parity checks do not guarantee unchanged nonlinear branches across all problems (the positive-start branch already differs).
+
+The active reconstruction/evaluation record is `run/sparse_direct_build/verification_summary.md`; the overall objective remains `docs/reports/absolute_gradient_stopping_audit.md`. Historical explanatory sections are retained as context, not qualification or launch authority. Broader gauge/timing claims not independently re-audited here remain historical.
+
 ## 1. Executive Summary
 
 This report documents the performance evaluation, architectural decisions, and production migration of optimization strategies for the bilayer shell equilibrium solver in `libshell`.
@@ -27,7 +40,7 @@ This report documents the performance evaluation, architectural decisions, and p
 | **Charged Wall-Clock Time (Negative Start)** | 245.7 s | 132.9 s | **1.85× end-to-end speedup** |
 | **Floating-Point Determinism (1 vs 2 vs 4 Threads)** | N/A | $\Delta_{\max} = 0.0$ | **Exact bitwise parity** |
 | **Symbolic Factorization Reuse** | Evaluated (150× hit speedup) | **Rejected from Production** | Avoids Newton step inflation (+22.7% steps) |
-| **L-BFGS Transition Threshold** | 200 / 1000 / 1500 / 2000 | **2,000 Attempts Confirmed** | Guarantees strictly convex basin (0 LM shifts) |
+| **L-BFGS Transition Threshold** | 200 / 1000 / 1500 / 2000 | **1,500 and 2,000 accepted on one target** | No universal boundary; see evidence correction |
 
 ---
 
@@ -68,7 +81,7 @@ Full trajectory qualification was conducted on `qnode0020` on two sign-paired no
 | **Hessian Oracle Time** | 125.5 s | **32.1 s** (3.91×) | 106.2 s | **28.1 s** (3.78×) |
 | **Total Charged Wall Time** | 251.8 s | **141.7 s** (1.78×) | 245.7 s | **132.9 s** (1.85×) |
 | **Newton Iterations** | 75 | 75 | 65 | 65 |
-| **Terminal Energy** | -0.048971 | -0.048974 | -0.048962 | -0.048962 |
+| **Terminal Energy (native)** | 2.763029800569301e-11 | 2.7628811376911087e-11 | 2.7630298005558528e-11 | 2.7630298005324946e-11 |
 | **Relative Energy Diff** | — | $-5.38 \times 10^{-5}$ | — | **$-8.45 \times 10^{-12}$** |
 | **RMS Procrustes Discrepancy** | — | 10.3 mm (nearby mode) | — | **0.11 µm** (identical basin) |
 | **Acceptance Status** | `ACCEPTED` | `ACCEPTED` | `ACCEPTED` | `ACCEPTED` |
@@ -152,13 +165,10 @@ Switch @ 1500:  [L-BFGS: 1500] -> [Newton:  92 steps (  1 shifted)] -> Accepted 
 Switch @ 2000:  [L-BFGS: 2000] -> [Newton:  75 steps (  0 shifted)] -> Optimal (141.7s)
 ```
 
-### 4.3 Identification of the Convex Phase Boundary
-The data establishes that **2,000 L-BFGS iterations is the critical phase boundary** for the bilayer SVK shell formulation:
-1. Below 1,500 iterations, the shell is still transitioning through buckling mode bifurcations. The Hessian possesses negative eigenvalues, forcing the optimizer into Levenberg-Marquardt regularized steps that inflate the total iteration count and wall time.
-2. At 2,000 iterations, L-BFGS reliably delivers the configuration into the strictly positive-definite basin ($\lambda_{\min} > 0$).
-3. From this point, Newton's method operates without damping ($\lambda = 0$), achieving asymptotic quadratic convergence to $\le 5 \times 10^{-14}$ N in just 75 iterations, minimizing total charged wall time.
+### 4.3 Scope of the Observed Handoff Result
+The accepted 1,500- and 2,000-attempt results support a useful benchmark recipe on one ABC target, not a critical phase boundary for the formulation. Early incomplete runs exhibit heavy shifting; this is a diagnostic association, not a controlled causal mechanism or a converged timing comparison. The 2,000-attempt negative start still needed one shifted step. Quadratic rate and generalization require separate evidence.
 
-**Recommendation**: Retain **2,000 L-BFGS attempts** as the default handoff threshold in the production solver configuration.
+**Recommendation**: Preserve the 2,000-live-attempt recipe as a matched benchmark comparator. Do not promote it or the current adaptive gate as a universal production handoff rule.
 
 ### 4.4 Adaptive Curvature-Aware Gate Mechanism (`RobustCurvatureGate`)
 While a fixed 2,000-attempt warmup threshold reliably enters the convex basin for the benchmark problem, problem instances with varying geometric scales or eigenstrain magnitudes benefit from an adaptive, curvature-aware handoff mechanism.
@@ -279,7 +289,7 @@ Following independent review by a dedicated code review agent, critical correctn
 | **7721857** | `quest10` | 4 CPUs, 15m | Composed solver qualification gate | `PASSED` (gate verified) |
 | **7722208** | `qnode0018`| 4 CPUs, 45m | Composed 4T + symbolic reuse pilot | `ACCEPTED` (Identified Newton step inflation) |
 | **7723876** | `quest10` | 4 CPUs, 15m | L-BFGS switch sweep (200 attempts) | `STALLED` (185/202 steps shifted, $\lambda \approx 3 \times 10^{-6}$) |
-| **7724431** | `quest10` | 4 CPUs, 15m | L-BFGS switch sweep (1,000 attempts) | `CONVERGED` (75/89 steps shifted, slow creeping) |
+| **7724431** | `quest10` | Historical allocation | L-BFGS switch sweep (1,000 attempts) | `INCOMPLETE` (75/89 recorded steps shifted; no terminal result) |
 | **7724432** | `quest10` | 4 CPUs, 15m | L-BFGS switch sweep (1,500 attempts) | `CONVERGED` (92 steps, 1 shifted step, 162.8s) |
 | **7729969** | `quest10` | 4 CPUs, 5m | Clean `ctest` regression suite | `PASSED` (100% pass rate in 4.98s) |
 | **7739841** | `qnode0124`| 8 CPUs, 5m | Rebuild with `RobustCurvatureGate` unit tests | `PASSED` (Clean zero-warning compilation) |
@@ -307,4 +317,4 @@ Following independent review by a dedicated code review agent, critical correctn
 
 1. **Production Deployment**: Use `bin/shell -hessian_threads 4` for all future production shell simulations. It provides an immediate ~1.8× wall-clock acceleration on standard 4-CPU cluster allocations with guaranteed numerical parity.
 2. **Gauge Architecture**: Retain canonical fresh QR rigid gauge selection. Avoid frozen coordinate-stable pinning in non-convex thin-shell simulations due to Newton step inflation.
-3. **Warmup & Transition Parameterization**: Maintain the 2,000 L-BFGS attempt handoff for standard trajectories, or employ `RobustCurvatureGate` for adaptive switching across variable load regimes. Both strategies ensure optimization transitions strictly within the positive-definite basin, achieving true quadratic Newton convergence.
+3. **Warmup & Transition Parameterization**: Use 2,000 live attempts as the historical benchmark comparator, not a universal threshold. Evaluate curvature-aware switching on matched held-out toolpaths before production promotion. Neither strategy guarantees a convex basin or quadratic convergence.
