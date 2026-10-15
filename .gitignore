@@ -6,6 +6,13 @@ archive/
 package-lock.json
 /*.stl
 
+# AI assistant and agent files
+AGENTS.md
+CLAUDE.md
+.claude/
+.cursor/
+.copilot/
+
 # Ignore the build, lib, doc dirs and run/* scripts
 build
 build_cmake
