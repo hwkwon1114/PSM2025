@@ -31,7 +31,7 @@ def main():
     m={'schema_version':1,'completed':True,'cycles':cycles,'solve_mode':mode,'equilibrium_solves':len(solves),
        'initial_mesh':'initial.vtp','final_mesh':'final.vtp','total_energy':.01,'backend':'hlbfgs','stepwise':False,
        'solves':[{'cycle':c,'return_code':0,'reported_eps':1e-12,'return_code_available':True} for c in solves]}
-    m['backend'] = args.get('-equilibrium_solver', 'hlbfgs')
+    m['backend'] = args.get('-equilibrium_solver', 'native_hybrid')
     if m['backend'] == 'native_hybrid':
         for solve in m['solves']:
             solve['reported_eps'] = 1e-15

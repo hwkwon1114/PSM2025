@@ -26,7 +26,9 @@ public:
         common.supernodal=CHOLMOD_SUPERNODAL;common.final_ll=1;common.final_super=1;
         common.nmethods=1;common.method[0].ordering=CHOLMOD_NATURAL;common.postorder=0;
         common.quick_return_if_not_posdef=1;common.dbound=0;common.useGPU=0;common.print=0;
+#if defined(CHOLMOD_MAIN_VERSION) && (CHOLMOD_MAIN_VERSION >= 4)
         common.nthreads_max=1; // Single linear-solver thread, as in the reference.
+#endif
     }
     ~NativeCholmodFactorization(){if(factor)cholmod_free_factor(&factor,&common);cholmod_finish(&common);}
     NativeCholmodFactorization(const NativeCholmodFactorization&)=delete;

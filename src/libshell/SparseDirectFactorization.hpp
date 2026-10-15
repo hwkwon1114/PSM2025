@@ -93,7 +93,7 @@ namespace ShellEquilibrium
 
         void setThreads(const int threads)
         {
-#ifdef NONCONVEX_WITH_CHOLMOD
+#if defined(NONCONVEX_WITH_CHOLMOD) && defined(CHOLMOD_MAIN_VERSION) && (CHOLMOD_MAIN_VERSION >= 4)
             common_.nthreads_max = std::max(1, threads);
 #else
             (void)threads;

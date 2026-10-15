@@ -1,4 +1,5 @@
 # Ignore the SLURM run workspace (convergence/sensitivity studies, raw outputs)
+.srun_here
 scratch/
 archive/
 .pi/

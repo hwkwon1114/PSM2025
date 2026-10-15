@@ -32,11 +32,25 @@ public:
     void setThreads(int nthreads)
     {
         threads_ = std::max(1, nthreads);
+#if defined(CHOLMOD_MAIN_VERSION) && (CHOLMOD_MAIN_VERSION >= 4)
         common.nthreads_max = threads_;
+#endif
     }
     int threads() const { return threads_; }
-    double chunk() const { return common.chunk; }
-    void setChunk(double c) { common.chunk = c; }
+    double chunk() const {
+#if defined(CHOLMOD_MAIN_VERSION) && (CHOLMOD_MAIN_VERSION >= 4)
+        return common.chunk;
+#else
+        return 0.0;
+#endif
+    }
+    void setChunk(double c) {
+#if defined(CHOLMOD_MAIN_VERSION) && (CHOLMOD_MAIN_VERSION >= 4)
+        common.chunk = c;
+#else
+        (void)c;
+#endif
+    }
     ~CholmodFrozenFactorization(){if(factor)cholmod_free_factor(&factor,&common);cholmod_finish(&common);}
     CholmodFrozenFactorization(const CholmodFrozenFactorization&)=delete;
     CholmodFrozenFactorization& operator=(const CholmodFrozenFactorization&)=delete;

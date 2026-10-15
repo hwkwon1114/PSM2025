@@ -1239,13 +1239,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             return;
         }
 
-        const std::string dump_iters_str =
-            parser.parse<std::string>("-dump_iters", "");
-        const std::vector<int> dump_iters =
-            parse_int_list(dump_iters_str);
-        const int max_iter =
-            parser.parse<int>("-max_iter", -1);
-        const Real eps_init_default = 1e-2;
         const Real tol = parser.parse<Real>("-tol", 1e-12);
         const bool stepwise = parser.parse<bool>("-stepwise", false);
         const bool write_cycle_state =
@@ -1399,35 +1392,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
            continuation_max_retries < 0)
             throw std::runtime_error(
                 "zigzag_sequence: invalid adaptive-continuation controls.");
-        ShellEquilibrium::TrustRegionNewtonOptions trustRegionOptions;
-        const std::string trust_newton_backend = parser.parse<std::string>(
-            "-trust_newton_backend", "cg");
-        if(trust_newton_backend != "cg" && trust_newton_backend != "direct")
-            throw std::runtime_error(
-                "zigzag_sequence: -trust_newton_backend must be 'cg' or 'direct'.");
-        trustRegionOptions.backend = trust_newton_backend == "direct"
-            ? ShellEquilibrium::TrustRegionNewtonBackend::SparseDirect
-            : ShellEquilibrium::TrustRegionNewtonBackend::MatrixFreeCG;
-        trustRegionOptions.directPivotFloor = parser.parse<Real>("-direct_pivot_floor", 1e-12);
-        trustRegionOptions.directLinearTolerance = parser.parse<Real>("-direct_linear_tol", 1e-8);
-        trustRegionOptions.directMaxShiftAttempts = parser.parse<int>("-direct_max_shift_attempts", 16);
-        trustRegionOptions.directShiftMultiplier = parser.parse<Real>("-direct_shift_multiplier", 10.0);
-        trustRegionOptions.directSolverThreads = std::max(1, parser.parse<int>("-direct_solver_threads", hessian_threads));
-        trustRegionOptions.gradientTolerance = equilibrium_gradient_tolerance;
-        trustRegionOptions.maxIterations =
-            parser.parse<int>("-trust_max_iterations", 100);
-        trustRegionOptions.initialTrustRadius =
-            parser.parse<Real>("-trust_initial_radius", 0.25);
-        trustRegionOptions.maxTrustRadius =
-            parser.parse<Real>("-trust_max_radius", 4.0);
-        trustRegionOptions.minTrustRadius =
-            parser.parse<Real>("-trust_min_radius", 1e-8);
-        trustRegionOptions.vertexLengthScale =
-            parser.parse<Real>("-trust_vertex_scale", h_total);
-        trustRegionOptions.directorAngleScale =
-            parser.parse<Real>("-trust_director_scale", 1.0);
-        trustRegionOptions.cg.maxIterations =
-            parser.parse<int>("-trust_cg_max_iterations", 250);
         const bool track_sequence_stability =
             parser.parse<bool>("-sequence_stability", false);
         ShellEquilibrium::SmallestRitzPairOptions stabilityOptions;
