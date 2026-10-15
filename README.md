@@ -9,7 +9,7 @@ This repository contains the C++ discrete differential geometry shell solver, Ba
 ## Overview
 
 We model the plastic deformation induced by an English wheel / sequential roller toolpath as an anisotropic bilayer eigenstrain shell problem. The repository provides:
-1. **High-Performance C++ Mechanics Solver**: A discrete differential geometry shell formulation using a native hybrid L-BFGS warmup + exact Newton optimizer with positive-definite Cholesky factorizations (CHOLMOD/SuiteSparse) terminating at machine precision ($1.5 \times 10^{-14}$ gradient norm).
+1. **High-Performance C++ Mechanics Solver**: A discrete differential geometry shell formulation using the native hybrid L-BFGS warmup + exact Newton optimizer with positive-definite Cholesky factorizations (CHOLMOD/SuiteSparse) terminating at machine precision ($1.5 \times 10^{-14}$ gradient norm). Legacy solver branches have been pruned to streamline future temporal growth modeling.
 2. **Bayesian Optimization Framework**: A 4-parameter anisotropic growth law ($g_{\text{top}}, g_{\text{bottom}}, \text{ortho}_{\text{top}}, \text{ortho}_{\text{bottom}}$) calibrated against 3D optical scans of formed sheet metal (Run 6) with held-out generalization to different toolpaths (Run 9).
 3. **Rigorous Geometric Loss**: Material-frame rigid alignment ($SO(3)$ Kabsch) and discrete shell dual-area Voronoi quadrature weighting ($L_{\text{sym}}$).
 4. **Reproducibility Suite**: One-click scripts and interactive Jupyter notebooks reproducing all paper figures and quantitative benchmarks.
@@ -42,7 +42,7 @@ This generates:
 - `./bin/sim_bilayer_growth`: Production CLI for bilayer sequence simulations.
 
 ### Running C++ Unit Tests
-Run the complete C++ test suite (99 passing tests across 36 suites):
+Run the complete C++ test suite (96 passing tests across 35 suites):
 ```bash
 ./bin/testshell
 ```

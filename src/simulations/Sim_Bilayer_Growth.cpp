@@ -1251,16 +1251,22 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         const bool write_cycle_state =
             parser.parse<bool>("-cycle_write_state", false);
         const std::string equilibrium_solver =
-            parser.parse<std::string>("-equilibrium_solver", "hlbfgs");
-        if(equilibrium_solver != "hlbfgs" &&
-           equilibrium_solver != "trust_region" &&
-           equilibrium_solver != "hybrid" && equilibrium_solver != "native_hybrid")
+            parser.parse<std::string>("-equilibrium_solver", "native_hybrid");
+        if(equilibrium_solver != "native_hybrid")
+        {
+            if(equilibrium_solver == "hlbfgs" ||
+               equilibrium_solver == "trust_region" ||
+               equilibrium_solver == "hybrid")
+            {
+                throw std::runtime_error(
+                    "zigzag_sequence: legacy solver '" + equilibrium_solver +
+                    "' has been removed. Only 'native_hybrid' is supported.");
+            }
             throw std::runtime_error(
-                "zigzag_sequence: -equilibrium_solver must be 'hlbfgs', "
-                "'trust_region', 'hybrid', or 'native_hybrid'.");
+                "zigzag_sequence: -equilibrium_solver must be 'native_hybrid'.");
+        }
 #ifndef SHELL_WITH_NATIVE_HYBRID
-        if(equilibrium_solver == "native_hybrid")
-            throw std::runtime_error("native_hybrid requires ENABLE_NATIVE_HYBRID=ON and CHOLMOD");
+        throw std::runtime_error("native_hybrid requires ENABLE_NATIVE_HYBRID=ON and CHOLMOD");
 #endif
         const int hybrid_warmup_iters =
             parser.parse<int>("-hybrid_warmup_iters", 1000);
@@ -1515,15 +1521,21 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     "prescribed_deformation: -prescribed_reference must be "
                     "'rest' (x_new = X_rest + U) or 'current' "
                     "(x_new = X_current + U).");
-            if(prescribed_reeq_solver != "hlbfgs" &&
-               prescribed_reeq_solver != "trust_region" &&
-               prescribed_reeq_solver != "hybrid" && prescribed_reeq_solver != "native_hybrid")
+            if(prescribed_reeq_solver != "native_hybrid")
+            {
+                if(prescribed_reeq_solver == "hlbfgs" ||
+                   prescribed_reeq_solver == "trust_region" ||
+                   prescribed_reeq_solver == "hybrid")
+                {
+                    throw std::runtime_error(
+                        "prescribed_deformation: legacy solver '" + prescribed_reeq_solver +
+                        "' has been removed. Only 'native_hybrid' is supported.");
+                }
                 throw std::runtime_error(
-                    "prescribed_deformation: -prescribed_reeq_solver must be "
-                    "'hlbfgs', 'trust_region', 'hybrid', or 'native_hybrid'.");
+                    "prescribed_deformation: -prescribed_reeq_solver must be 'native_hybrid'.");
+            }
 #ifndef SHELL_WITH_NATIVE_HYBRID
-            if(prescribed_reeq_solver == "native_hybrid")
-                throw std::runtime_error("native_hybrid requires ENABLE_NATIVE_HYBRID=ON and CHOLMOD");
+            throw std::runtime_error("native_hybrid requires ENABLE_NATIVE_HYBRID=ON and CHOLMOD");
 #endif
             if(!std::isfinite(prescribed_reeq_grad_tol) ||
                prescribed_reeq_grad_tol <= 0.0)
@@ -2287,114 +2299,15 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     bool accepted = false;
                     Real energy = std::numeric_limits<Real>::quiet_NaN();
 
-                    if(prescribed_reeq_solver == "hlbfgs")
-                    {
-                        Real eps_reeq = eps_init_default;
-                        if(use_sequence_bc)
-                            minimizeEnergyReduced(
-                                engOps,
-                                eps_reeq,
-                                tol,
-                                stepwise,
-                                nullptr,
-                                max_iter);
-                        else
-                            minimizeEnergy(
-                                engOps,
-                                eps_reeq,
-                                tol,
-                                stepwise,
-                                nullptr,
-                                max_iter);
-                        mesh.updateDeformedConfiguration();
-                        code = lastMinimization.code;
-                        iterations = lastMinimization.iterations;
-                        evaluations = lastMinimization.evaluations;
-                        gradient = lastMinimization.gradientNorm;
-                        accepted = lastMinimization.accepted(
-                            prescribed_reeq_grad_tol);
-                        energy = engOps.compute(mesh);
-                    }
-                    else if(prescribed_reeq_solver == "native_hybrid")
-                    {
 #ifdef SHELL_WITH_NATIVE_HYBRID
-                        const auto report = runNativeHybrid(prescribed_reeq_grad_tol, false);
-                        code = report.code(); iterations = report.iterations(); evaluations = report.evaluations();
-                        gradient = report.gradientNorm; accepted = report.accepted; energy = report.energy;
+                    const auto report = runNativeHybrid(prescribed_reeq_grad_tol, false);
+                    code = report.code();
+                    iterations = report.iterations();
+                    evaluations = report.evaluations();
+                    gradient = report.gradientNorm;
+                    accepted = report.accepted;
+                    energy = report.energy;
 #endif
-                    }
-                    else if(prescribed_reeq_solver == "hybrid")
-                    {
-                        int lbfgs_iters = 0;
-                        int lbfgs_evals = 0;
-                        if(hybrid_warmup_iters > 0)
-                        {
-                            Real eps_reeq = eps_init_default;
-                            if(use_sequence_bc)
-                                minimizeEnergyReduced(
-                                    engOps,
-                                    eps_reeq,
-                                    hybrid_gate_tol,
-                                    false,
-                                    nullptr,
-                                    hybrid_warmup_iters);
-                            else
-                                minimizeEnergy(
-                                    engOps,
-                                    eps_reeq,
-                                    hybrid_gate_tol,
-                                    false,
-                                    nullptr,
-                                    hybrid_warmup_iters);
-                            mesh.updateDeformedConfiguration();
-                            lbfgs_iters = lastMinimization.iterations;
-                            lbfgs_evals = lastMinimization.evaluations;
-                        }
-
-                        TinyADHessian_Bilayer<tMesh> reeqHessian(
-                            E, nu, h_total, hessian_threads);
-                        ShellEquilibrium::TrustRegionNewtonOptions reeqOptions =
-                            trustRegionOptions;
-                        reeqOptions.gradientTolerance =
-                            prescribed_reeq_grad_tol;
-                        const ShellEquilibrium::TrustRegionNewtonReport report =
-                            ShellEquilibrium::solveShellEquilibrium(
-                                mesh,
-                                engOps,
-                                reeqHessian,
-                                reeqOptions);
-                        code = static_cast<int>(report.status);
-                        iterations = lbfgs_iters + report.iterations;
-                        evaluations =
-                            lbfgs_evals + report.energyEvaluations +
-                            report.gradientEvaluations;
-                        gradient = report.gradientNorm;
-                        accepted = report.accepted;
-                        energy = report.energy;
-                    }
-                    else
-                    {
-                        TinyADHessian_Bilayer<tMesh> reeqHessian(
-                            E, nu, h_total, hessian_threads);
-                        ShellEquilibrium::TrustRegionNewtonOptions reeqOptions =
-                            trustRegionOptions;
-                        reeqOptions.gradientTolerance =
-                            prescribed_reeq_grad_tol;
-                        const ShellEquilibrium::TrustRegionNewtonReport report =
-                            ShellEquilibrium::solveShellEquilibrium(
-                                mesh,
-                                engOps,
-                                reeqHessian,
-                                reeqOptions);
-                        code = static_cast<int>(report.status);
-                        iterations = report.iterations;
-                        evaluations =
-                            report.energyEvaluations +
-                            report.gradientEvaluations;
-                        gradient = report.gradientNorm;
-                        accepted = report.accepted;
-                        energy = report.energy;
-                    }
 
                     convergenceSummary
                         << boundary_cycle << ",1,prescribed_reeq,1,1,1,0,0,"
@@ -2801,124 +2714,20 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         pathState = acceptedState;
                         mesh.updateDeformedConfiguration();
 
-                        if(equilibrium_solver == "hlbfgs")
-                        {
-                            Real eps_cycle = eps_init_default;
-                            const std::vector<int>* trialDumps =
-                                adaptive_continuation ? nullptr :
-                                (dump_iters.empty() ? nullptr : &dump_iters);
-                            if(use_sequence_bc)
-                                minimizeEnergyReduced(
-                                    engOps,
-                                    eps_cycle,
-                                    tol,
-                                    stepwise,
-                                    trialDumps,
-                                    max_iter);
-                            else
-                                minimizeEnergy(
-                                    engOps,
-                                    eps_cycle,
-                                    tol,
-                                    stepwise,
-                                    trialDumps,
-                                    max_iter);
-                            mesh.updateDeformedConfiguration();
-
-                            solveCode = lastMinimization.code;
-                            solveIterations = lastMinimization.iterations;
-                            solveEvaluations = lastMinimization.evaluations;
-                            solveGradient = lastMinimization.gradientNorm;
-                            solveConverged = lastMinimization.accepted(
-                                equilibrium_gradient_tolerance);
-                            totalEnergy = engOps.compute(mesh);
-                        }
-                        else if(equilibrium_solver == "native_hybrid")
-                        {
 #ifdef SHELL_WITH_NATIVE_HYBRID
-                            verifyOracle("before_native_hybrid");
-                            const bool isTerminalEndpoint =
-                                (!use_sequence_bc && executed_cycle == requested_cycles && trialLambda >= 1.0);
-                            const auto report = runNativeHybrid(equilibrium_gradient_tolerance, isTerminalEndpoint);
-                            verifyOracle("after_native_hybrid");
-                            solveCode = report.code(); solveIterations = report.iterations();
-                            solveEvaluations = report.evaluations(); solveGradient = report.gradientNorm;
-                            solveConverged = report.accepted; totalEnergy = report.energy;
+                        verifyOracle("before_native_hybrid");
+                        const bool isTerminalEndpoint =
+                            (!use_sequence_bc && executed_cycle == requested_cycles && trialLambda >= 1.0);
+                        const auto report = runNativeHybrid(equilibrium_gradient_tolerance, isTerminalEndpoint);
+                        verifyOracle("after_native_hybrid");
+                        solveCode = report.code();
+                        solveIterations = report.iterations();
+                        solveEvaluations = report.evaluations();
+                        solveGradient = report.gradientNorm;
+                        solveConverged = report.accepted;
+                        totalEnergy = report.energy;
 #endif
-                        }
-                        else if(equilibrium_solver == "hybrid")
-                        {
-                            int lbfgs_iters = 0;
-                            int lbfgs_evals = 0;
-                            if(hybrid_warmup_iters > 0)
-                            {
-                                Real eps_cycle = eps_init_default;
-                                const std::vector<int>* trialDumps =
-                                    adaptive_continuation ? nullptr :
-                                    (dump_iters.empty() ? nullptr : &dump_iters);
-                                if(use_sequence_bc)
-                                    minimizeEnergyReduced(
-                                        engOps,
-                                        eps_cycle,
-                                        hybrid_gate_tol,
-                                        false,
-                                        trialDumps,
-                                        hybrid_warmup_iters);
-                                else
-                                    minimizeEnergy(
-                                        engOps,
-                                        eps_cycle,
-                                        hybrid_gate_tol,
-                                        false,
-                                        trialDumps,
-                                        hybrid_warmup_iters);
-                                mesh.updateDeformedConfiguration();
-                                lbfgs_iters = lastMinimization.iterations;
-                                lbfgs_evals = lastMinimization.evaluations;
-                            }
 
-                            verifyOracle("after_warmup");
-                            const ShellEquilibrium::TrustRegionNewtonReport
-                                report =
-                                    ShellEquilibrium::solveShellEquilibrium(
-                                        mesh,
-                                        engOps,
-                                        exactHessian,
-                                        trustRegionOptions);
-                            verifyOracle("after_newton");
-                            printf("[hybrid_finish] backend=%s warmup_iters=%d newton_iters=%d accepted=%d rejected=%d assemblies=%d factors=%d final_shift=%.17g status=%s gradient=%.17g\n",
-                                trust_newton_backend.c_str(), lbfgs_iters, report.iterations,
-                                report.acceptedSteps, report.rejectedSteps, report.hessianAssemblies,
-                                report.directFactorizationAttempts, report.diagonalShift,
-                                ShellEquilibrium::toString(report.status), report.gradientNorm);
-                            fflush(stdout);
-                            solveCode = static_cast<int>(report.status);
-                            solveIterations = lbfgs_iters + report.iterations;
-                            solveEvaluations =
-                                lbfgs_evals + report.energyEvaluations +
-                                report.gradientEvaluations;
-                            solveGradient = report.gradientNorm;
-                            solveConverged = report.accepted;
-                            totalEnergy = report.energy;
-                        }
-                        else
-                        {
-                            const ShellEquilibrium::TrustRegionNewtonReport
-                                report =
-                                    ShellEquilibrium::solveShellEquilibrium(
-                                        mesh,
-                                        engOps,
-                                        exactHessian,
-                                        trustRegionOptions);
-                            solveCode = static_cast<int>(report.status);
-                            solveIterations = report.iterations;
-                            solveEvaluations =
-                                report.energyEvaluations +
-                                report.gradientEvaluations;
-                            solveGradient = report.gradientNorm;
-                            solveConverged = report.accepted;
-                            totalEnergy = report.energy;
-                        }
                         convergenceSummary
                             << executed_cycle << ",1,physical,"
                             << attempt << ","
@@ -3156,82 +2965,17 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             Real releaseGradient = std::numeric_limits<Real>::quiet_NaN();
             bool releaseAccepted = false;
             Real releaseEnergy = std::numeric_limits<Real>::quiet_NaN();
-            if(equilibrium_solver == "hlbfgs")
-            {
-                Real eps_release = eps_init_default;
-                minimizeEnergyReduced(
-                    engOps,
-                    eps_release,
-                    tol,
-                    stepwise,
-                    (dump_iters.empty() ? nullptr : &dump_iters),
-                    max_iter);
-                mesh.updateDeformedConfiguration();
-                releaseCode = lastMinimization.code;
-                releaseIterations = lastMinimization.iterations;
-                releaseEvaluations = lastMinimization.evaluations;
-                releaseGradient = lastMinimization.gradientNorm;
-                releaseAccepted = lastMinimization.accepted(
-                    equilibrium_gradient_tolerance);
-                releaseEnergy = engOps.compute(mesh);
-            }
-            else if(equilibrium_solver == "native_hybrid")
-            {
-#ifdef SHELL_WITH_NATIVE_HYBRID
-                const auto report = runNativeHybrid(equilibrium_gradient_tolerance, true);
-                releaseCode = report.code(); releaseIterations = report.iterations();
-                releaseEvaluations = report.evaluations(); releaseGradient = report.gradientNorm;
-                releaseAccepted = report.accepted; releaseEnergy = report.energy;
-#endif
-            }
-            else if(equilibrium_solver == "hybrid")
-            {
-                int lbfgs_iters = 0;
-                int lbfgs_evals = 0;
-                if(hybrid_warmup_iters > 0)
-                {
-                    Real eps_release = eps_init_default;
-                    minimizeEnergyReduced(
-                        engOps,
-                        eps_release,
-                        hybrid_gate_tol,
-                        false,
-                        (dump_iters.empty() ? nullptr : &dump_iters),
-                        hybrid_warmup_iters);
-                    mesh.updateDeformedConfiguration();
-                    lbfgs_iters = lastMinimization.iterations;
-                    lbfgs_evals = lastMinimization.evaluations;
-                }
 
-                TinyADHessian_Bilayer<tMesh> releaseHessian(
-                    E, nu, h_total, hessian_threads);
-                const ShellEquilibrium::TrustRegionNewtonReport report =
-                    ShellEquilibrium::solveShellEquilibrium(
-                        mesh, engOps, releaseHessian, trustRegionOptions);
-                releaseCode = static_cast<int>(report.status);
-                releaseIterations = lbfgs_iters + report.iterations;
-                releaseEvaluations =
-                    lbfgs_evals + report.energyEvaluations +
-                    report.gradientEvaluations;
-                releaseGradient = report.gradientNorm;
-                releaseAccepted = report.accepted;
-                releaseEnergy = report.energy;
-            }
-            else
-            {
-                TinyADHessian_Bilayer<tMesh> releaseHessian(
-                    E, nu, h_total, hessian_threads);
-                const ShellEquilibrium::TrustRegionNewtonReport report =
-                    ShellEquilibrium::solveShellEquilibrium(
-                        mesh, engOps, releaseHessian, trustRegionOptions);
-                releaseCode = static_cast<int>(report.status);
-                releaseIterations = report.iterations;
-                releaseEvaluations =
-                    report.energyEvaluations + report.gradientEvaluations;
-                releaseGradient = report.gradientNorm;
-                releaseAccepted = report.accepted;
-                releaseEnergy = report.energy;
-            }
+#ifdef SHELL_WITH_NATIVE_HYBRID
+            const auto report = runNativeHybrid(equilibrium_gradient_tolerance, true);
+            releaseCode = report.code();
+            releaseIterations = report.iterations();
+            releaseEvaluations = report.evaluations();
+            releaseGradient = report.gradientNorm;
+            releaseAccepted = report.accepted;
+            releaseEnergy = report.energy;
+#endif
+
             convergenceSummary
                 << executed_cycle << ",1,release,1,1,1,0,0,"
                 << equilibrium_solver << ","
@@ -3475,11 +3219,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             std::string backend = equilibrium_solver;
             if(backend.empty())
             {
-#if defined(USELIBLBFGS)
-                backend = "liblbfgs";
-#elif defined(USEHLBFGS)
-                backend = "hlbfgs";
-#endif
+                backend = "native_hybrid";
             }
             zigzag_sequence::json result = {
                 {"schema_version", 1}, {"completed", true},
