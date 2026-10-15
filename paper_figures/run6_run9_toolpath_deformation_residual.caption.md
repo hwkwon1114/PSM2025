@@ -1,4 +1,4 @@
-# Attempt 153 (optimal expanded BO calibration on Run 6 and validated transfer to Run 9)
+# Attempt 209 (global optimal expanded BO calibration on Run 6 and validated transfer to Run 9)
 
 Top row: Run 6; bottom row: Run 9.
 - **(a, d) Toolpath and experimental surface**: Nominal CSV toolpath overlaid on experimental scan height ($z$ coordinate); stars indicate nominal start positions.
@@ -7,16 +7,16 @@ Top row: Run 6; bottom row: Run 9.
 
 ## Quantitative Residual Summary
 - **Run 6** (14504 points, 14504 supported):
-  - Height residual RMS: 0.6547 mm (mean: 0.0720 mm, 95th percentile $|\Delta z|$: 1.2318 mm)
-  - BO symmetric surface distance metric: 1.185083 mm
+  - Height residual RMS: 0.6512 mm (mean: 0.0726 mm, 95th percentile $|\Delta z|$: 1.2289 mm)
+  - BO symmetric surface distance metric: 1.182314 mm
 - **Run 9** (14468 points, 14468 supported):
-  - Height residual RMS: 1.0670 mm (mean: 0.0641 mm, 95th percentile $|\Delta z|$: 1.9835 mm)
-  - Transfer symmetric surface distance metric: 1.378669 mm
+  - Height residual RMS: 1.0599 mm (mean: 0.0660 mm, 95th percentile $|\Delta z|$: 1.9925 mm)
+  - Transfer symmetric surface distance metric: 1.372516 mm
 
 ## Parameters
-- $g_{\text{top}}$: 0.0002707846657674896
-- $g_{\text{bot}}$: 3.4596472597085075e-05
-- $\text{ortho}_{\text{top}}$: -0.6245194974886215
-- $\text{ortho}_{\text{bot}}$: 0.24900349954284007
+- $g_{\text{top}}$: 0.00028835116227798787
+- $g_{\text{bot}}$: 1.4587994001079146e-05
+- $\text{ortho}_{\text{top}}$: -0.3989157893255133
+- $\text{ortho}_{\text{bot}}$: 0.960306323937336
 
-*Reproduction*: `python calibration/analysis/run6_run9_six_panel.py --attempt 153`.
+*Reproduction*: `python calibration/analysis/run6_run9_six_panel.py --attempt 209`.

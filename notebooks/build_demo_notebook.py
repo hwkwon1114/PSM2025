@@ -68,7 +68,7 @@ def build_notebook():
 ### Overview
 This interactive notebook demonstrates the publication deliverables for the **PSM2025-zigzag** project:
 1. **Mechanical Problem**: Modeling plastic deformation induced by an English wheel / sequential roller toolpath via an anisotropic bilayer eigenstrain shell formulation.
-2. **Global Optimal Parameters**: The 4-parameter growth law ($g_{\\text{top}}, g_{\\text{bottom}}, \\text{ortho}_{\\text{top}}, \\text{ortho}_{\\text{bottom}}$) calibrated on **Run 6** via Bayesian Optimization (Attempt 153).
+2. **Global Optimal Parameters**: The 4-parameter growth law ($g_{\\text{top}}, g_{\\text{bottom}}, \\text{ortho}_{\\text{top}}, \\text{ortho}_{\\text{bottom}}$) calibrated on **Run 6** via Bayesian Optimization (Attempt 209).
 3. **Rigorous Metric**: Material-frame rigid alignment ($SO(3)$ Kabsch) and reference dual-area weighted symmetric distance ($L_{\\text{sym}}$).
 4. **Independent Validation**: Forward transfer to **Run 9** without parameter tuning.
 5. **Visualizations**: 2D toolpath/deformation profiles and 3D spatial isometric warpage.
@@ -94,19 +94,19 @@ print("Modules imported successfully.")"""
 
     # Cell 2: Markdown on Optimal Parameters
     cells.append(make_markdown_cell("""
-## 1. Optimal Calibrated Parameters (Attempt 153)
+## 1. Optimal Calibrated Parameters (Attempt 209)
 The 4-dimensional optimization space governs the differential growth tensor across the bilayer shell:
 - **$g_{\\text{top}}$**: Magnitude of in-plane growth in the top layer.
 - **$g_{\\text{bottom}}$**: Magnitude of in-plane growth in the bottom layer.
 - **$\\text{ortho}_{\\text{top}}$**: Orthotropy ratio of the top layer (longitudinal vs transverse).
 - **$\\text{ortho}_{\\text{bottom}}$**: Orthotropy ratio of the bottom layer.
 
-Below, we load the verified optimization results from `Attempt 153` and inspect the parameters.
+Below, we load the verified optimization results from `Attempt 209` and inspect the parameters.
 """))
 
     # Cell 3: Code loading parameters
-    c3_code = """r6_path = REPO_ROOT / "run/run6_expanded_bo/evaluations/attempt_0153/result.json"
-r9_path = REPO_ROOT / "run/run9_transfer_expanded/evaluations/attempt_9901/result.json"
+    c3_code = """r6_path = REPO_ROOT / "run/run6_expanded_bo_continue20_recovery/evaluations/attempt_0209/result.json"
+r9_path = REPO_ROOT / "run/run9_transfer_expanded/evaluations/attempt_0209/result.json"
 
 with open(r6_path) as f:
     r6_data = json.load(f)
@@ -117,15 +117,15 @@ params = r6_data["parameters"]
 df_params = pd.DataFrame([
     {"Parameter": "Growth Top (g_top)", "Value": f"{params['gtop']:.6e}", "Physical Role": "Top layer longitudinal expansion"},
     {"Parameter": "Growth Bottom (g_bot)", "Value": f"{params['gbot']:.6e}", "Physical Role": "Bottom layer expansion"},
-    {"Parameter": "Orthotropy Top", "Value": f"{params['ortho_top']:.4f}", "Physical Role": "Strong directional anisotropy"},
+    {"Parameter": "Orthotropy Top", "Value": f"{params['ortho_top']:.4f}", "Physical Role": "Directional anisotropy"},
     {"Parameter": "Orthotropy Bottom", "Value": f"{params['ortho_bottom']:.4f}", "Physical Role": "Transverse Poisson-like coupling"}
 ])
 df_params"""
     c3_out = [make_text_output("""               Parameter          Value                         Physical Role
-0      Growth Top (g_top)   2.707847e-04      Top layer longitudinal expansion
-1   Growth Bottom (g_bot)   3.459647e-05                Bottom layer expansion
-2          Orthotropy Top        -0.6245          Strong directional anisotropy
-3        Orthotropy Bottom         0.2490    Transverse Poisson-like coupling""")]
+0      Growth Top (g_top)   2.883512e-04      Top layer longitudinal expansion
+1   Growth Bottom (g_bot)   1.458799e-05                Bottom layer expansion
+2          Orthotropy Top        -0.3989                Directional anisotropy
+3        Orthotropy Bottom         0.9603    Transverse Poisson-like coupling""")]
     cells.append(make_code_cell(c3_code, c3_out))
 
     # Cell 4: Markdown on Metrics
@@ -163,8 +163,8 @@ df_metrics = pd.DataFrame([
 ])
 df_metrics"""
     c5_out = [make_text_output("""                          Dataset  Passes  Symmetric RMS (mm)  Forward RMS (mm)  Backward RMS (mm)  P95 Error (mm)
-0     Run 6 (Calibration Target)      29              1.1851            0.6532             1.5434          1.2290
-1  Run 9 (Independent Validation)      33              1.3787            1.0653             1.6330          1.9819""")]
+0     Run 6 (Calibration Target)      29              1.1823            0.6497             1.5406          1.2264
+1  Run 9 (Independent Validation)      33              1.3725            1.0582             1.6272          1.9907""")]
     cells.append(make_code_cell(c5_code, c5_out))
 
     # Cell 6: Markdown on 2D Figure
@@ -200,8 +200,8 @@ display(Image(filename=str(fig_3d_path), width=900))"""
     # Cell 10: Conclusion
     cells.append(make_markdown_cell("""
 ## 5. Summary & Key Findings
-1. **Model Fidelity**: Calibrating the 4-parameter anisotropic bilayer model yields a **$1.185\\text{ mm}$ symmetric RMS** on the training sheet (Run 6, $130 \\times 130\\text{ mm}$ span).
-2. **Predictive Generalization**: Transferring the identical parameters to an independent sheet with a different toolpath density (Run 9, 33 passes) yields **$1.378\\text{ mm}$ symmetric RMS** without any recalibration.
+1. **Model Fidelity**: Calibrating the 4-parameter anisotropic bilayer model yields a **$1.182\\text{ mm}$ symmetric RMS** on the training sheet (Run 6, $130 \\times 130\\text{ mm}$ span).
+2. **Predictive Generalization**: Transferring the identical parameters to an independent sheet with a different toolpath density (Run 9, 33 passes) yields **$1.373\\text{ mm}$ symmetric RMS** without any recalibration.
 3. **Numerical Robustness**: The C++ native hybrid solver converged to machine precision ($1.5 \\times 10^{-14}$) across all forming cycles with exact Hessian factorizations.
 """))
 

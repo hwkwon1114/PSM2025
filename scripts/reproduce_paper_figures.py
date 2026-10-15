@@ -12,7 +12,7 @@ Reproduces:
 3. Comprehensive Quantitative Error Metrics (Dual-area weighted symmetric loss)
 
 Usage:
-  python scripts/reproduce_paper_figures.py [--attempt 153] [--out-dir paper_figures] [--force]
+  python scripts/reproduce_paper_figures.py [--attempt 209] [--out-dir paper_figures] [--force]
 """
 
 import argparse
@@ -38,33 +38,33 @@ def run_figure_generation(attempt: int, out_dir: Path, force: bool = False):
 
     # 1. Generate 2D Six-Panel Toolpath & Deformation Figure
     print("\n[1/2] Generating 2D Toolpath & Height Residual Six-Panel Figure...")
-    cmd_6panel = [
-        python_exe,
-        str(REPO_ROOT / "calibration/analysis/run6_run9_six_panel.py"),
-        "--attempt", str(attempt),
-        "--out-dir", str(out_dir),
-    ]
-    if force:
-        cmd_6panel.append("--force")
-    
-    res_6p = subprocess.run(cmd_6panel, capture_output=True, text=True)
-    if res_6p.returncode != 0:
-        print(f"ERROR generating six-panel figure:\n{res_6p.stderr}", file=sys.stderr)
-        sys.exit(res_6p.returncode)
+    from calibration.analysis.run6_run9_six_panel import main as main_6p
+    saved_argv = list(sys.argv)
+    try:
+        sys.argv = [
+            "run6_run9_six_panel.py",
+            "--attempt", str(attempt),
+            "--out-dir", str(out_dir),
+        ]
+        if force:
+            sys.argv.append("--force")
+        main_6p()
+    finally:
+        sys.argv = saved_argv
     print("  -> Successfully generated run6_run9_toolpath_deformation_residual.png / .pdf")
 
     # 2. Generate 3D Comparison Figure
     print("\n[2/2] Generating 3D Isometric & Profile Comparison Figure...")
-    cmd_3d = [
-        python_exe,
-        str(REPO_ROOT / "calibration/analysis/run6_run9_3d_comparison.py"),
-        "--attempt", str(attempt),
-        "--out-dir", str(out_dir),
-    ]
-    res_3d = subprocess.run(cmd_3d, capture_output=True, text=True)
-    if res_3d.returncode != 0:
-        print(f"ERROR generating 3D comparison figure:\n{res_3d.stderr}", file=sys.stderr)
-        sys.exit(res_3d.returncode)
+    from calibration.analysis.run6_run9_3d_comparison import main as main_3d
+    try:
+        sys.argv = [
+            "run6_run9_3d_comparison.py",
+            "--attempt", str(attempt),
+            "--out-dir", str(out_dir),
+        ]
+        main_3d()
+    finally:
+        sys.argv = saved_argv
     print("  -> Successfully generated run6_run9_3d_deformation_residual.png / .pdf")
 
     # 3. Verify Generated Outputs
@@ -84,8 +84,12 @@ def run_figure_generation(attempt: int, out_dir: Path, force: bool = False):
         sys.exit(1)
 
     # 4. Print Quantitative Reproduction Summary
-    r6_res_file = REPO_ROOT / "run/run6_expanded_bo/evaluations/attempt_0153/result.json"
-    r9_res_file = REPO_ROOT / "run/run9_transfer_expanded/evaluations/attempt_9901/result.json"
+    if attempt == 209:
+        r6_res_file = REPO_ROOT / "run/run6_expanded_bo_continue20_recovery/evaluations/attempt_0209/result.json"
+        r9_res_file = REPO_ROOT / "run/run9_transfer_expanded/evaluations/attempt_0209/result.json"
+    else:
+        r6_res_file = REPO_ROOT / "run/run6_expanded_bo/evaluations/attempt_0153/result.json"
+        r9_res_file = REPO_ROOT / "run/run9_transfer_expanded/evaluations/attempt_9901/result.json"
     
     if r6_res_file.exists():
         with open(r6_res_file) as f:
@@ -127,7 +131,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="One-click publication reproduction script for PSM2025-zigzag."
     )
-    parser.add_argument("--attempt", type=int, default=153, help="Attempt preset (default: 153)")
+    parser.add_argument("--attempt", type=int, default=209, help="Attempt preset (default: 209)")
     parser.add_argument(
         "--out-dir",
         type=Path,

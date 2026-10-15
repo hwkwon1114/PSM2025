@@ -60,7 +60,7 @@ python -m unittest discover -s calibration/tests/ -p "test_*.py" -v
 
 ## One-Click Paper Figure Reproduction
 
-To reproduce the paper's primary figures and quantitative tables from the optimal calibrated parameters (Attempt 153), run:
+To reproduce the paper's primary figures and quantitative tables from the optimal calibrated parameters (Attempt 209), run:
 ```bash
 ./scripts/reproduce_paper_figures.sh --out-dir paper_figures --force
 ```
@@ -98,24 +98,24 @@ The notebook contains:
 
 ## Optimal Calibrated Parameters & Quantitative Results
 
-Calibrated on **Run 6** (29 passes, $130 \times 130\text{ mm}$ sheet) and independently evaluated on **Run 9** (33 passes):
+Calibrated on **Run 6** (29 passes, $130 \times 130\text{ mm}$ sheet) across 156 Bayesian optimization evaluations and independently evaluated on **Run 9** (33 passes):
 
-| Parameter | Optimal Value (Attempt 153) | Physical Role |
+| Parameter | Optimal Value (Attempt 209) | Physical Role |
 | :--- | :--- | :--- |
-| **$g_{\text{top}}$** | $2.7078 \times 10^{-4}$ | Top layer longitudinal growth |
-| **$g_{\text{bottom}}$** | $3.4596 \times 10^{-5}$ | Bottom layer growth |
-| **$\text{ortho}_{\text{top}}$** | $-0.6245$ | Longitudinal orthotropic bias |
-| **$\text{ortho}_{\text{bottom}}$** | $+0.2490$ | Transverse Poisson coupling |
+| **$g_{\text{top}}$** | $2.8835 \times 10^{-4}$ | Top layer longitudinal growth |
+| **$g_{\text{bottom}}$** | $1.4588 \times 10^{-5}$ | Bottom layer growth |
+| **$\text{ortho}_{\text{top}}$** | $-0.3989$ | Directional anisotropy |
+| **$\text{ortho}_{\text{bottom}}$** | $+0.9603$ | Transverse Poisson coupling |
 
 ### Quantitative Error Metrics:
 - **Run 6 (Training Sheet)**:
-  - Symmetric Dual-Area Weighted RMS: **$1.1851\text{ mm}$**
-  - Single-Sided Forward RMS: **$0.6532\text{ mm}$**
-  - Single-Sided Backward RMS: **$1.5434\text{ mm}$**
+  - Symmetric Dual-Area Weighted RMS: **$1.1823\text{ mm}$**
+  - Single-Sided Forward RMS: **$0.6497\text{ mm}$**
+  - Single-Sided Backward RMS: **$1.5406\text{ mm}$**
 - **Run 9 (Independent Validation Sheet)**:
-  - Symmetric Dual-Area Weighted RMS: **$1.3787\text{ mm}$**
-  - Single-Sided Forward RMS: **$1.0653\text{ mm}$**
-  - Single-Sided Backward RMS: **$1.6330\text{ mm}$**
+  - Symmetric Dual-Area Weighted RMS: **$1.3725\text{ mm}$**
+  - Single-Sided Forward RMS: **$1.0582\text{ mm}$**
+  - Single-Sided Backward RMS: **$1.6272\text{ mm}$**
 
 ---
 

@@ -55,22 +55,11 @@ def render_3d_figure(rows, out_dir, desc, attempt_id, pins):
         # Row 0: Run 6
         r6 = rows[0]
         scan6, q6, dz6 = r6['scan'], r6['prediction'], r6['dz']
-        faces6 = np.array(
-            json.loads(
-                (Path(r6['statistics']['name'] if False else '') / 'dummy').parent
-                / (Path(pins.get('run/run6_expanded_bo/evaluations/attempt_0153/case_00/bilayer_zigzag_sequence_native_hybrid_state.json', ''))
-                   if 'run/run6_expanded_bo/evaluations/attempt_0153/case_00/bilayer_zigzag_sequence_native_hybrid_state.json' in pins
-                   else '')
-            ) if False else []
-        )
-        # Read faces from the state file pinned during loading
-        state_r6_path = next(Path(BASE_DIR / k) for k in pins if 'state.json' in k and 'attempt_0153' in k or ('state.json' in k and r6['name'] in k))
-        faces6 = np.array(json.loads(state_r6_path.read_text())['faces'], dtype=int)
+        faces6 = r6['faces']
 
         r9 = rows[1]
         scan9, q9, dz9 = r9['scan'], r9['prediction'], r9['dz']
-        state_r9_path = next(Path(BASE_DIR / k) for k in pins if 'state.json' in k and ('attempt_9901' in k or 'run9' in k) and k != str(state_r6_path.relative_to(BASE_DIR)))
-        faces9 = np.array(json.loads(state_r9_path.read_text())['faces'], dtype=int)
+        faces9 = r9['faces']
 
         # Aspect ratios: x is ~200mm, y is length (130 or 187.5), z is ~8mm
         aspect6 = [1.0, 1.3, 0.35]
@@ -199,14 +188,14 @@ Top row: Run 6; bottom row: Run 9.
 ## Shared Color Scale
 - $\\Delta z$ ranges symmetrically from -{residual_limit:.2f} mm (blue, model lower) to +{residual_limit:.2f} mm (red, model higher), with white indicating exact vertical agreement.
 
-*Reproduction*: `python calibration/analysis/run6_run9_3d_comparison.py --attempt {attempt_id if attempt_id else '153'}`.
+*Reproduction*: `python calibration/analysis/run6_run9_3d_comparison.py --attempt {attempt_id if attempt_id else '209'}`.
 """
     (out_dir / 'run6_run9_3d_deformation_residual.caption.md').write_text(caption)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--attempt', type=int, default=153, help='Attempt preset (153=optimal expanded BO, 83=stage2 best, 25=baseline)')
+    parser.add_argument('--attempt', type=int, default=209, help='Attempt preset (209=global optimal BO, 153=previous best, 83=stage2 best, 25=baseline)')
     parser.add_argument('--run6-case', type=Path, help='Direct path to Run 6 case directory (overrides --attempt)')
     parser.add_argument('--run9-case', type=Path, help='Direct path to Run 9 case directory (overrides --attempt)')
     parser.add_argument('--out-dir', type=Path, help='Output directory (default: run/optimization_review/run6_run9_six_panel_attempt{attempt})')

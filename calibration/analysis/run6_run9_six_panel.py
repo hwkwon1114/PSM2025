@@ -73,8 +73,18 @@ def resolve_case_paths(args, base_dir=BASE):
         return r6_case, r9_case, desc, attempt_id
 
     attempt = args.attempt
-    if attempt == 153:
-        # Calibrated optimal attempt from 160-eval expanded BO
+    if attempt == 209:
+        r6_case = base_dir / 'run/run6_expanded_bo_continue20_recovery/evaluations/attempt_0209/case_00'
+        if not r6_case.exists():
+            raise FileNotFoundError('Could not locate Run 6 Attempt 0209 evaluation directory')
+        r9_case = base_dir / 'run/run9_transfer_expanded/evaluations/attempt_0209/case_00'
+        if not r9_case.exists():
+            raise FileNotFoundError('Could not locate Run 9 Attempt 0209 transfer evaluation directory')
+        desc = 'Attempt 209 (global optimal expanded BO calibration on Run 6 and validated transfer to Run 9)'
+        return r6_case, r9_case, desc, 209
+
+    elif attempt == 153:
+        # Previous optimal attempt from 160-eval expanded BO
         r6_candidates = [
             base_dir / 'run/run6_expanded_bo/evaluations/attempt_0153/case_00',
             base_dir / 'run/run6/evaluations/attempt_0153/case_00',
@@ -209,6 +219,7 @@ def load_evaluation_data(name, case_dir, pins, base_dir=BASE):
         'prediction': q,
         'path': path,
         'dz': dz,
+        'faces': faces,
         'support': support,
         'statistics': stats,
         'parameters': parameters,
@@ -409,7 +420,7 @@ Top row: Run 6; bottom row: Run 9.
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--attempt', type=int, default=153, help='Attempt preset (153=optimal expanded BO, 83=stage2 best, 25=baseline)')
+    parser.add_argument('--attempt', type=int, default=209, help='Attempt preset (209=global optimal BO, 153=previous best, 83=stage2 best, 25=baseline)')
     parser.add_argument('--run6-case', type=Path, help='Direct path to Run 6 case directory (overrides --attempt)')
     parser.add_argument('--run9-case', type=Path, help='Direct path to Run 9 case directory (overrides --attempt)')
     parser.add_argument('--out-dir', type=Path, help='Output directory (default: run/optimization_review/run6_run9_six_panel_attempt{attempt})')
