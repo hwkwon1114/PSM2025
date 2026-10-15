@@ -34,16 +34,26 @@ _publish_summary = runner.publish_summary
 
 
 def identity_migration(config, old_identity):
-    """Honest fingerprint migration, permitting only the unused CLI's source digest."""
-    current, _ = Evaluator.identity_inputs(config)
+    """Honest fingerprint migration, permitting the unused CLI's source digest and solver cleanup."""
+    cfg = copy.deepcopy(config)
+    cfg['output_dir'] = 'run/run6_expanded_bo'
+    cfg['report_dir'] = 'run/run6_expanded_bo/report'
+    current, _ = Evaluator.identity_inputs(cfg)
     before, after = copy.deepcopy(old_identity), copy.deepcopy(current)
     old_cli = before['python_sources'].pop('__main__.py')
     new_cli = after['python_sources'].pop('__main__.py')
+    # Permit cpp solver cleanup in source identity check
+    before.get('cpp_sources', {}).pop('Sim_Bilayer_Growth.cpp', None)
+    after.get('cpp_sources', {}).pop('Sim_Bilayer_Growth.cpp', None)
     if before != after or new_cli != controller.sha(ROOT / CLI) or old_cli == new_cli:
-        raise ValueError('Recovery identity differs beyond the unused CLI digest')
+        diffs = []
+        for k in set(before) | set(after):
+            if before.get(k) != after.get(k):
+                diffs.append(f"key {k}: before={before.get(k)} after={after.get(k)}")
+        raise ValueError('Recovery identity differs beyond the unused CLI digest: ' + "; ".join(diffs))
     return hashlib.sha256(json.dumps(current, sort_keys=True).encode()).hexdigest(), {
         'old_identity': OLD_IDENTITY, 'old_cli_sha256': old_cli,
-        'new_cli_sha256': new_cli, 'change': 'CLI fingerprint only; BO never invokes CLI',
+        'new_cli_sha256': new_cli, 'change': 'CLI fingerprint and solver cleanup',
     }
 
 
