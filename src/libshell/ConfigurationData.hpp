@@ -10,10 +10,6 @@
 #ifndef ConfigurationData_hpp
 #define ConfigurationData_hpp
 
-#ifdef USELIBLBFGS
-#include "lbfgs.h"
-#endif
-
 #include "common.hpp"
 #include "TopologyData.hpp"
 #include "TriangleInfo.hpp"

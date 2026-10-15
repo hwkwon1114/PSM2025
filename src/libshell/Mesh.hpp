@@ -18,10 +18,6 @@
 #include "BoundaryConditionsData.hpp"
 #include "Geometry.hpp"
 
-#ifdef USELIBLBFGS
-#include "lbfgs.h"
-#endif
-
 /*! \class Mesh
  * \brief To store the geometry of helper arrays related to the current triangle mesh.
  *

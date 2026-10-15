@@ -19,10 +19,6 @@
 
 #include "EnergyOperator.hpp"
 
-#ifdef USELIBLBFGS
-#include "LBFGS_Wrapper.hpp"
-#endif
-
 #ifdef USEHLBFGS
 #include "HLBFGS_Wrapper.hpp"
 #include "HLBFGS_ReducedWrapper.hpp"
@@ -280,17 +276,6 @@ protected:
     {
         lastMinimization = MinimizationReport();
 
-#ifdef USELIBLBFGS
-        // use the LBFGS_Energy class to directly minimize the energy on the mesh with these operators
-        // LBFGS does not use the hessian
-        LBFGS::LBFGS_Energy<Real, tMesh, tMeshOperator, verbose> lbfgs_energy(mesh, op);
-        int retval = 0;
-        while(retval == 0 && eps > epsMin)
-        {
-            eps *= 0.1;
-            retval = lbfgs_energy.minimize(eps);
-        }
-#else
 #ifdef USEHLBFGS
 
         HLBFGS_Methods::HLBFGS_Energy<tMesh, tMeshOperator, verbose> hlbfgs_wrapper(mesh, op);
@@ -334,8 +319,7 @@ protected:
         lastMinimization.gradientNorm = hlbfgs_wrapper.get_lastnorm();
 
 #else
-        std::cout << "should use liblbfgs or hlbfgs\n";
-#endif
+        std::cout << "should use hlbfgs\n";
 #endif
 
         // store energies
