@@ -21,7 +21,6 @@
 
 #ifdef USEHLBFGS
 #include "HLBFGS_Wrapper.hpp"
-#include "HLBFGS_ReducedWrapper.hpp"
 #endif
 
 #include <igl/writeOBJ.h>
@@ -334,95 +333,6 @@ protected:
             fclose(f);
         }
         return retval;
-    }
-
-
-    // Updates @08/06:
-    // Minimize only over the currently free mesh DOFs.  The active fixed-DOF
-    // mask is read from mesh.getBoundaryConditions() when the wrapper is built.
-    template<typename tMeshOperator, bool verbose = true>
-    int minimizeEnergyReduced(
-        const tMeshOperator& op,
-        Real& eps,
-        const Real epsMin = std::numeric_limits<Real>::epsilon(),
-        const bool stepWise = false,
-        const std::vector<int>* dump_iters_ptr = nullptr,
-        const int max_iter = -1)
-    {
-        lastMinimization = MinimizationReport();
-#ifdef USEHLBFGS
-        HLBFGS_Methods::HLBFGS_Energy_Reduced<
-            tMesh, tMeshOperator, verbose> hlbfgs_wrapper(mesh, op);
-        const Real absoluteStop = parser.template parse<Real>("-hlbfgs_absolute_gradient_tol", -1.0);
-        if(absoluteStop != -1.0)
-            hlbfgs_wrapper.set_absolute_gradient_tolerance(absoluteStop);
-
-        if(dump_iters_ptr != nullptr && !dump_iters_ptr->empty())
-            hlbfgs_wrapper.set_dump_schedule(tag, *dump_iters_ptr);
-        if(max_iter > 0)
-            hlbfgs_wrapper.set_max_iter(max_iter);
-
-        int retval = 0;
-        int total_iters = 0;
-        int total_evals = 0;
-        if(stepWise)
-        {
-            while(retval == 0 && eps > epsMin)
-            {
-                eps *= 0.1;
-                retval = hlbfgs_wrapper.minimize(
-                    tag + "_diagnostics_reduced.dat", eps);
-                total_iters += hlbfgs_wrapper.get_lastiterations();
-                total_evals += hlbfgs_wrapper.get_lastevaluations();
-            }
-        }
-        else
-        {
-            retval = hlbfgs_wrapper.minimize(
-                tag + "_diagnostics_reduced.dat", epsMin);
-            total_iters = hlbfgs_wrapper.get_lastiterations();
-            total_evals = hlbfgs_wrapper.get_lastevaluations();
-            eps = hlbfgs_wrapper.get_lastnorm();
-        }
-
-        lastMinimization.code = hlbfgs_wrapper.get_lastreturncode();
-        lastMinimization.iterations = total_iters;
-        lastMinimization.evaluations = total_evals;
-        lastMinimization.gradientNorm = hlbfgs_wrapper.get_lastnorm();
-
-        if constexpr (verbose)
-        {
-            std::cout
-                << "[Sim] reduced solve variables: free="
-                << hlbfgs_wrapper.getNumberOfFreeVariables()
-                << ", fixed="
-                << hlbfgs_wrapper.getNumberOfFixedVariables()
-                << ", full="
-                << hlbfgs_wrapper.getNumberOfFullVariables()
-                << std::endl;
-        }
-
-        std::vector<std::pair<std::string, Real>> energies;
-        op.addEnergy(energies);
-        if(FILE* file = std::fopen((tag + "_energies.dat").c_str(), "a"))
-        {
-            for(const auto& energy : energies)
-                std::fprintf(
-                    file, "%s \t\t %10.10e\n",
-                    energy.first.c_str(), energy.second);
-            std::fclose(file);
-        }
-        return retval;
-#else
-        (void)op;
-        (void)eps;
-        (void)epsMin;
-        (void)stepWise;
-        (void)dump_iters_ptr;
-        (void)max_iter;
-        throw std::runtime_error(
-            "minimizeEnergyReduced requires a build with USEHLBFGS.");
-#endif
     }
 
 

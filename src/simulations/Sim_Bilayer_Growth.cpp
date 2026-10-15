@@ -1261,16 +1261,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
 #ifndef SHELL_WITH_NATIVE_HYBRID
         throw std::runtime_error("native_hybrid requires ENABLE_NATIVE_HYBRID=ON and CHOLMOD");
 #endif
-        const int hybrid_warmup_iters =
-            parser.parse<int>("-hybrid_warmup_iters", 1000);
-        const Real hybrid_gate_tol =
-            parser.parse<Real>("-hybrid_gate_tol", 1e-4);
-        if(hybrid_warmup_iters < 0)
-            throw std::runtime_error(
-                "zigzag_sequence: -hybrid_warmup_iters must be non-negative.");
-        if(!std::isfinite(hybrid_gate_tol) || hybrid_gate_tol <= 0.0)
-            throw std::runtime_error(
-                "zigzag_sequence: -hybrid_gate_tol must be finite and > 0.");
         const Real equilibrium_gradient_tolerance =
             parser.parse<Real>("-equilibrium_grad_tol", 10.0 * tol);
         if(!std::isfinite(equilibrium_gradient_tolerance) ||

@@ -1,6 +1,6 @@
 {
   "status": "rendered",
-  "slurm_job": null,
+  "slurm_job": "3771528",
   "description": "3D views: Attempt 209 (global optimal expanded BO calibration on Run 6 and validated transfer to Run 9)",
   "attempt_id": 209,
   "input_sha256": {

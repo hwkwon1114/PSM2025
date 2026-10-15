@@ -6,9 +6,14 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-PYTHON_BIN="${PYTHON:-$(which python3)}"
-if command -v conda &>/dev/null && [ -d "$HOME/miniforge/envs/DHD" ]; then
-    PYTHON_BIN="$HOME/miniforge/envs/DHD/bin/python"
+if [ -z "${PYTHON:-}" ]; then
+    if [ -d "$HOME/miniforge/envs/DHD" ]; then
+        PYTHON_BIN="$HOME/miniforge/envs/DHD/bin/python"
+    else
+        PYTHON_BIN="$(which python3)"
+    fi
+else
+    PYTHON_BIN="$PYTHON"
 fi
 
 echo "Using Python: $PYTHON_BIN"

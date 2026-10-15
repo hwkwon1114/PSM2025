@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -25,9 +26,27 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+EXPECTED_HASHES = {
+    "calibration/data/raw/Run_6.stl": "a67d0a8d13e89cdf9c7c47a8190d412e3524c72222f2aebcde95014bef332df9",
+    "calibration/data/raw/Run_9.stl": "73f59318406f0a6bdadbf6cec0ee1e4a9d4c4224535e052c5c5f850ae43bbda5",
+}
+
+
+def verify_input_integrity():
+    for rel_path, expected_hash in EXPECTED_HASHES.items():
+        full_path = REPO_ROOT / rel_path
+        if not full_path.exists():
+            raise FileNotFoundError(f"Missing required raw target file: {full_path}")
+        with open(full_path, "rb") as f:
+            actual_hash = hashlib.sha256(f.read()).hexdigest()
+        if actual_hash != expected_hash:
+            raise ValueError(f"Integrity check failed for {rel_path}: expected {expected_hash}, got {actual_hash}")
+
 
 def run_figure_generation(attempt: int, out_dir: Path, force: bool = False):
+    out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
+    verify_input_integrity()
     python_exe = sys.executable
 
     print("=" * 70)
@@ -87,9 +106,20 @@ def run_figure_generation(attempt: int, out_dir: Path, force: bool = False):
     if attempt == 209:
         r6_res_file = REPO_ROOT / "run/run6_expanded_bo_continue20_recovery/evaluations/attempt_0209/result.json"
         r9_res_file = REPO_ROOT / "run/run9_transfer_expanded/evaluations/attempt_0209/result.json"
-    else:
+    elif attempt == 153:
         r6_res_file = REPO_ROOT / "run/run6_expanded_bo/evaluations/attempt_0153/result.json"
         r9_res_file = REPO_ROOT / "run/run9_transfer_expanded/evaluations/attempt_9901/result.json"
+    elif attempt == 83:
+        r6_res_file = REPO_ROOT / "run/run6/evaluations/attempt_0083/result.json"
+        r9_res_file = REPO_ROOT / "run/run9_transfer/evaluations/attempt_0083/result.json"
+    elif attempt == 25:
+        r6_res_file = REPO_ROOT / "run/stage2_bayesian_optimization/evaluations/attempt_0025/result.json"
+        r9_res_file = None
+    else:
+        r6_matches = list(REPO_ROOT.glob(f"run/**/evaluations/attempt_{attempt:04d}/result.json"))
+        r6_res_file = r6_matches[0] if r6_matches else None
+        r9_matches = list(REPO_ROOT.glob(f"run/run9*/**/evaluations/attempt_{attempt:04d}/result.json"))
+        r9_res_file = r9_matches[0] if r9_matches else None
     
     if r6_res_file.exists():
         with open(r6_res_file) as f:

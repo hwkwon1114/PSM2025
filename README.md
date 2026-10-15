@@ -26,7 +26,7 @@ conda activate psm2025-zigzag
 ```
 
 ### 2. C++ Compiler & Libraries
-Ensure a C++17 compliant compiler (`gcc` $\ge 9$ or `clang` $\ge 11$), CMake ($\ge 3.24$), Ninja, Eigen ($\ge 3.4$), and SuiteSparse are installed.
+Ensure a C++23 compliant compiler (`gcc` $\ge 13$ or `clang` $\ge 16$), CMake ($\ge 3.24$), Ninja, Eigen ($\ge 3.4$), SuiteSparse, and `nlohmann_json` are installed.
 
 ---
 
@@ -42,7 +42,7 @@ This generates:
 - `./bin/sim_bilayer_growth`: Production CLI for bilayer sequence simulations.
 
 ### Running C++ Unit Tests
-Run the complete C++ test suite (96 passing tests across 35 suites):
+Run the complete C++ test suite (127 passing tests across 37 suites):
 ```bash
 ./bin/testshell
 ```

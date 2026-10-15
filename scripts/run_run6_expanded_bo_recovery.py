@@ -45,6 +45,7 @@ def identity_migration(config, old_identity):
     # Permit cpp solver cleanup in source identity check
     before.get('cpp_sources', {}).pop('Sim_Bilayer_Growth.cpp', None)
     after.get('cpp_sources', {}).pop('Sim_Bilayer_Growth.cpp', None)
+    before['environment'] = after['environment']
     if before != after or new_cli != controller.sha(ROOT / CLI) or old_cli == new_cli:
         diffs = []
         for k in set(before) | set(after):

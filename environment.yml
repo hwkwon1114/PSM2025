@@ -9,6 +9,7 @@ dependencies:
   - ninja
   - eigen>=3.4
   - suitesparse
+  - nlohmann_json>=3.11
   - numpy>=1.24
   - scipy>=1.10
   - matplotlib>=3.7

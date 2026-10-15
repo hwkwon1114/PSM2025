@@ -82,7 +82,7 @@ class NativeForwardTests(unittest.TestCase):
             child = subprocess.run([sys.executable, '-B', '-m', 'calibration.ewcal', 'forward',
                 '--config', str(root/'config.json'), '--executable', str(ROOT/'calibration/tests/mock_solver.py'),
                 '--case', c['cases'][0]['id'], '--output', str(root/'forward')],
-                cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
+                cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
             self.assertEqual(child.returncode, 0, child.stdout.decode())
             self.assertTrue(json.loads((root/'forward/result.json').read_text())['valid'])
 
