@@ -45,7 +45,8 @@ struct PatternPlacement {
 // Add a switch
 enum class TopProfileMode {
     Uniform,
-    CenterPeak
+    CenterPeak,
+    DirectionalDrift
 };
 
 struct Params {
@@ -72,6 +73,8 @@ struct Params {
     TopProfileMode top_profile_mode = TopProfileMode::Uniform;
     double top_end_ratio = 1.0;      // 1.0 => uniform; <1 lowers the two ends
     double top_profile_power = 1.0;  // 1 => sin(pi s), >1 sharper center peak
+    double directional_drift_coeff = 0.0; // along-stroke linear drift slope (breaks pi-symmetry)
+    bool reverse_traversal = false;       // reverse strip order and stroke travel endpoints
 };
 
 // ------------------------
@@ -140,7 +143,8 @@ inline double dist_point_segment_2d(const Eigen::Vector2d& p,
 inline TopProfileMode parseTopProfileMode(const std::string& s) {
     if (s == "uniform") return TopProfileMode::Uniform;
     if (s == "center_peak") return TopProfileMode::CenterPeak;
-    throw std::runtime_error("zigzag profile mode must be 'uniform' or 'center_peak'");
+    if (s == "directional_drift") return TopProfileMode::DirectionalDrift;
+    throw std::runtime_error("zigzag profile mode must be 'uniform', 'center_peak', or 'directional_drift'");
 }
 
 // Normalized coordinate along a segment
@@ -273,6 +277,15 @@ inline std::vector<StripSegment> buildZigZagStrips(const Params& zz,
     }
 
     strips.push_back(make_strip(zz.N_total - 1, pts[pts.size()-2], pts[pts.size()-1]));
+
+    if (zz.reverse_traversal) {
+        std::reverse(strips.begin(), strips.end());
+        for (auto& s : strips) {
+            std::swap(s.a, s.b);
+            const Eigen::Vector2d d = s.b - s.a;
+            s.angle_rad = normalize_angle_pi(std::atan2(d.y(), d.x()));
+        }
+    }
 
     return strips;
 }
@@ -621,6 +634,10 @@ inline void collectMaterialCoordinateHits(
                     zz.top_end_ratio,
                     zz.top_profile_power);
             }
+            else if(zz.top_profile_mode == TopProfileMode::DirectionalDrift)
+            {
+                profile = std::max(0.0, 1.0 + zz.directional_drift_coeff * (s01 - 0.5));
+            }
 
             MaterialHit hit;
             hit.face_idx = i;
@@ -809,6 +826,8 @@ inline void collectMaterialCoordinateHits(
             if(zz.top_profile_mode == TopProfileMode::CenterPeak)
                 profile = center_peak_profile_01(
                     s01, zz.top_end_ratio, zz.top_profile_power);
+            else if(zz.top_profile_mode == TopProfileMode::DirectionalDrift)
+                profile = std::max(0.0, 1.0 + zz.directional_drift_coeff * (s01 - 0.5));
 
             MaterialHit hit;
             hit.face_idx = face;

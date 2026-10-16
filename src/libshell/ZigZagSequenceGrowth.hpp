@@ -68,6 +68,7 @@ struct ProfileConfig {
     zigzag::TopProfileMode mode = zigzag::TopProfileMode::Uniform;
     double top_end_ratio = 1.0;
     double top_profile_power = 1.0;
+    double directional_drift_coeff = 0.0;
 };
 
 struct DefaultsConfig {
@@ -95,6 +96,7 @@ struct ZigZagOperationConfig {
     // the generated zigzag. Empty means all strips.
     std::vector<int> active_strips;
 
+    bool reverse_traversal = false;
     ProfileConfig profile;
 };
 
@@ -298,18 +300,20 @@ inline ProfileConfig parseProfile(const json& object,
     if(object.is_null()) return fallback;
     rejectUnknownKeys(
         object,
-        {"mode", "top_end_ratio", "top_profile_power"},
+        {"mode", "top_end_ratio", "top_profile_power", "directional_drift_coeff"},
         context);
 
     ProfileConfig result = fallback;
     result.mode = zigzag::parseTopProfileMode(
         getStringOrDefault(object, "mode",
             result.mode == zigzag::TopProfileMode::CenterPeak ?
-                "center_peak" : "uniform"));
+                "center_peak" : (result.mode == zigzag::TopProfileMode::DirectionalDrift ? "directional_drift" : "uniform")));
     result.top_end_ratio = getDoubleOrDefault(
         object, "top_end_ratio", result.top_end_ratio);
     result.top_profile_power = getDoubleOrDefault(
         object, "top_profile_power", result.top_profile_power);
+    result.directional_drift_coeff = getDoubleOrDefault(
+        object, "directional_drift_coeff", result.directional_drift_coeff);
 
     if(result.top_end_ratio < 0.0 || result.top_end_ratio > 1.0)
         throw std::runtime_error(
@@ -525,7 +529,8 @@ inline SequenceConfig loadSequenceJson(const std::string& filename)
             operation,
             {"type", "lv_mm", "alpha_deg", "n_strips", "width_mm",
              "center_uv_mm", "shift_uv_mm", "shift_frame", "rotation_deg",
-             "gtop", "gbot", "ortho", "ortho_top", "ortho_bottom", "profile", "active_strips"},
+             "gtop", "gbot", "ortho", "ortho_top", "ortho_bottom", "profile", "active_strips",
+             "reverse_traversal"},
             context + ".operation");
 
         if(getStringOrDefault(operation, "type", "zigzag") != "zigzag")
@@ -538,6 +543,7 @@ inline SequenceConfig loadSequenceJson(const std::string& filename)
         op.n_strips = getIntOrDefault(operation, "n_strips", 6);
         op.width_mm = getDoubleOrDefault(operation, "width_mm", 2.0);
         op.rotation_deg = getDoubleOrDefault(operation, "rotation_deg", 0.0);
+        op.reverse_traversal = getBoolOrDefault(operation, "reverse_traversal", false);
 
         bool center_provided = false;
         op.center_uv_m = readVec2Mm(

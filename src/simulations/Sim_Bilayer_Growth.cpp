@@ -1413,6 +1413,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         if(minimize_every < 1)
             throw std::runtime_error(
                 "zigzag_sequence: -sequence_minimize_every must be >= 1.");
+        const Real sequence_slope_feedback =
+            parser.parse<Real>("-sequence_slope_feedback", 0.0);
         if(adaptive_continuation && minimize_every != 1)
             throw std::runtime_error(
                 "zigzag_sequence: adaptive continuation requires "
@@ -2331,6 +2333,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             zz.top_profile_mode = op.profile.mode;
             zz.top_end_ratio = op.profile.top_end_ratio;
             zz.top_profile_power = op.profile.top_profile_power;
+            zz.directional_drift_coeff = op.profile.directional_drift_coeff;
+            zz.reverse_traversal = op.reverse_traversal;
 
             zigzag::PatternPlacement placement;
             placement.use_material_bbox_center =
@@ -2477,6 +2481,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 Real qSum = 0.0;
                 int qCount = 0;
 
+                const auto currentVertices =
+                    mesh.getCurrentConfiguration().getVertices();
                 for(const auto& hit : materialHits)
                 {
                     const int face = hit.face_idx;
@@ -2495,14 +2501,37 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     qSum += q;
                     ++qCount;
 
+                    Real slopeFactor = 1.0;
+                    if(sequence_slope_feedback != 0.0)
+                    {
+                        const int i0 = Connect(face, 0);
+                        const int i1 = Connect(face, 1);
+                        const int i2 = Connect(face, 2);
+                        const Eigen::Vector3d x0 = currentVertices.row(i0);
+                        const Eigen::Vector3d x1 = currentVertices.row(i1);
+                        const Eigen::Vector3d x2 = currentVertices.row(i2);
+                        const Eigen::Vector2d u0 = materialCoordinates.row(i0);
+                        const Eigen::Vector2d u1 = materialCoordinates.row(i1);
+                        const Eigen::Vector2d u2 = materialCoordinates.row(i2);
+                        Eigen::Matrix2d Du;
+                        Du.row(0) = (u1 - u0).transpose();
+                        Du.row(1) = (u2 - u0).transpose();
+                        Eigen::Vector2d dz(x1.z() - x0.z(), x2.z() - x0.z());
+                        Eigen::Vector2d gradZ = Du.colPivHouseholderQr().solve(dz);
+                        const double travel_sign = op.reverse_traversal ? -1.0 : 1.0;
+                        const Eigen::Vector2d t_vec(std::cos(hit.angle_rad), std::sin(hit.angle_rad));
+                        const double slope = travel_sign * (t_vec.dot(gradZ));
+                        slopeFactor = std::max(0.0, 1.0 + sequence_slope_feedback * slope);
+                    }
+
                     const Real g1Top =
-                        q * hit.gtop * (1.0 + op.ortho_top.at(hit.strip_idx));
+                        slopeFactor * q * hit.gtop * (1.0 + op.ortho_top.at(hit.strip_idx));
                     const Real g2Top =
-                        q * hit.gtop * (1.0 - op.ortho_top.at(hit.strip_idx));
+                        slopeFactor * q * hit.gtop * (1.0 - op.ortho_top.at(hit.strip_idx));
                     const Real g1Bot =
-                        q * hit.gbot * (1.0 + op.ortho_bottom.at(hit.strip_idx));
+                        slopeFactor * q * hit.gbot * (1.0 + op.ortho_bottom.at(hit.strip_idx));
                     const Real g2Bot =
-                        q * hit.gbot * (1.0 - op.ortho_bottom.at(hit.strip_idx));
+                        slopeFactor * q * hit.gbot * (1.0 - op.ortho_bottom.at(hit.strip_idx));
 
                     GrowthHelper<tMesh>::
                         updateAbarWithMaterialGrowthIncrement(
