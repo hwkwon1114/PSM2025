@@ -16,7 +16,7 @@ from calibration.ewcal.common import Parameters, save_json
 from calibration.ewcal.runner import Evaluator
 
 CONFIG_PATH = BASE / "calibration/configs/run9.json"
-RUN6_SUMMARY_PATH = BASE / "run/run6_expanded_bo/bayes_summary.json"
+RUN6_SUMMARY_PATH = BASE / "run/run6_expanded_bo_continue20_recovery/bayes_summary.json"
 OUT_DIR = BASE / "run/run9_transfer_expanded"
 
 BASELINE_ATTEMPT83_RUN9_MM = 2.1951052062325785

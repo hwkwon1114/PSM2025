@@ -53,23 +53,19 @@ def main():
     # Therefore, the bottom turnaround of the toolpath must sit at v = -150.0 + 85.0 = -65.0 mm.
     v_bottom_target = -half_h + 85.0  # -65.0 mm
 
-    # Run 6: Lv = 130 mm -> v runs from -65.0 to +65.0 mm (Top margin: 150 - 65 = 85.0 mm)
-    pts6_v = v_bottom_target + pts6_raw[:, 1]
+    # Run 6: Lv = 130 mm, runs from v = -65.0 to +65.0 mm (85 mm margin at both ends)
+    pts6_v = pts6_raw[:, 1] - 65.0
     pts6_corrected = np.column_stack([pts6_x, pts6_v])
 
-    # Run 9 Corrected: Lv = 187.5 mm -> v runs from -65.0 to +122.5 mm (Top margin: 150 - 122.5 = 27.5 mm)
-    pts9_v_corrected = v_bottom_target + pts9_raw[:, 1]
+    # In the scan coordinate frame, the undeformed/fixture margin is at the top (v = +65 to +150 mm, 85 mm margin).
+    # The toolpath runs from v = -122.5 mm to v = +65.0 mm (center shift: -28.75 mm).
+    pts9_v_corrected = pts9_raw[:, 1] - 122.5
     pts9_corrected = np.column_stack([pts9_x, pts9_v_corrected])
 
     # Run 9 Erroneous / Old Config (shift = 0, centered symmetrically):
-    # v runs from -93.75 to +93.75 mm (Bottom margin: 56.25 mm != 85.0 mm)
     pts9_v_old = pts9_raw[:, 1] - (np.max(pts9_raw[:, 1]) / 2.0)
     pts9_old = np.column_stack([pts9_x, pts9_v_old])
 
-    # Create 3-panel figure:
-    # Panel 1: Run 6 (85 mm bottom margin)
-    # Panel 2: Run 9 Corrected (85 mm bottom margin, 27.5 mm top margin)
-    # Panel 3: Run 9 Comparison (Corrected 85 mm bottom margin vs Erroneous 56.2 mm bottom margin)
     fig, axes = plt.subplots(1, 3, figsize=(18, 9), dpi=300)
 
     sheet_color = "#f8f9fa"
@@ -78,7 +74,7 @@ def main():
     panels = [
         {
             "ax": axes[0],
-            "title": "Run 6 (Lv = 130 mm)\nMandatory 85 mm Bottom Margin",
+            "title": "Run 6 (Lv = 130 mm)\nFixture Margin = 85.0 mm",
             "pts": pts6_corrected,
             "color": "#1f77b4",
             "v_bot": -65.0,
@@ -86,26 +82,26 @@ def main():
             "bot_margin": 85.0,
             "top_margin": 85.0,
             "left_margin": half_w - np.max(np.abs(pts6_x)),
-            "note": "Lv = 130 mm, 68 strips\nSymmetric by coincidence:\n85 mm bottom + 85 mm top",
+            "note": "Lv = 130 mm, 68 strips\nSymmetric:\n85 mm margin at both ends",
         },
         {
             "ax": axes[1],
-            "title": "Run 9 CORRECTED (Lv = 187.5 mm)\nMandatory 85 mm Bottom Margin",
+            "title": "Run 9 CORRECTED (Lv = 187.5 mm)\nMandatory 85.0 mm Fixture Margin",
             "pts": pts9_corrected,
             "color": "#d62728",
-            "v_bot": -65.0,
-            "v_top": 122.5,
-            "bot_margin": 85.0,
-            "top_margin": 27.5,
+            "v_bot": -122.5,
+            "v_top": 65.0,
+            "bot_margin": 27.5,
+            "top_margin": 85.0,
             "left_margin": half_w - np.max(np.abs(pts9_x)),
-            "note": "Lv = 187.5 mm, 32 strips\nFixed 85.0 mm bottom margin\nTop margin = 27.5 mm\nToolpath center shift: +28.75 mm",
+            "note": "Lv = 187.5 mm, 32 strips\nFixed 85.0 mm fixture margin (top)\nBottom margin = 27.5 mm\nToolpath center shift: -28.75 mm",
         },
         {
             "ax": axes[2],
-            "title": "Run 9 Alignment Discrepancy\nCorrect (85 mm) vs Config (56.2 mm)",
+            "title": "Run 9 Alignment Discrepancy\nCorrect vs Old Config",
             "pts_correct": pts9_corrected,
             "pts_old": pts9_old,
-            "note": "Orange dashed: Old run9.json (shift=[0,0])\n  -> Erroneous 56.2 mm bottom margin\nRed solid: Correct physical alignment\n  -> True 85.0 mm bottom margin\nUpward offset required: +28.75 mm",
+            "note": "Orange dashed: Old run9.json (shift=[0,0])\nRed solid: Correct alignment\nRequired downward shift: -28.75 mm",
         },
     ]
 
@@ -140,25 +136,25 @@ def main():
         )
         ax.add_patch(box)
 
-        # Bottom margin arrow (MANDATORY 85 mm)
+        # Top margin arrow (MANDATORY 85 mm)
         ax.annotate(
-            "", xy=(0, -half_h), xytext=(0, min_y),
+            "", xy=(0, half_h), xytext=(0, max_y),
             arrowprops=dict(arrowstyle="<->", color="#c0392b", lw=2.2), zorder=6
         )
         ax.text(
-            6, (-half_h + min_y) / 2,
-            f"MANDATORY\nBOTTOM MARGIN:\n{p['bot_margin']:.1f} mm",
+            6, (half_h + max_y) / 2,
+            f"FIXTURE MARGIN:\n{p['top_margin']:.1f} mm",
             color="#c0392b", fontweight="bold", fontsize=10, va="center", zorder=6
         )
 
-        # Top margin arrow
+        # Bottom margin arrow
         ax.annotate(
-            "", xy=(0, half_h), xytext=(0, max_y),
+            "", xy=(0, -half_h), xytext=(0, min_y),
             arrowprops=dict(arrowstyle="<->", color="#2980b9", lw=1.8), zorder=6
         )
         ax.text(
-            6, (half_h + max_y) / 2,
-            f"Top Margin:\n{p['top_margin']:.1f} mm",
+            6, (-half_h + min_y) / 2,
+            f"Margin:\n{p['bot_margin']:.1f} mm",
             color="#2980b9", fontweight="bold", fontsize=10, va="center", zorder=6
         )
 
@@ -211,38 +207,25 @@ def main():
     ax3.axhline(0, color="#95a5a6", linestyle="--", linewidth=0.8, alpha=0.6, zorder=2)
     ax3.axvline(0, color="#95a5a6", linestyle="--", linewidth=0.8, alpha=0.6, zorder=2)
 
-    # Fixture baseline line (v = -65 mm)
-    ax3.axhline(-65.0, color="#8e44ad", linestyle="-.", linewidth=1.5, alpha=0.9, zorder=3, label="v = -65 mm (85 mm Fixture Datum)")
+    # Fixture baseline line (v = 65 mm)
+    ax3.axhline(65.0, color="#8e44ad", linestyle="-.", linewidth=1.5, alpha=0.9, zorder=3, label="v = +65 mm (85 mm Fixture Datum)")
 
     # Plot old (erroneous) path in orange dashed
-    ax3.plot(pts_old[:, 0], pts_old[:, 1], color="#e67e22", linestyle="--", linewidth=0.8, alpha=0.7, label="Old Config (Bottom Margin = 56.2 mm)", zorder=4)
+    ax3.plot(pts_old[:, 0], pts_old[:, 1], color="#e67e22", linestyle="--", linewidth=0.8, alpha=0.7, label="Old Config (Shift = 0 mm)", zorder=4)
 
     # Plot correct path in red solid
-    ax3.plot(pts_correct[:, 0], pts_correct[:, 1], color="#d62728", linewidth=1.0, alpha=0.9, label="True Physical (Bottom Margin = 85.0 mm)", zorder=5)
+    ax3.plot(pts_correct[:, 0], pts_correct[:, 1], color="#d62728", linewidth=1.0, alpha=0.9, label="True Physical (Shift = -28.75 mm)", zorder=5)
 
-    # Shift arrow showing +28.75 mm offset
+    # Shift arrow showing -28.75 mm offset
     ax3.annotate(
         "", xy=(0, np.mean(pts_correct[:, 1])), xytext=(0, np.mean(pts_old[:, 1])),
         arrowprops=dict(arrowstyle="->", color="#8e44ad", lw=2.5), zorder=6
     )
     ax3.text(
-        8, 14,
-        "Required Shift:\nΔv = +28.75 mm",
+        8, -14,
+        "Required Shift:\nΔv = -28.75 mm",
         color="#8e44ad", fontweight="bold", fontsize=10, va="center", zorder=6
     )
-
-    # Margins for correct
-    ax3.annotate(
-        "", xy=(-45, -half_h), xytext=(-45, np.min(pts_correct[:, 1])),
-        arrowprops=dict(arrowstyle="<->", color="#c0392b", lw=2.0), zorder=6
-    )
-    ax3.text(-40, -107.5, "True: 85 mm", color="#c0392b", fontweight="bold", fontsize=9, va="center")
-
-    ax3.annotate(
-        "", xy=(-75, -half_h), xytext=(-75, np.min(pts_old[:, 1])),
-        arrowprops=dict(arrowstyle="<->", color="#e67e22", lw=1.8), zorder=6
-    )
-    ax3.text(-70, -121.8, "Old: 56.2 mm", color="#e67e22", fontweight="bold", fontsize=9, va="center")
 
     ax3.text(
         -half_w + 5, -half_h + 8, panels[2]["note"],
