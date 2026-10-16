@@ -119,7 +119,7 @@
         "width_mm": 2,
         "shift_uv_mm": [
           0,
-          0
+          -28.75
         ],
         "shift_frame": "material",
         "rotation_deg": 0
