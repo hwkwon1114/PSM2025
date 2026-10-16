@@ -188,7 +188,12 @@ def load_evaluation_data(name, case_dir, pins, base_dir=BASE):
     csv_path = pin(base_dir / f'calibration/data/raw/{name}_zigzag_path.csv', pins, base_dir)
     with csv_path.open() as f:
         path = np.array([[float(r[k]) for k in ('x_mm', 'y_mm')] for r in csv.DictReader(f)])
-    path[:, 1] -= length / 2.0
+    path[:, 0] -= np.mean(path[:, 0])
+    shift_uv = op.get('shift_uv_mm', [0.0, 0.0])
+    shift_u = float(shift_uv[0])
+    shift_v = float(shift_uv[1])
+    path[:, 0] += shift_u
+    path[:, 1] = (path[:, 1] - length / 2.0) + shift_v
 
     model_z, support, min_area = heights_at_xy(q, faces, scan[:, :2])
     dz = model_z - scan[:, 2]
