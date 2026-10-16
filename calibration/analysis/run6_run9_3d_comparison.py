@@ -152,8 +152,7 @@ def render_3d_figure(rows, out_dir, desc, attempt_id, pins):
         ax5.set_zlabel('z (mm)', labelpad=1)
         ax5.legend(handles=[h_exp9, h_pred9], loc='upper right', framealpha=0.9, fontsize=8)
 
-        for ext in ('png', 'pdf'):
-            fig.savefig(out_dir / f'run6_run9_3d_deformation_residual.{ext}', dpi=300, bbox_inches='tight')
+        fig.savefig(out_dir / 'run6_run9_3d_deformation_residual.png', dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     # Save 3D provenance
