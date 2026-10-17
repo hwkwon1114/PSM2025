@@ -1043,8 +1043,6 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             parser.parse<std::string>("-sequence_solve_mode", "every_cycle");
         if(sequence_solve_mode != "every_cycle" && sequence_solve_mode != "final_only")
             throw std::runtime_error("-sequence_solve_mode must be every_cycle or final_only.");
-        if(use_sequence_bc && sequence_solve_mode == "final_only")
-            throw std::runtime_error("final_only currently requires boundary_conditions.enabled=false.");
         int requested_cycles = 0;
         for(const auto& tp : sequence.toolpaths) requested_cycles += tp.repeat;
         int equilibrium_solves = 0;
@@ -1081,10 +1079,10 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
 
         if(use_sequence_bc)
         {
-            if(sequence.boundary_conditions.regions.size() != 2)
+            if(sequence.boundary_conditions.regions.empty())
                 throw std::runtime_error(
-                    "zigzag_sequence_BC first version requires exactly two "
-                    "rectangular clamp regions.");
+                    "zigzag_sequence_BC requires at least one "
+                    "rectangular clamp region.");
 
             const Eigen::MatrixXb initialBC =
                 mesh.getBoundaryConditions().getVertexBoundaryConditions();
