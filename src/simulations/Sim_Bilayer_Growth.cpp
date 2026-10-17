@@ -1076,6 +1076,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             Eigen::VectorXd::Zero(nVert);
         std::vector<int> clampRegionVertexCounts;
         std::ofstream cycleReadme;
+        Eigen::MatrixXb initialBC;
 
         if(use_sequence_bc)
         {
@@ -1084,7 +1085,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     "zigzag_sequence_BC requires at least one "
                     "rectangular clamp region.");
 
-            const Eigen::MatrixXb initialBC =
+            initialBC =
                 mesh.getBoundaryConditions().getVertexBoundaryConditions();
             if(zigzag_sequence_bc::countFixedDofs(initialBC) != 0)
                 throw std::runtime_error(
@@ -2935,10 +2936,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         if(use_sequence_bc &&
            sequence.boundary_conditions.release_after_final_cycle)
         {
-            const auto gauge =
-                zigzag_sequence_bc::buildMinimalReleaseGaugeMask(
-                    materialCoordinates);
-            zigzag_sequence_bc::applyVertexMask(mesh, gauge.vertex_mask);
+            zigzag_sequence_bc::applyVertexMask(mesh, initialBC);
 
             int releaseCode = -1;
             int releaseIterations = 0;
@@ -2948,7 +2946,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             Real releaseEnergy = std::numeric_limits<Real>::quiet_NaN();
 
 #ifdef SHELL_WITH_NATIVE_HYBRID
-            const auto report = runNativeHybrid(equilibrium_gradient_tolerance, true);
+            const Real release_tol = std::max(equilibrium_gradient_tolerance, static_cast<Real>(1e-11));
+            const auto report = runNativeHybrid(release_tol, true);
             releaseCode = report.code();
             releaseIterations = report.iterations();
             releaseEvaluations = report.evaluations();
@@ -3032,19 +3031,13 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 << "| `" << releaseBase << ".vtp` | "
                 << executed_cycle
                 << " | - | - | released; physical clamps removed; "
-                << "six-DOF numerical gauge active |\n\n"
-                << "## Final-release numerical gauge\n\n"
-                << "- Vertex A (x,y,z fixed): " << gauge.vertex_ids[0] << "\n"
-                << "- Vertex B (y,z fixed): " << gauge.vertex_ids[1] << "\n"
-                << "- Vertex C (z fixed): " << gauge.vertex_ids[2] << "\n";
+                << "unconstrained elastic springback |\n\n";
             cycleReadme.flush();
 
             std::cout
                 << "[zigzag_sequence_BC] final release output="
                 << releaseBase << ".vtp, energy=" << releaseEnergy
-                << ", gauge_vertices=[" << gauge.vertex_ids[0] << ","
-                << gauge.vertex_ids[1] << "," << gauge.vertex_ids[2]
-                << "]\n";
+                << ", unconstrained elastic springback\n";
         }
 
         const bool export_stl =
