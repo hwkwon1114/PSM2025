@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "units": {
+    "length": "mm",
+    "angle": "deg",
+    "growth": "engineering_strain"
+  },
+  "defaults": {
+    "start_mode": "left_bottom_up",
+    "profile": {
+      "mode": "uniform"
+    }
+  },
+  "hardening": {
+    "model": "voce_decay",
+    "history_variable": "hit_count",
+    "beta": 0.2231435513142097,
+    "floor": 0,
+    "scope": "face_shared",
+    "count_rule": "plastic_hits"
+  },
+  "boundary_conditions": {
+    "enabled": true,
+    "coordinate_system": "material_uv",
+    "application": "persistent",
+    "release_after_final_cycle": true,
+    "regions": [
+      {
+        "name": "centered_fixture_clamp",
+        "shape": "rectangle",
+        "center_uv_mm": [
+          0.0,
+          107.5
+        ],
+        "size_uv_mm": [
+          100.0,
+          85.0
+        ],
+        "rotation_deg": 0.0
+      }
+    ]
+  },
+  "toolpaths": [
+    {
+      "id": "run9_clamped",
+      "repeat": 33,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 187.5,
+        "alpha_deg": 1.0,
+        "n_strips": 32,
+        "width_mm": 2.0,
+        "shift_uv_mm": [
+          0.0,
+          -28.75
+        ],
+        "shift_frame": "material",
+        "rotation_deg": 0.0,
+        "gtop": 0.00028835116227798787,
+        "gbot": 1.4587994001079146e-05,
+        "ortho_top": -0.3989157893255133,
+        "ortho_bottom": 0.960306323937336
+      }
+    }
+  ]
+}
