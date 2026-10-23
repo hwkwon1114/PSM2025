@@ -22,7 +22,7 @@ class RealSolverCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             tmp_path = Path(temp)
             seq_path = tmp_path / "seq.json"
-            seq_data = json.loads((ROOT / "trajectories/01_putong_1step.json").read_text())
+            seq_data = json.loads((ROOT / "shellsim/examples/trajectories/01_putong_1step.json").read_text())
             seq_data["toolpaths"][0]["repeat"] = 2
             seq_path.write_text(json.dumps(seq_data))
 
@@ -63,7 +63,7 @@ class RealSolverCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             tmp_path = Path(temp)
             seq_path = tmp_path / "seq.json"
-            seq_data = json.loads((ROOT / "trajectories/01_putong_1step.json").read_text())
+            seq_data = json.loads((ROOT / "shellsim/examples/trajectories/01_putong_1step.json").read_text())
             seq_data["toolpaths"][0]["repeat"] = 2
             seq_path.write_text(json.dumps(seq_data))
 
@@ -98,7 +98,7 @@ class RealSolverCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             tmp_path = Path(temp)
             seq_path = tmp_path / "seq.json"
-            seq_data = json.loads((ROOT / "trajectories/01_putong_1step.json").read_text())
+            seq_data = json.loads((ROOT / "shellsim/examples/trajectories/01_putong_1step.json").read_text())
             seq_data["toolpaths"][0]["repeat"] = 2
             seq_path.write_text(json.dumps(seq_data))
 
@@ -127,7 +127,7 @@ class RealSolverCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             tmp_path = Path(temp)
             seq_path = tmp_path / "seq.json"
-            seq_data = json.loads((ROOT / "trajectories/01_putong_1step.json").read_text())
+            seq_data = json.loads((ROOT / "shellsim/examples/trajectories/01_putong_1step.json").read_text())
             seq_data["toolpaths"][0]["repeat"] = 2
             seq_path.write_text(json.dumps(seq_data))
 

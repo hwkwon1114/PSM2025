@@ -1,0 +1,29 @@
+{
+  "description": "Benchmark test matrix spanning simple, moderate, and complex toolpath regimes.",
+  "cases": [
+    {
+      "name": "simple_a_1cycle",
+      "tier": "simple",
+      "description": "Single-axis Toolpath A (1 cycle), mild deformation, tests 1-step direct convergence vs 10-step continuation.",
+      "cycles": 1,
+      "recipe": "legacy/configs/dome/overlapping_perpendicular_n18.json",
+      "toolpath_filter": ["A"]
+    },
+    {
+      "name": "moderate_nonoverlapping_20cycle",
+      "tier": "moderate",
+      "description": "20-cycle non-overlapping perpendicular baseline (ab_block, 12.6 mm clearance gap), tests moderate deformation with uncoupled toolpaths.",
+      "cycles": 20,
+      "recipe": "legacy/configs/dome/middle_n18_repeat4.json",
+      "toolpath_filter": ["A", "B"]
+    },
+    {
+      "name": "complex_overlapping_20cycle",
+      "tier": "complex",
+      "description": "20-cycle overlapping perpendicular (ab_block, 1,848 co-hit faces), tests severe deformation and bisection cutback recovery.",
+      "cycles": 20,
+      "recipe": "legacy/configs/dome/overlapping_perpendicular_n18.json",
+      "toolpath_filter": ["A", "B"]
+    }
+  ]
+}

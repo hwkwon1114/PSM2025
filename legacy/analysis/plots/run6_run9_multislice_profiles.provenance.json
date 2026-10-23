@@ -1,0 +1,39 @@
+{
+  "status": "rendered",
+  "slurm_job": null,
+  "description": "Attempt 209 (global optimal expanded BO calibration on Run 6 and validated transfer to Run 9)",
+  "attempt_id": 209,
+  "input_sha256": {
+    "run/run6_expanded_bo_continue20_recovery/evaluations/attempt_0209/case_00/comparison.npz": "4d2195cd435db440ca51ba11c4ab9e928e0725d3e3472db1c1335d7f0dfe83e4",
+    "run/run6_expanded_bo_continue20_recovery/evaluations/attempt_0209/case_00/prediction_mm.vtp": "c6c64714f146f4d8bd8bc8c6bfc7636de6b4989767e6b436c2f41e2ad6106460",
+    "run/run6_expanded_bo_continue20_recovery/evaluations/attempt_0209/case_00/bilayer_zigzag_sequence_native_hybrid_state.json": "b901479c3500a30a6f57e6cab2ebef811689096532bff4c40eb68a1271cf97ea",
+    "run/run6_expanded_bo_continue20_recovery/evaluations/attempt_0209/case_00/sequence.json": "ae885273b4da727a1815c4104d41328a09f96749e478cbf89dbe2ff58df92bb8",
+    "run/run6_expanded_bo_continue20_recovery/evaluations/attempt_0209/result.json": "fb8461c92067502ca22cc9be6625c829161d5551df47c9be5cb09e51891a877b",
+    "calibration/data/raw/run6_zigzag_path.csv": "9913ec8e6b0672bc58b69ce2146da285ce4a68409b1e44d2728f2a9493f15602",
+    "run/run9_transfer_expanded/evaluations/attempt_0209/case_00/comparison.npz": "8b54a89a2f20306d9cdf4dc8a5e6463e8a0fd78806609e09a7ced74f64cdedc8",
+    "run/run9_transfer_expanded/evaluations/attempt_0209/case_00/prediction_mm.vtp": "907778e4eba8ea70cc97befbffe88346dba93d4e14ed7519abdb458f086ed731",
+    "run/run9_transfer_expanded/evaluations/attempt_0209/case_00/bilayer_zigzag_sequence_native_hybrid_state.json": "d9ca2e2b1b890847df63d76e9994ca196af1a6d88bdd73f3114d7f8ab2b90a63",
+    "run/run9_transfer_expanded/evaluations/attempt_0209/case_00/sequence.json": "e3fe1bb10eaf4b45858b5902567dd7c6428da814642b1ea1951ed1d1ed4e86b5",
+    "run/run9_transfer_expanded/evaluations/attempt_0209/result.json": "4006a2c49b9d1d78ffa0b91a6d06a88ac2afc78ba07cea02d3267df86c784f1c",
+    "calibration/data/raw/run9_zigzag_path.csv": "fe54d3080384f773a398e0fa80215633434aae70945c1b9dc0b439c0aec15f29"
+  },
+  "script_sha256": "8a583f42fd86fef32781b826aea003259ac9f17734eafdc380de57c41d167aff",
+  "transverse_stations_y_mm": [
+    -100.0,
+    -50.0,
+    0.0,
+    50.0,
+    100.0
+  ],
+  "longitudinal_stations_x_mm": [
+    0.0
+  ],
+  "figures": [
+    "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/run6_run9_multislice_profiles.png",
+    "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/run6_run9_multislice_profiles.pdf"
+  ],
+  "tolerance_band_mm": [
+    -0.25,
+    0.25
+  ]
+}

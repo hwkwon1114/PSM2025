@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import numpy as np
+from shellsim.solver_settings import solver_options, typed
 
 NAMES = ('gtop', 'gbot', 'ortho_top', 'ortho_bottom')
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +34,9 @@ def load_config(path):
     c = json.loads(Path(path).read_text())
     if c.get('schema_version') != 1:
         raise ValueError('Expected calibration schema_version=1')
+    if 'solver_config' in c['solver']:      # shared solver settings; the config's own args (geometry) take precedence
+        shared = {k: typed(v) for k, v in solver_options(config=ROOT / c['solver']['solver_config']).items()}
+        c['solver']['args'] = {**shared, **c['solver']['args']}
     for name in NAMES:
         p = c['parameters'][name]
         lo, hi = p['bounds']

@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "units": {
+    "length": "mm",
+    "angle": "deg",
+    "growth": "engineering_strain"
+  },
+  "defaults": {
+    "start_mode": "left_bottom_up",
+    "profile": {
+      "mode": "uniform"
+    }
+  },
+  "hardening": {
+    "model": "voce_decay",
+    "history_variable": "hit_count",
+    "beta": 0.2231435513142097,
+    "floor": 0,
+    "scope": "face_shared",
+    "count_rule": "plastic_hits"
+  },
+  "boundary_conditions": {
+    "enabled": true,
+    "coordinate_system": "material_uv",
+    "application": "persistent",
+    "release_after_final_cycle": true,
+    "regions": [
+      {
+        "name": "left_gripper",
+        "shape": "rectangle",
+        "center_uv_mm": [
+          -50,
+          140
+        ],
+        "size_uv_mm": [
+          50,
+          20
+        ],
+        "rotation_deg": 0
+      },
+      {
+        "name": "right_gripper",
+        "shape": "rectangle",
+        "center_uv_mm": [
+          50,
+          140
+        ],
+        "size_uv_mm": [
+          50,
+          20
+        ],
+        "rotation_deg": 0
+      }
+    ]
+  },
+  "toolpaths": [
+    {
+      "id": "run9",
+      "repeat": 33,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 187.5,
+        "alpha_deg": 1,
+        "n_strips": 32,
+        "width_mm": 2,
+        "shift_uv_mm": [
+          0,
+          -28.75
+        ],
+        "shift_frame": "material",
+        "rotation_deg": 0,
+        "gtop": 0.00028835116227798787,
+        "gbot": 0.000014587994001079146,
+        "ortho_top": -0.3989157893255133,
+        "ortho_bottom": 0.960306323937336
+      }
+    }
+  ]
+}

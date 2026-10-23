@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "units": {
+    "length": "mm",
+    "angle": "deg",
+    "growth": "engineering_strain"
+  },
+  "hardening": {
+    "model": "voce_decay",
+    "history_variable": "hit_count",
+    "beta": 0.2231435513142097,
+    "floor": 0,
+    "scope": "face_shared",
+    "count_rule": "plastic_hits"
+  },
+  "defaults": {
+    "start_mode": "left_bottom_up",
+    "profile": {
+      "mode": "center_peak",
+      "top_end_ratio": 0.4,
+      "top_profile_power": 2.0
+    }
+  },
+  "toolpaths": [
+    {
+      "id": "toolpath_A",
+      "enabled": true,
+      "repeat": 4,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 140.0,
+        "alpha_deg": 9.13,
+        "n_strips": 10,
+        "width_mm": 8.0,
+        "center_uv_mm": [
+          0.0,
+          0.0
+        ],
+        "shift_uv_mm": [
+          0.0,
+          0.0
+        ],
+        "shift_frame": "material",
+        "rotation_deg": 0.0,
+        "gtop": 0.00028835116227798787,
+        "gbot": 1.4587994001079146e-05,
+        "ortho_top": -0.3989157893255133,
+        "ortho_bottom": 0.960306323937336
+      }
+    },
+    {
+      "id": "toolpath_B_scalar_trial",
+      "repeat": 3,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 196.0,
+        "alpha_deg": 2.86,
+        "n_strips": 8,
+        "width_mm": 4.0,
+        "center_uv_mm": [
+          0.0,
+          0.0
+        ],
+        "shift_uv_mm": [
+          0.0,
+          118.0
+        ],
+        "shift_frame": "material",
+        "rotation_deg": 90.0,
+        "gtop": 0.00028835116227798787,
+        "gbot": 1.4587994001079146e-05,
+        "profile": {
+          "mode": "uniform"
+        },
+        "ortho_top": -0.3989157893255133,
+        "ortho_bottom": 0.960306323937336
+      }
+    },
+    {
+      "id": "toolpath_C_scalar_trial",
+      "repeat": 3,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 196.0,
+        "alpha_deg": 2.86,
+        "n_strips": 8,
+        "width_mm": 4.0,
+        "center_uv_mm": [
+          0.0,
+          0.0
+        ],
+        "shift_uv_mm": [
+          0.0,
+          -118.0
+        ],
+        "shift_frame": "material",
+        "rotation_deg": 90.0,
+        "gtop": 0.00028835116227798787,
+        "gbot": 1.4587994001079146e-05,
+        "profile": {
+          "mode": "uniform"
+        },
+        "ortho_top": -0.3989157893255133,
+        "ortho_bottom": 0.960306323937336
+      }
+    }
+  ],
+  "boundary_conditions": {
+    "enabled": false
+  }
+}

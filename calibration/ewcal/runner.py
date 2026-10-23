@@ -221,6 +221,12 @@ def check_output(config, case, folder):
                     'trial_gradient_ratio': .95, 'rate_advantage': 1.1,
                     'maximum_probes': 8, 'maximum_fallbacks': 2,
                     'newton_window': 4, 'newton_plateau_ratio': .90,
+                    'on_newton_stall': config['solver']['args'].get('-native_hybrid_on_newton_stall', 'cutback'),
+                    'newton_stall_window': config['solver']['args'].get('-native_hybrid_newton_stall_window', 5),
+                    'newton_stall_ratio': config['solver']['args'].get('-native_hybrid_newton_stall_ratio', .85),
+                    'newton_stall_grace': config['solver']['args'].get('-native_hybrid_newton_stall_grace', 10),
+                    'max_newton_stalls': config['solver']['args'].get('-native_hybrid_max_newton_stalls', 2),
+                    'max_newton_indefinite': config['solver']['args'].get('-native_hybrid_max_newton_indefinite', 3),
                 }
                 if policy != expected_policy:
                     raise SolverFailure('Adaptive native policy controls mismatch')

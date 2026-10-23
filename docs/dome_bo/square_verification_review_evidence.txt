@@ -1,0 +1,51 @@
+## sha256 (full)
+cb3708762e3b01c84dd6f09c05e9571d2552a56d9773961e66af52b474d6c122  calibration/dome/square_attempt.py
+18d8425a540dda9bf98c8d55b538972bf70436b7f0e47872cc54a869e9ce8b52  calibration/dome/run_square_verification.sbatch
+2560714857a316dbf9f55289e1dffdd9fe4e6d20a7cc4ee3d7606e22e15df852  calibration/dome/analyze_square_verification.py
+201830532596ae4d24a8ed643810bb4948b342311512e3162dbf709a657289db  scripts/run_dome_continuation.py
+095ae2685385df8d2153823d259d9cc2063d250eaf3631244cc6a7684d150e52  test/python/test_dome_verification_ceiling.py
+6557ef685f1cac80e39cf6d4700fcef51df6aae0991759577ab6628181b1c776  calibration/dome/square_hatch.py
+dda4e7717a8675c025e58a3b91464e0b81426c8f7ab926124da68efaa68393e0  calibration/analysis/dome_continuous_objective.py
+85b0e6ac1942b3c01be28e321b839694300f7ec5419d7a9852ea70c7838ed180  calibration/analysis/dome_curvature.py
+94252b22fd97d165de5fa0c1b203dbf0ef5c9d77639ef5474f9fa925fc187ce3  calibration/configs/solver/default_adaptive_cutback.json
+522633cff2d7ff14b392c0ddd58a80df5049ed9648f8f6de258ff7d1801c4841  run/dome_square/frozen/shell
+0dc74cb8e6a9d539c10e778dc9abd9630762c273d80fab1b5099594b1276c2cd  run/dome_square/campaign/attempts/attempt_030/request.json
+888f80ec3c3519b1b372d12c661dc6fcb9bc41aa992b14ad70c456437c93c173  run/dome_square/campaign/attempts/attempt_030/solve/sequence.json
+fbb34cc38b144e6fdd23b81b14175bd3528a04c356b6c527e5b8139bec54bdad  run/dome_square/campaign/attempts/attempt_030/solve/bilayer_zigzag_sequence_native_hybrid_state.json
+
+## campaign identity.json
+{
+  "binary_sha256": "522633cff2d7ff14b392c0ddd58a80df5049ed9648f8f6de258ff7d1801c4841",
+  "mesh": [
+    ".1",
+    ".1",
+    ".02"
+  ],
+  "design_seed": 20261022,
+  "bo_seed": 20261023,
+  "max_attempts": 96,
+  "files": {
+    "calibration/dome/square_hatch.py": "6557ef685f1cac80e39cf6d4700fcef51df6aae0991759577ab6628181b1c776",
+    "calibration/dome/square_attempt.py": "f8aff74447e4191d483b0d3dda59966a00439aa9293ecc0ab5f0892c7f8b5c13",
+    "calibration/dome/square_campaign.py": "7d34edc508dac9d4b9eb7a46eb82ecb02ef046ef85f0f9497367ea33fec032ba",
+    "calibration/dome/crosshatch_generator.py": "c73c9c9e5e7ff100d573c4d9feb726e5da2b91644344572a83f751f4cd80cd3e",
+    "calibration/analysis/dome_continuous_objective.py": "dda4e7717a8675c025e58a3b91464e0b81426c8f7ab926124da68efaa68393e0",
+    "calibration/analysis/dome_curvature.py": "85b0e6ac1942b3c01be28e321b839694300f7ec5419d7a9852ea70c7838ed180",
+    "scripts/dome_gp_surrogate.py": "449cbe2e71cbb99a29b226f71cb397a999be2c4c48f497a97a547a7e4ddf47e4",
+    "scripts/run_dome_continuation.py": "b723c753ca3160c28008b87dfde471a1694c785ef0f9cd2a4f5664b6da79248f",
+    "calibration/dome/run_square_campaign.sbatch": "bf20ece7bfdb521f4dd45d0e3a397f9cc7d4632b6a68337fe580288977faf474",
+    "calibration/configs/solver/default_adaptive_cutback.json": "94252b22fd97d165de5fa0c1b203dbf0ef5c9d77639ef5474f9fa925fc187ce3"
+  }
+}
+
+## git tracking/diff of the two changed files
+error: pathspec 'scripts/run_dome_continuation.py' did not match any file(s) known to git
+error: pathspec 'calibration/dome/square_attempt.py' did not match any file(s) known to git
+Did you forget to 'git add'?
+
+## sequence_history attempt-030 screening
+cycle,solved,hit_events,max_total_hits
+1,0,2556,2
+2,0,2220,4
+3,0,2220,6
+4,1,2220,8

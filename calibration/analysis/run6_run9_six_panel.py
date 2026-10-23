@@ -1,6 +1,7 @@
 """Consolidated six-panel comparison: toolpath, full XZ deformation projections, and signed height residuals.
 
-Supports arbitrary evaluation cases or known attempt presets (default: Attempt 153 optimal parameters).
+Supports arbitrary evaluation cases or known attempt presets (default: Attempt 209). `--pair run7_run10` plots the
+frozen Attempt-209 transfer to Run 7 and Run 10 on the Run 6/Run 9 colour and axis scales, with notes where data exceed them.
 Exports high-resolution PNG, vector PDF, residual arrays, structured provenance, and scientific caption.
 """
 import argparse
@@ -63,8 +64,21 @@ def pin(path, pins_dict, base_dir=BASE):
     return path
 
 
+# Run 7/10 reuse the fixed Run 6/9 scales (values of the Run 6/9 figure) so the transfer rows are directly comparable.
+PAIRS = {
+    'run6_run9': {'names': ('run6', 'run9'), 'scales': None},
+    'run7_run10': {'names': ('run7', 'run10'), 'scales': {
+        'height': (-5.565340718319909, 3.8526754026967667), 'residual': 3.2372786975952694,
+        'z': (-6.065340718319909, 4.352675402696767)}},
+}
+
+
 def resolve_case_paths(args, base_dir=BASE):
-    """Resolve case directories for Run 6 and Run 9 based on CLI arguments or attempt presets."""
+    """Resolve case directories for the selected pair from CLI arguments or attempt presets."""
+    if args.pair == 'run7_run10':
+        r7 = Path(args.run7_case) if args.run7_case else base_dir / 'run/run7_transfer/evaluations/attempt_9901/case_00'
+        r10 = Path(args.run10_case) if args.run10_case else base_dir / 'run/run10_transfer/evaluations/attempt_9902/case_00'
+        return r7, r10, 'Frozen transfer of Run 6 attempt-209 constants to Run 7 and Run 10 (no refit)', 'transfer'
     if args.run6_case and args.run9_case:
         r6_case = Path(args.run6_case)
         r9_case = Path(args.run9_case)
@@ -232,17 +246,22 @@ def load_evaluation_data(name, case_dir, pins, base_dir=BASE):
     }
 
 
-def generate_figure(rows, out_dir, desc, attempt_id, pins):
+def generate_figure(rows, out_dir, desc, attempt_id, pins, pair='run6_run9'):
     """Plot publication-quality six-panel comparison with layout verification."""
-    height_lo = min(r['scan'][:, 2].min() for r in rows)
-    height_hi = max(r['scan'][:, 2].max() for r in rows)
+    names = PAIRS[pair]['names']
+    labels = [n.replace('run', 'Run ') for n in names]
+    stem = f'{names[0]}_{names[1]}'
+    fixed = PAIRS[pair]['scales']
+    if fixed:
+        (height_lo, height_hi), residual_limit, (zlo, zhi) = fixed['height'], fixed['residual'], fixed['z']
+    else:
+        height_lo = min(r['scan'][:, 2].min() for r in rows)
+        height_hi = max(r['scan'][:, 2].max() for r in rows)
+        residual_limit = max(np.nanmax(np.abs(r['dz'])) for r in rows)
+        zlo = min(min(r['scan'][:, 2].min(), r['prediction'][:, 2].min()) for r in rows) - 0.5
+        zhi = max(max(r['scan'][:, 2].max(), r['prediction'][:, 2].max()) for r in rows) + 0.5
     height_norm = Normalize(height_lo, height_hi)
-
-    residual_limit = max(np.nanmax(np.abs(r['dz'])) for r in rows)
     residual_norm = TwoSlopeNorm(vmin=-residual_limit, vcenter=0, vmax=residual_limit)
-
-    zlo = min(min(r['scan'][:, 2].min(), r['prediction'][:, 2].min()) for r in rows) - 0.5
-    zhi = max(max(r['scan'][:, 2].max(), r['prediction'][:, 2].max()) for r in rows) + 0.5
 
     style_rc = {
         'font.family': 'DejaVu Sans',
@@ -325,6 +344,18 @@ def generate_figure(rows, out_dir, desc, attempt_id, pins):
             ax2.set_xticks([-100, -50, 0, 50, 100])
             ax2.set_yticks([-150, -100, -50, 0, 50, 100, 150])
 
+        if fixed:  # true magnitudes where data exceed the fixed Run 6/9 scales
+            note_kw = dict(fontsize=6.5, va='top', ha='left', bbox=dict(boxstyle='round,pad=0.25', fc='white', ec='#999999', alpha=0.95))
+            for i, r in enumerate(rows):
+                st = r['statistics']
+                z0, z1 = st['scan_height_range_mm']
+                d0, d1 = st['dz_range_mm']
+                if z0 < height_lo or z1 > height_hi:
+                    axes[i, 0].text(0.03, 0.97, f'Colour scale clipped\nactual scan z: {z0:.1f} to {z1:.1f} mm', transform=axes[i, 0].transAxes, **note_kw)
+                    axes[i, 1].text(0.03, 0.45, f'Axis clipped (same scale as Run 6/9)\nactual scan z: {z0:.1f} to {z1:.1f} mm', transform=axes[i, 1].transAxes, **note_kw)
+                if d0 < -residual_limit or d1 > residual_limit:
+                    axes[i, 2].text(0.03, 0.97, f'Colour scale clipped (±{residual_limit:.1f} mm)\nactual Δz: {d0:.1f} to {d1:.1f} mm\nRMS {st["rms_dz_mm"]:.1f} mm', transform=axes[i, 2].transAxes, **note_kw)
+
         fig.colorbar(
             im_height, ax=axes[:, 0].tolist(), label='Experimental z (mm)', shrink=0.7,
             ticks=np.linspace(height_lo, height_hi, 5), format='%.1f'
@@ -361,7 +392,7 @@ def generate_figure(rows, out_dir, desc, attempt_id, pins):
                 assert hit is None or hit.width <= 1 or hit.height <= 1, f"Text overlap: {text} / {other}"
 
         for ext in ('png', 'pdf'):
-            fig.savefig(out_dir / f'run6_run9_toolpath_deformation_residual.{ext}', dpi=300)
+            fig.savefig(out_dir / f'{stem}_toolpath_deformation_residual.{ext}', dpi=300)
         plt.close(fig)
 
     # Save residual arrays
@@ -399,16 +430,16 @@ def generate_figure(rows, out_dir, desc, attempt_id, pins):
     # Save caption markdown
     caption = f"""# {desc}
 
-Top row: Run 6; bottom row: Run 9.
+Top row: {labels[0]}; bottom row: {labels[1]}.
 - **(a, d) Toolpath and experimental surface**: Nominal CSV toolpath overlaid on experimental scan height ($z$ coordinate); stars indicate nominal start positions.
 - **(b, e) Full XZ deformation projection**: Direct comparison of all experimental scan cells (orange circles, #D55E00) and model prediction vertices (blue crosses, #0072B2), not selected cross-sections.
 - **(c, f) Signed height residual**: $\\Delta z = z_{{\\text{{model}}}} - z_{{\\text{{scan}}}}$ evaluated at matching $XY$ positions via piecewise-linear interpolation on actual projected model facets without extrapolation. Red indicates model higher than experiment; blue indicates model lower; gray indicates unsupported regions outside the projected model footprint.
 
 ## Quantitative Residual Summary
-- **Run 6** ({rows[0]['statistics']['accepted_scan_points']} points, {rows[0]['statistics']['supported_points']} supported):
+- **{labels[0]}** ({rows[0]['statistics']['accepted_scan_points']} points, {rows[0]['statistics']['supported_points']} supported):
   - Height residual RMS: {rows[0]['statistics']['rms_dz_mm']:.4f} mm (mean: {rows[0]['statistics']['mean_signed_dz_mm']:.4f} mm, 95th percentile $|\\Delta z|$: {rows[0]['statistics']['p95_absolute_dz_mm']:.4f} mm)
   - BO symmetric surface distance metric: {rows[0]['statistics']['metrics'].get('rms_symmetric_mm', float('nan')):.6f} mm
-- **Run 9** ({rows[1]['statistics']['accepted_scan_points']} points, {rows[1]['statistics']['supported_points']} supported):
+- **{labels[1]}** ({rows[1]['statistics']['accepted_scan_points']} points, {rows[1]['statistics']['supported_points']} supported):
   - Height residual RMS: {rows[1]['statistics']['rms_dz_mm']:.4f} mm (mean: {rows[1]['statistics']['mean_signed_dz_mm']:.4f} mm, 95th percentile $|\\Delta z|$: {rows[1]['statistics']['p95_absolute_dz_mm']:.4f} mm)
   - Transfer symmetric surface distance metric: {rows[1]['statistics']['metrics'].get('rms_symmetric_mm', float('nan')):.6f} mm
 
@@ -418,45 +449,47 @@ Top row: Run 6; bottom row: Run 9.
 - $\\text{{ortho}}_{{\\text{{top}}}}$: {rows[0]['parameters'].get('ortho_top')}
 - $\\text{{ortho}}_{{\\text{{bot}}}}$: {rows[0]['parameters'].get('ortho_bottom')}
 
-*Reproduction*: `python calibration/analysis/run6_run9_six_panel.py --attempt {attempt_id if attempt_id else '153'}`.
+*Reproduction*: `python calibration/analysis/run6_run9_six_panel.py --pair {pair}{f' --attempt {attempt_id}' if pair == 'run6_run9' else ''}`.
 """
-    (out_dir / 'run6_run9_toolpath_deformation_residual.caption.md').write_text(caption)
+    (out_dir / f'{stem}_toolpath_deformation_residual.caption.md').write_text(caption)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--attempt', type=int, default=209, help='Attempt preset (209=global optimal BO, 153=previous best, 83=stage2 best, 25=baseline)')
+    parser.add_argument('--pair', choices=sorted(PAIRS), default='run6_run9', help='run7_run10: frozen transfer on the Run 6/9 scales (ignores --attempt)')
     parser.add_argument('--run6-case', type=Path, help='Direct path to Run 6 case directory (overrides --attempt)')
     parser.add_argument('--run9-case', type=Path, help='Direct path to Run 9 case directory (overrides --attempt)')
-    parser.add_argument('--out-dir', type=Path, help='Output directory (default: run/optimization_review/run6_run9_six_panel_attempt{attempt})')
+    parser.add_argument('--run7-case', type=Path, help='Run 7 case directory (--pair run7_run10)')
+    parser.add_argument('--run10-case', type=Path, help='Run 10 case directory (--pair run7_run10)')
+    parser.add_argument('--out-dir', type=Path, help='Output directory (default: run/optimization_review/<pair>_six_panel...)')
     parser.add_argument('--force', action='store_true', help='Allow writing to existing directory')
     args = parser.parse_args()
 
-    r6_case, r9_case, desc, attempt_id = resolve_case_paths(args, BASE)
+    case_a, case_b, desc, attempt_id = resolve_case_paths(args, BASE)
+    name_a, name_b = PAIRS[args.pair]['names']
 
     if args.out_dir:
         out_dir = args.out_dir if args.out_dir.is_absolute() else BASE / args.out_dir
     else:
-        out_dir = BASE / f'run/optimization_review/run6_run9_six_panel_attempt{attempt_id if attempt_id else "custom"}'
+        out_dir = BASE / f'run/optimization_review/{name_a}_{name_b}_six_panel' + (f'_{attempt_id}' if args.pair == 'run7_run10' else f'_attempt{attempt_id if attempt_id else "custom"}')
 
     if out_dir.exists() and any(out_dir.iterdir()) and not args.force:
         raise FileExistsError(f'Output directory {out_dir} exists and is not empty. Use --force to overwrite.')
     out_dir.mkdir(parents=True, exist_ok=True)
 
     pins = {}
-    print(f"Loading Run 6 from: {r6_case}")
-    row6 = load_evaluation_data('run6', r6_case, pins, BASE)
-    print(f"Loading Run 9 from: {r9_case}")
-    row9 = load_evaluation_data('run9', r9_case, pins, BASE)
-
-    rows = [row6, row9]
+    rows = []
+    for name, case in ((name_a, case_a), (name_b, case_b)):
+        print(f"Loading {name} from: {case}")
+        rows.append(load_evaluation_data(name, case, pins, BASE))
     print(f"Generating six-panel comparison in: {out_dir}")
-    generate_figure(rows, out_dir, desc, attempt_id, pins)
+    generate_figure(rows, out_dir, desc, attempt_id, pins, args.pair)
 
     print("\nGeneration complete!")
-    print(f"PNG preview: {out_dir / 'run6_run9_toolpath_deformation_residual.png'}")
-    print(f"Vector PDF:  {out_dir / 'run6_run9_toolpath_deformation_residual.pdf'}")
-    print(f"Caption:     {out_dir / 'run6_run9_toolpath_deformation_residual.caption.md'}")
+    print(f"PNG preview: {out_dir / f'{name_a}_{name_b}_toolpath_deformation_residual.png'}")
+    print(f"Vector PDF:  {out_dir / f'{name_a}_{name_b}_toolpath_deformation_residual.pdf'}")
+    print(f"Caption:     {out_dir / f'{name_a}_{name_b}_toolpath_deformation_residual.caption.md'}")
     print(f"Provenance:  {out_dir / 'provenance.json'}")
     print("\nSummary Statistics:")
     print(json.dumps([r['statistics'] for r in rows], indent=2))

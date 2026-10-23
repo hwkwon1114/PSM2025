@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "sheet": {
+    "size_mm": [
+      200,
+      300
+    ],
+    "thickness_mm": 0.77
+  },
+  "parameters": {
+    "gtop": {
+      "initial": 0.001,
+      "bounds": [
+        5e-05,
+        0.01
+      ]
+    },
+    "gbot": {
+      "initial": 0.0003,
+      "bounds": [
+        1e-05,
+        0.001
+      ]
+    },
+    "ortho_top": {
+      "initial": -0.46,
+      "bounds": [
+        -1.0,
+        1.0
+      ]
+    },
+    "ortho_bottom": {
+      "initial": 0.0,
+      "bounds": [
+        -1.0,
+        1.0
+      ]
+    }
+  },
+  "solver": {
+    "executable": "bin/shell",
+    "command_prefix": [],
+    "solve_mode": "final_only",
+    "timeout_seconds": 3600,
+    "acceptance": {
+      "max_hlbfgs_gradient_norm": 1e-07,
+      "other_backend_success_codes": {},
+      "max_native_hybrid_gradient_norm": 5e-14
+    },
+    "args": {
+      "-sim": "bilayer_growth",
+      "-case": "custom",
+      "-geometry": "rectangle",
+      "-lx": 0.1,
+      "-ly": 0.15,
+      "-res": 0.01,
+      "-enable_passE": false,
+      "-nsteps": 1,
+      "-stepwise": false
+    },
+    "solver_config": "shellsim/configs/default_adaptive_cutback.json"
+  },
+  "sequence_defaults": {
+    "start_mode": "left_bottom_up",
+    "profile": {
+      "mode": "uniform"
+    }
+  },
+  "hardening": {
+    "model": "voce_decay",
+    "history_variable": "hit_count",
+    "beta": 0.2231435513142097,
+    "floor": 0,
+    "scope": "face_shared",
+    "count_rule": "plastic_hits"
+  },
+  "cases": [
+    {
+      "id": "run10",
+      "repeat": 50,
+      "weight": 1,
+      "scan": "calibration/data/raw/Run_10.stl",
+      "scan_scale_to_mm": 1,
+      "target": "calibration/data/processed/run10_oriented.npz",
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 175.0,
+        "alpha_deg": 1.5,
+        "n_strips": 24,
+        "width_mm": 2,
+        "shift_uv_mm": [
+          0,
+          -22.5
+        ],
+        "shift_frame": "material",
+        "rotation_deg": 0
+      },
+      "scan_orientation": {
+        "flip_z": false,
+        "flip_xy": false,
+        "basis_columns": [
+          [
+            0.99356674393314,
+            0.11183196341287557,
+            -0.01785321565767164
+          ],
+          [
+            0.11186533152426537,
+            -0.9937229876578065,
+            0.0008782957415085859
+          ],
+          [
+            -0.017642929265410518,
+            -0.0028698013284206717,
+            -0.9998402328808694
+          ]
+        ]
+      }
+    }
+  ],
+  "preprocess": {
+    "spacing_mm": 2,
+    "edge_inset_mm": 2,
+    "z_outlier_floor_mm": 20,
+    "max_cell_z_mad_mm": 0.5,
+    "min_points": 1000
+  },
+  "registration": {
+    "method": "material_reference",
+    "metric": "symmetric",
+    "require_state_export": true
+  },
+  "optimization": {
+    "seed": 2026,
+    "coarse_samples": 5,
+    "max_evaluations": 120,
+    "xtol": 0.005,
+    "ftol": 0.0001,
+    "sensitivity_step": 0.03,
+    "failure_penalty_mm": 1000000
+  },
+  "bayesian": {
+    "initial_points": 5,
+    "candidate_pool": 2048,
+    "local_candidates": 512,
+    "failure_radius": 0,
+    "min_separation": 0.08,
+    "lhs_optimization": "random-cd"
+  },
+  "require_state_export": true,
+  "expected_reference_area_mm2": 60000,
+  "area_tolerance_rel": 0.01,
+  "output_dir": "run/run10_transfer",
+  "report_dir": "run/run10_transfer/report"
+}

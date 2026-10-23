@@ -1,0 +1,46 @@
+{
+  "sources_sha256": {
+    "/gpfs/projects/p33082/PSM2025-zigzag/calibration/configs/boundary_conditions/run6_two_gripper_cycle.json": "70a13f9ee685f8668b5980fa0e9d4fdffa4d43eebfa23f7381d1e85ea253c60a",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run6/paired_clamped_checkpoint.json": "21f413097781d0fec3a9734869f2576ebf1360b2449d03a0bc15f06182835771",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run6/release_putong.json": "55f9b1c26448c203b67058eb45c049a456f0682382ad56684d7b0d9a0f96d2f1",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run6/release_free.json": "55134570317a10a3e09909002a866e70cce63359ee49dfe9f2efd60a1c42bd75",
+    "/gpfs/projects/p33082/PSM2025-zigzag/calibration/configs/boundary_conditions/run9_two_gripper_cycle.json": "a7eb26cb34f82e68cf8c617e0104b2fbe9e26f21b1941dcd410b13ff457f418c",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run9/paired_clamped_checkpoint.json": "f68299db621e0e377fdcedf972ab3f18e78d4e56fd45f865da219dae442f6cd0",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run9/release_putong.json": "6dc3e52406ee266e1584fe43d5c2d540b7bc4411d5aac571c0a26d32a5e2bb60",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run9/release_free.json": "8cc8a85968049771b63d06dee9fcfdd3f2233529f66c00802f568bcbbaa5ceb5",
+    "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plot_two_gripper_stages.py": "76a28ece7f8d04cebb257a44ca03bd0e6dcd5a6086a7ee6249e68343e89c2139"
+  },
+  "numpy": "1.24.4",
+  "matplotlib": "3.7.5",
+  "figure_size_inches": [
+    9,
+    8.5
+  ],
+  "dpi": 220,
+  "vertical_exaggeration": 5,
+  "coordinate_frame": "original solver; no rigid alignment",
+  "colormap": "coolwarm",
+  "height_limits_mm": [
+    -8,
+    8
+  ],
+  "view": {
+    "elevation": 24,
+    "azimuth": -60
+  },
+  "selection": "both runs, every surface triangle, final accepted phase equilibria",
+  "pad_color": "#CC79A7",
+  "gauge_color": "#009E73",
+  "run_styles": {
+    "run6": {
+      "color": "#0072B2",
+      "linestyle": "-"
+    },
+    "run9": {
+      "color": "#D55E00",
+      "linestyle": "--"
+    }
+  },
+  "checks": "accepted endpoints; matching parent/start; exact fixed values; full pad mask; 6/0 release DOFs; finite geometry; path bounds",
+  "visual_review": "Run 9 final PNG and both independently rasterized final PDF pages inspected. No clipping or overlap found; pads and 3-2-1 markers visible. PDF review: run/two_gripper_comparison/checks/stage_pdf_review. No color-vision-deficiency simulation performed."
+}

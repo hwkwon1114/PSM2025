@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "created_at": "2026-10-19T15:55:17.310573+00:00",
+  "source": "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/four_condition_aligned/run6_four_condition_stages.pdf",
+  "source_sha256": "1352be85fd8258aea024f072dca55d22effd0b18c5f05b93cfa4b0815408e8ba",
+  "total_pages": 1,
+  "selected_pages": [
+    1
+  ],
+  "page_numbering": "1-based physical PDF page index, not printed labels",
+  "backend": "pdftoppm",
+  "backend_version": "pdftoppm version 26.09.0\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC",
+  "format": "png",
+  "longest_dimension_requested": 1200,
+  "ocr_performed": false,
+  "visually_verified": false,
+  "warnings": [],
+  "pages": [
+    {
+      "pdf_page": 1,
+      "path": "page-0001.png",
+      "sha256": "bbd1493241dcf49d7a88943c35dfea88cbbe641d8f8fcbfb0819cc6274a5e9b6",
+      "width": 1000,
+      "height": 1200,
+      "command": [
+        "/gpfs/home/pxl1051/miniforge/envs/DHD/bin/pdftoppm",
+        "-f",
+        "1",
+        "-l",
+        "1",
+        "-singlefile",
+        "-scale-to",
+        "1200",
+        "-png",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/four_condition_aligned/run6_four_condition_stages.pdf",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/four_condition_aligned/pdf_check_run6/page-0001"
+      ],
+      "visually_verified": false,
+      "warnings": []
+    }
+  ],
+  "errors": [],
+  "source_unchanged": true
+}

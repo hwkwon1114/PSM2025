@@ -61,7 +61,9 @@ class NativeForwardTests(unittest.TestCase):
                 'mode': 'adaptive', 'version': 'gradient-cost-v1', 'minimum_warmup': 50,
                 'window': 20, 'plateau_ratio': .90, 'relative_gradient': .01,
                 'trial_gradient_ratio': .95, 'rate_advantage': 1.1, 'maximum_probes': 8,
-                'maximum_fallbacks': 2, 'newton_window': 4, 'newton_plateau_ratio': .90})
+                'maximum_fallbacks': 2, 'newton_window': 4, 'newton_plateau_ratio': .90,
+                'on_newton_stall': 'cutback', 'newton_stall_window': 5, 'newton_stall_ratio': .85,
+                'newton_stall_grace': 10, 'max_newton_stalls': 2, 'max_newton_indefinite': 3})
             save_json(folder/'sequence_result.json', m); check_output(adaptive, adaptive['cases'][0], folder)
             for key, value in [('attempts', 2), ('probe_attempts', 2), ('fallbacks', 3),
                                ('newton_attempts', True), ('lbfgs_seconds', None), ('policy_events', [])]:

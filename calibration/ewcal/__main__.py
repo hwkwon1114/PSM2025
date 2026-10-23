@@ -10,9 +10,7 @@ from .runner import forward, Evaluator
 def main():
     p = argparse.ArgumentParser(description='English Wheel calibration CLI')
     p.add_argument('action', choices=[
-        'forward', 'doctor', 'prepare', 'dry-run', 'evaluate',
-        'sensitivity', 'optimize', 'report', 'compare-history', 'bayes'
-    ])
+        'forward', 'doctor', 'evaluate'])
     p.add_argument('--config', default='calibration/configs/run6.json')
     p.add_argument('--executable', help='Solver binary override')
     p.add_argument('--budget', type=int, help='Bayes total evaluation budget')
@@ -55,8 +53,6 @@ def main():
         rec = evaluator.evaluate(x, use_cache=not args.no_cache)
         print(json.dumps(rec, indent=2))
         return 0 if rec.get('valid') else 1
-
-    return 0
 
 
 if __name__ == '__main__':

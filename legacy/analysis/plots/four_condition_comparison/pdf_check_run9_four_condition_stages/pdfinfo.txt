@@ -1,0 +1,17 @@
+Creator:         Matplotlib v3.7.5, https://matplotlib.org
+Producer:        Matplotlib pdf backend v3.7.5
+CreationDate:    Sat Oct 17 21:09:26 2026 CDT
+Custom Metadata: no
+Metadata Stream: no
+Tagged:          no
+UserProperties:  no
+Suspects:        no
+Form:            none
+JavaScript:      no
+Pages:           1
+Encrypted:       no
+Page size:       720 x 864 pts
+Page rot:        0
+File size:       161893 bytes
+Optimized:       no
+PDF version:     1.4

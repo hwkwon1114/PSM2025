@@ -1,0 +1,5 @@
+# Two grippers aligned with the sheet top edge
+
+Researcher-directed geometry preview: two 50 mm (x) × 20 mm (y) pads on a centered 200 × 300 mm sheet. Centers are (-50,140) and (+50,140) mm; bounds are x=[-75,-25] and [25,75] mm, y=[130,150] mm. Both upper edges coincide with the sheet edge y=150 mm. Only hatched rectangles denote proposed fixation; the pale band is the existing upper 85 mm fixture zone, not a fully fixed area. The dashed y=65 mm nominal toolpath turnaround is 65 mm below the pads; finite-width contact footprints and full toolpath traces are not depicted. This is a new researcher-specified setup, not recovered Putong geometry, and not a simulation result.
+
+Generated with calibration/analysis/plot_two_gripper_proposal.py using the project DHD Python environment. Equal-aspect material coordinates, 8 × 10 inch PNG at 180 dpi. Annotation bounds/overlap checks passed; rendered PNG visually inspected. No solver configuration changed or simulation launched. Supersedes the proposed y=107.5 mm pad centers in two_gripper_proposed_layout.png, which is retained as an earlier preview.

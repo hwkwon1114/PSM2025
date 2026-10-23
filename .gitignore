@@ -96,3 +96,7 @@ calibration/data/processed/*
 /sequence_*.json
 /sequence_history.csv
 
+
+# LaTeX build artifacts
+docs/**/*.aux
+docs/**/compile.stdout

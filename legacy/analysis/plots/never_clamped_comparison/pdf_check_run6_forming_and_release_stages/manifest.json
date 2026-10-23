@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "created_at": "2026-10-18T00:40:46.165788+00:00",
+  "source": "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/never_clamped_comparison/run6_forming_and_release_stages.pdf",
+  "source_sha256": "1b92d3d41c136bc15abe3b18933e79956cacef30da0b427e70d74909c281d5b7",
+  "total_pages": 1,
+  "selected_pages": [
+    1
+  ],
+  "page_numbering": "1-based physical PDF page index, not printed labels",
+  "backend": "pdftoppm",
+  "backend_version": "pdftoppm version 26.09.0\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC",
+  "format": "png",
+  "longest_dimension_requested": 1200,
+  "ocr_performed": false,
+  "visually_verified": false,
+  "warnings": [],
+  "pages": [
+    {
+      "pdf_page": 1,
+      "path": "page-0001.png",
+      "sha256": "1617735023540eb6cd7d16d90106373e8669f330c4a89401e9b97e61f6f203b7",
+      "width": 1000,
+      "height": 1200,
+      "command": [
+        "/gpfs/home/pxl1051/miniforge/envs/DHD/bin/pdftoppm",
+        "-f",
+        "1",
+        "-l",
+        "1",
+        "-singlefile",
+        "-scale-to",
+        "1200",
+        "-png",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/never_clamped_comparison/run6_forming_and_release_stages.pdf",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/never_clamped_comparison/pdf_check_run6_forming_and_release_stages/page-0001"
+      ],
+      "visually_verified": false,
+      "warnings": []
+    }
+  ],
+  "errors": [],
+  "source_unchanged": true
+}

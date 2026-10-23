@@ -1,0 +1,10 @@
+{
+  "source": "/gpfs/projects/p33082/PSM2025-zigzag/run/dome/bo_stage1/attempt_028/analysis/curvature_fields.npz",
+  "sha256": "3409aa5bbfc61d0b2c11c9e5ad40df8836e281f8c61e79783d1581a5bd6f6aab",
+  "sampled_faces": 150,
+  "displayed_direction_pairs": 136,
+  "omitted_pairs": 14,
+  "display_gap_threshold": "abs(k_strong)-abs(k_weak) >= max(0.05 m^-1, 0.1*max(abs(k)))",
+  "grid_spacing_mm": 20,
+  "segment_length_mm": 10
+}

@@ -1,0 +1,35 @@
+{
+  "source_sha256": {
+    "run/two_gripper_comparison/analysis/paired_release_metrics.json": "ceddb2bbccaf0fbc02442592489d2baa981be0d33069133f287dc1bc040ff385",
+    "run/two_gripper_comparison/analysis/run6_full_field.npz": "61ae44c2e7bf7893fbab56c0dc55b39046d1a1cb85a822953a008dfe06e90410",
+    "run/two_gripper_comparison/analysis/run9_full_field.npz": "0a7126c9e9e42c63d756a3467e2f4d9087eab2732fcb35e74ef656a03766ac16",
+    "calibration/analysis/plot_two_gripper_release.py": "a54188b77c768f641de54c5f55bf58b4f9964b27f269332ad22d3d28084ef2ec"
+  },
+  "matplotlib": "3.7.5",
+  "numpy": "1.24.4",
+  "size_inches": [
+    7.2,
+    6.5
+  ],
+  "dpi": 300,
+  "styles": {
+    "run6": {
+      "color": "#0072B2",
+      "linestyle": "-"
+    },
+    "run9": {
+      "color": "#D55E00",
+      "linestyle": "--"
+    }
+  },
+  "colormap": "cividis",
+  "field_units": "micrometres",
+  "color_limits": [
+    0,
+    0.07393728452880013
+  ],
+  "subsampling": "none",
+  "uncertainty": "none",
+  "layout_check": "all text within figure; annotations within axes",
+  "visual_review": "Parent inspected PNG and independently rendered PDF page 1 on 2026-10-17: no clipping/overlap; units/scales match metrics. PDF dimensions and embedded font verified in run/two_gripper_comparison/checks/release_pdf_review.json. Independent scientific review remains pending."
+}

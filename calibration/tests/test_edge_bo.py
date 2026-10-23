@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, Mock
 import numpy as np
-from scripts import run_run6_bo_edge as edge
+from calibration.bo import run_run6_bo_edge as edge
 from functools import lru_cache
 from calibration.ewcal.geometry import triangle_mesh
 from calibration.ewcal.material_frame import score_material_frame

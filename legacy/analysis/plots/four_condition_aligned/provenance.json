@@ -1,0 +1,302 @@
+{
+  "sources_sha256": {
+    "run/two_gripper_comparison/analysis_four_conditions/four_condition_metrics.json": "6758ed7e60b499f5e97dc634ace38c0188e49974492c003524fcf7dac12bb260",
+    "run/two_gripper_comparison/analysis_four_conditions/run6_full_field.npz": "23f40de05b6779d1ac113a64d230a4269c73134f48696cb501aea9fff5357a72",
+    "/gpfs/projects/p33082/PSM2025-zigzag/calibration/configs/boundary_conditions/run6_two_gripper_cycle.json": "70a13f9ee685f8668b5980fa0e9d4fdffa4d43eebfa23f7381d1e85ea253c60a",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run6/paired_clamped_checkpoint.json": "21f413097781d0fec3a9734869f2576ebf1360b2449d03a0bc15f06182835771",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run6/release_putong.json": "55f9b1c26448c203b67058eb45c049a456f0682382ad56684d7b0d9a0f96d2f1",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run6/release_free.json": "55134570317a10a3e09909002a866e70cce63359ee49dfe9f2efd60a1c42bd75",
+    "run/two_gripper_comparison/analysis_four_conditions/run9_full_field.npz": "88d5d5ff7cecd2eac245d07fe5c027c7d7b4bc8ec8495bb604a7f9fee5db9330",
+    "/gpfs/projects/p33082/PSM2025-zigzag/calibration/configs/boundary_conditions/run9_two_gripper_cycle.json": "a7eb26cb34f82e68cf8c617e0104b2fbe9e26f21b1941dcd410b13ff457f418c",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run9/paired_clamped_checkpoint.json": "f68299db621e0e377fdcedf972ab3f18e78d4e56fd45f865da219dae442f6cd0",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run9/release_putong.json": "6dc3e52406ee266e1584fe43d5c2d540b7bc4411d5aac571c0a26d32a5e2bb60",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run9/release_free.json": "8cc8a85968049771b63d06dee9fcfdd3f2233529f66c00802f568bcbbaa5ceb5",
+    "calibration/analysis/plot_four_conditions.py": "1d2f7ee8d8b16f11f72734edd0d7e650f1560dac81e62aa01d2f421c9918c9cb",
+    "calibration/analysis/plot_never_clamped.py": "0d9277c72851787650e0383a4a65bf24e923e96d1b57830d067961156214eed6",
+    "calibration/analysis/plot_two_gripper_stages.py": "76a28ece7f8d04cebb257a44ca03bd0e6dcd5a6086a7ee6249e68343e89c2139",
+    "calibration/analysis/plot_two_gripper_release.py": "a54188b77c768f641de54c5f55bf58b4f9964b27f269332ad22d3d28084ef2ec"
+  },
+  "numpy": "1.24.4",
+  "matplotlib": "3.7.5",
+  "dpi": 220,
+  "visual_review": "pending",
+  "exclusions": "none",
+  "independent_cases": 2,
+  "contrast_styles": [
+    [
+      "distance_mm",
+      "Pinned \u2212 free",
+      "#0072B2",
+      "-"
+    ],
+    [
+      "forming_distance_mm",
+      "Never \u2212 released",
+      "#D55E00",
+      "--"
+    ],
+    [
+      "cadence_distance_mm",
+      "Final-only \u2212 per-cycle",
+      "#009E73",
+      "-."
+    ]
+  ],
+  "stage_alignment": {
+    "run6": {
+      "clamped": {
+        "rotation": [
+          [
+            0.9999999999999999,
+            -3.6526100092521527e-19,
+            -1.2609004656039366e-17
+          ],
+          [
+            1.1818129719251823e-19,
+            1.0000000000000004,
+            1.4344951497398272e-15
+          ],
+          [
+            1.245995823718782e-17,
+            -1.3131345254737487e-15,
+            1.0000000000000007
+          ]
+        ],
+        "translation_mm": [
+          5.800481622797449e-18,
+          -6.035753494226803e-16,
+          3.3306690738754696e-16
+        ],
+        "rms_to_clamped_mm": 0.0
+      },
+      "putong": {
+        "rotation": [
+          [
+            0.999999988359725,
+            2.9491896059010567e-06,
+            -0.00015255114584374491
+          ],
+          [
+            -3.987758923378865e-06,
+            0.9999768221930251,
+            -0.006808455099187985
+          ],
+          [
+            0.00015252753061772176,
+            0.006808455628272912,
+            0.9999768105647806
+          ]
+        ],
+        "translation_mm": [
+          0.018279911699820094,
+          0.02123974277294295,
+          -1.0723922897791784
+        ],
+        "rms_to_clamped_mm": 0.7181949717699546
+      },
+      "free": {
+        "rotation": [
+          [
+            0.9999999963695287,
+            -1.9838703658239822e-05,
+            8.286958384750436e-05
+          ],
+          [
+            1.995032823156376e-05,
+            0.9999990923168283,
+            -0.0013472072981279384
+          ],
+          [
+            -8.284278178182396e-05,
+            0.0013472089465123886,
+            0.9999990890821486
+          ]
+        ],
+        "translation_mm": [
+          0.0032155063909175075,
+          0.012299998642566161,
+          -1.7048287212166557
+        ],
+        "rms_to_clamped_mm": 0.7181951681821238
+      },
+      "never": {
+        "rotation": [
+          [
+            0.9999982569038273,
+            -4.915010829724411e-06,
+            0.0018671275131166682
+          ],
+          [
+            -9.199503352466576e-06,
+            0.9999714273096423,
+            0.0075593967805277495
+          ],
+          [
+            -0.0018671113187774208,
+            -0.007559400780417985,
+            0.9999696842180588
+          ]
+        ],
+        "translation_mm": [
+          -0.02420782034407723,
+          0.01650017225812525,
+          -3.0910809524871303
+        ],
+        "rms_to_clamped_mm": 0.7181951892089689
+      },
+      "final_only": {
+        "rotation": [
+          [
+            0.9999986041113461,
+            -1.2564531712520112e-05,
+            0.0016708134223196434
+          ],
+          [
+            2.3751024285764015e-06,
+            0.9999814049100967,
+            0.006098346365077361
+          ],
+          [
+            -0.0016708589762601418,
+            -0.006098333884111813,
+            0.9999800090772413
+          ]
+        ],
+        "translation_mm": [
+          0.0010614391321665019,
+          0.0419453274098228,
+          -2.907175553114119
+        ],
+        "rms_to_clamped_mm": 0.7181957543702547
+      }
+    },
+    "run9": {
+      "clamped": {
+        "rotation": [
+          [
+            1.0000000000000004,
+            -3.871470107509686e-19,
+            -1.5544445179241817e-18
+          ],
+          [
+            -1.888856041914098e-19,
+            1.0000000000000002,
+            1.8911679549017336e-16
+          ],
+          [
+            1.5335982588247034e-18,
+            -1.979085078947117e-16,
+            1.0000000000000007
+          ]
+        ],
+        "translation_mm": [
+          1.892271604166107e-18,
+          -2.463307335887066e-16,
+          8.881784197001252e-16
+        ],
+        "rms_to_clamped_mm": 0.0
+      },
+      "putong": {
+        "rotation": [
+          [
+            0.9999999999583964,
+            2.508834744271461e-07,
+            -9.118408259255232e-06
+          ],
+          [
+            -2.867353981028265e-07,
+            0.9999922695365471,
+            -0.003932030908283885
+          ],
+          [
+            9.117351288157613e-06,
+            0.0039320309107348525,
+            0.9999922694950157
+          ]
+        ],
+        "translation_mm": [
+          0.013527033444554819,
+          0.016063073046453765,
+          -0.46322328440877625
+        ],
+        "rms_to_clamped_mm": 0.5040574814986902
+      },
+      "free": {
+        "rotation": [
+          [
+            0.999999999870318,
+            7.042537660063022e-07,
+            -1.6089327850034645e-05
+          ],
+          [
+            -7.779937183846538e-07,
+            0.9999894951625201,
+            -0.004583619094353749
+          ],
+          [
+            1.60859308032513e-05,
+            0.004583619106276773,
+            0.9999894950333874
+          ]
+        ],
+        "translation_mm": [
+          -8.354706394036718e-05,
+          0.023056991443550286,
+          -0.34067845137976105
+        ],
+        "rms_to_clamped_mm": 0.504058882529065
+      },
+      "never": {
+        "rotation": [
+          [
+            0.9999999091985966,
+            -1.5916992413338168e-05,
+            0.00042585143866060864
+          ],
+          [
+            7.737083895826344e-06,
+            0.9998156347021324,
+            0.019201472477632386
+          ],
+          [
+            -0.00042607855612502427,
+            -0.01920146743926342,
+            0.9998155440406203
+          ]
+        ],
+        "translation_mm": [
+          0.0008081496417958193,
+          0.030462281627049212,
+          -3.72365314708774
+        ],
+        "rms_to_clamped_mm": 0.504059532502735
+      },
+      "final_only": {
+        "rotation": [
+          [
+            0.9999978000461374,
+            -4.562578285276674e-05,
+            0.002097098274499967
+          ],
+          [
+            4.042252963237477e-06,
+            0.9998034691616168,
+            0.019824808600758782
+          ],
+          [
+            -0.002097590652430222,
+            -0.019824756510092807,
+            0.9998012698245439
+          ]
+        ],
+        "translation_mm": [
+          0.0027707118212719787,
+          0.07471813613708062,
+          -3.8526225697986662
+        ],
+        "rms_to_clamped_mm": 0.5040595397824112
+      }
+    }
+  },
+  "stage_reference": "clamped"
+}

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "created_at": "2026-10-19T19:21:38.330494+00:00",
+  "source": "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/dome_best_material_curvatures/material_curvatures.pdf",
+  "source_sha256": "db551b2f5f8f748e249d956161d115099e37d647acffd12ce2dc256079f13e63",
+  "total_pages": 1,
+  "selected_pages": [
+    1
+  ],
+  "page_numbering": "1-based physical PDF page index, not printed labels",
+  "backend": "pdftoppm",
+  "backend_version": "pdftoppm version 26.09.0\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC",
+  "format": "png",
+  "longest_dimension_requested": 1200,
+  "ocr_performed": false,
+  "visually_verified": false,
+  "warnings": [],
+  "pages": [
+    {
+      "pdf_page": 1,
+      "path": "page-0001.png",
+      "sha256": "4683be2b03c788f3c618c8de6a5948c969a522da6755034a1d8bf1450d6b59a3",
+      "width": 1200,
+      "height": 600,
+      "command": [
+        "/gpfs/home/pxl1051/miniforge/envs/DHD/bin/pdftoppm",
+        "-f",
+        "1",
+        "-l",
+        "1",
+        "-singlefile",
+        "-scale-to",
+        "1200",
+        "-png",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/dome_best_material_curvatures/material_curvatures.pdf",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/dome_best_material_curvatures/pdf_check/page-0001"
+      ],
+      "visually_verified": false,
+      "warnings": []
+    }
+  ],
+  "errors": [],
+  "source_unchanged": true
+}

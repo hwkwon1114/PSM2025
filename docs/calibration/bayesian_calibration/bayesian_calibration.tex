@@ -1,0 +1,48 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.85in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\pagestyle{empty}
+\begin{document}
+\section*{Bayesian calibration}
+Bayesian optimization (BO) was used to calibrate the growth and orthotropy parameters, denoted by $\boldsymbol{\theta}$, by minimizing the discrepancy between the simulated sheet and the experimental point cloud. For each parameter proposal, the simulation produced deformed mesh vertices $\mathbf{x}_j(\boldsymbol{\theta})$ corresponding to reference vertices $\mathbf{X}_j$, with $j=1,\ldots,M$.
+
+Rigid-body rotation was removed by fitting the deformed vertices to their material reference:
+\begin{equation}
+\mathbf{R}_{\boldsymbol{\theta}}=
+\underset{\mathbf{R}\in SO(3)}{\operatorname{arg\,min}}
+\sum_{j=1}^{M}\left\|
+\mathbf{R}[\mathbf{x}_j(\boldsymbol{\theta})-\bar{\mathbf{x}}(\boldsymbol{\theta})]
+-(\mathbf{X}_j-\bar{\mathbf{X}})\right\|_2^2.
+\end{equation}
+Here bars denote arithmetic vertex means. The aligned simulation coordinates were defined as
+\begin{equation}
+\widehat{\mathbf{x}}_j(\boldsymbol{\theta})=
+\mathbf{R}_{\boldsymbol{\theta}}\left[\mathbf{x}_j(\boldsymbol{\theta})-
+\sum_{k=1}^{M}w_k\mathbf{x}_k(\boldsymbol{\theta})\right],
+\qquad w_j=\frac{A_j}{\sum_{k=1}^{M}A_k},
+\end{equation}
+where $A_j$ is one-third of the total reference area of triangles incident on vertex $j$. Experimental scan points $\mathbf{y}_i$, $i=1,\ldots,N$, were centered as
+\begin{equation}
+\widehat{\mathbf{y}}_i=\mathbf{y}_i-\frac{1}{N}\sum_{\ell=1}^{N}\mathbf{y}_{\ell}.
+\end{equation}
+No scan-fitted rotation, scaling, or reflection was applied.
+
+BO minimized the bidirectional root-mean-square shape discrepancy
+\begin{equation}
+L(\boldsymbol{\theta})=
+\left\{\frac{1}{2}\left[
+\frac{1}{N}\sum_{i=1}^{N}d(\widehat{\mathbf{y}}_i,\widehat{S}_{\boldsymbol{\theta}})^2
++\sum_{j=1}^{M}w_j\min_{1\leq i\leq N}
+\left\|\widehat{\mathbf{x}}_j(\boldsymbol{\theta})-\widehat{\mathbf{y}}_i\right\|_2^2
+\right]\right\}^{1/2},
+\end{equation}
+where $\widehat{S}_{\boldsymbol{\theta}}$ is the triangular surface formed by the aligned simulated vertices and
+\begin{equation}
+d(\mathbf{y},S)=\min_{\mathbf{s}\in S}\|\mathbf{y}-\mathbf{s}\|_2.
+\end{equation}
+The two contributions respectively measure scan-to-surface and reference-area-weighted simulation-to-scan distances.
+
+Parameter settings were proposed within prescribed bounds using previous evaluations to guide subsequent proposals. Failed simulations were not assigned valid shape-discrepancy scores.
+\end{document}

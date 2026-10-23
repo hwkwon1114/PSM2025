@@ -57,7 +57,7 @@ def freeze():
               'calibration/configs/run6_bo_material_frame.json','calibration/data/processed/run6.json','calibration/data/processed/run6_oriented.json',
               'calibration/data/raw/run6_zigzag_path.csv','calibration/ewcal/common.py','calibration/ewcal/geometry.py',
               'calibration/ewcal/material_frame.py','calibration/ewcal/prepare.py','calibration/ewcal/runner.py',
-              'calibration/analysis/orient_run9_edges.py','scripts/run_run6_bo_refinement.py','scripts/run_run6_bo_material_frame.sbatch']
+              'calibration/analysis/orient_run9_edges.py','calibration/bo/run_run6_bo_refinement.py','calibration/bo/run_run6_bo_material_frame.sbatch']
     files=set(controls+['calibration/data/raw/run6.stl','calibration/data/processed/run6.npz','calibration/data/processed/run6_oriented.npz'])
     for e in sources:files.update(e[k] for k in ['mesh_file','state_file','sequence_file'])
     pins={p:sha(BASE/p) for p in sorted(files)}

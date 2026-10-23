@@ -1,0 +1,67 @@
+{
+  "Attempt 020 (center cross)": {
+    "solve_dir": "/gpfs/projects/p33082/PSM2025-zigzag/run/dome/bo_continuation_stage1/attempt_020/solve",
+    "accepted_solve": true,
+    "settings": {
+      "-equilibrium_grad_tol": 5e-14,
+      "-h_total": 0.0007700000000000001,
+      "-lx": 0.1,
+      "-ly": 0.15,
+      "-native_hybrid_grad_tol": 5e-14,
+      "-res": 0.01
+    },
+    "cycles": 26,
+    "gradient_norm": 1.7174897979538461e-18,
+    "j_combined": 0.0,
+    "j_quantile": 0.0,
+    "saddle_flux_fraction": 0.37471831995061017,
+    "total_coherent_fraction": 0.09828124999999999,
+    "largest_connected_fraction": 0.09822916666666358,
+    "valid_area_fraction": 1.0,
+    "qualified": false
+  },
+  "Attempt 045 (best 3-toolpath BO)": {
+    "solve_dir": "/gpfs/projects/p33082/PSM2025-zigzag/run/dome/bo_continuation_stage1/attempt_045/solve",
+    "accepted_solve": true,
+    "settings": {
+      "-equilibrium_grad_tol": 5e-14,
+      "-h_total": 0.0007700000000000001,
+      "-lx": 0.1,
+      "-ly": 0.15,
+      "-native_hybrid_grad_tol": 5e-14,
+      "-res": 0.01
+    },
+    "cycles": 16,
+    "gradient_norm": 7.292839192928745e-18,
+    "j_combined": 0.0,
+    "j_quantile": 0.0,
+    "saddle_flux_fraction": 0.36791624418898083,
+    "total_coherent_fraction": 0.5508333333333334,
+    "largest_connected_fraction": 0.22385416666667943,
+    "valid_area_fraction": 1.0,
+    "qualified": false
+  },
+  "Proposed pitch-graded cross-hatch": {
+    "solve_dir": "/gpfs/projects/p33082/PSM2025-zigzag/run/dome/proposed_matched_solve",
+    "accepted_solve": true,
+    "settings": {
+      "-equilibrium_grad_tol": 5e-14,
+      "-h_total": 0.0007700000000000001,
+      "-lx": 0.1,
+      "-ly": 0.15,
+      "-native_hybrid_grad_tol": 5e-14,
+      "-res": 0.01
+    },
+    "cycles": 6,
+    "gradient_norm": 1.984355303664001e-15,
+    "j_combined": 0.0,
+    "j_quantile": 0.0,
+    "saddle_flux_fraction": 0.30783222257567633,
+    "total_coherent_fraction": 0.19187500000000007,
+    "largest_connected_fraction": 0.08135416666666492,
+    "valid_area_fraction": 1.0,
+    "qualified": false
+  },
+  "_settings_matched": true,
+  "_settings_mismatch_detail": {}
+}

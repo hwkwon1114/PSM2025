@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "created_at": "2026-10-18T02:11:09.950925+00:00",
+  "source": "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/four_condition_comparison/four_condition_full_field.pdf",
+  "source_sha256": "8aa3026563c5b4a8c23738647f47c88831d5d10bec504a71097671e0b301d8ab",
+  "total_pages": 1,
+  "selected_pages": [
+    1
+  ],
+  "page_numbering": "1-based physical PDF page index, not printed labels",
+  "backend": "pdftoppm",
+  "backend_version": "pdftoppm version 26.09.0\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC",
+  "format": "png",
+  "longest_dimension_requested": 1600,
+  "ocr_performed": false,
+  "visually_verified": false,
+  "warnings": [],
+  "pages": [
+    {
+      "pdf_page": 1,
+      "path": "page-0001.png",
+      "sha256": "6b3268a7d80e632c4cac414f42db11f9d1cb97d09324f908fa0890dd5e124151",
+      "width": 1600,
+      "height": 862,
+      "command": [
+        "/gpfs/home/pxl1051/miniforge/envs/DHD/bin/pdftoppm",
+        "-f",
+        "1",
+        "-l",
+        "1",
+        "-singlefile",
+        "-scale-to",
+        "1600",
+        "-png",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/four_condition_comparison/four_condition_full_field.pdf",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/analysis/plots/four_condition_comparison/pdf_check_four_condition_full_field/page-0001"
+      ],
+      "visually_verified": false,
+      "warnings": []
+    }
+  ],
+  "errors": [],
+  "source_unchanged": true
+}

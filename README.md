@@ -9,10 +9,43 @@ This repository contains the C++ discrete differential geometry shell solver, Ba
 ## Overview
 
 We model the plastic deformation induced by an English wheel / sequential roller toolpath as an anisotropic bilayer eigenstrain shell problem. The repository provides:
-1. **High-Performance C++ Mechanics Solver**: A discrete differential geometry shell formulation using the native hybrid L-BFGS warmup + exact Newton optimizer with positive-definite Cholesky factorizations (CHOLMOD/SuiteSparse) terminating at machine precision ($1.5 \times 10^{-14}$ gradient norm). Legacy solver branches have been pruned to streamline future temporal growth modeling.
+1. **High-Performance C++ Mechanics Solver**: A discrete differential geometry shell formulation using the native hybrid L-BFGS warmup + exact Newton optimizer with positive-definite Cholesky factorizations (CHOLMOD/SuiteSparse) terminating at a gradient-norm gate (5e-14 in the shared configuration `shellsim/configs/default_adaptive_cutback.json`). Legacy solver branches have been pruned to streamline future temporal growth modeling.
 2. **Bayesian Optimization Framework**: A 4-parameter anisotropic growth law ($g_{\text{top}}, g_{\text{bottom}}, \text{ortho}_{\text{top}}, \text{ortho}_{\text{bottom}}$) calibrated against 3D optical scans of formed sheet metal (Run 6) with held-out generalization to different toolpaths (Run 9).
 3. **Rigorous Geometric Loss**: Material-frame rigid alignment ($SO(3)$ Kabsch) and discrete shell dual-area Voronoi quadrature weighting ($L_{\text{sym}}$).
 4. **Reproducibility Suite**: One-click scripts and interactive Jupyter notebooks reproducing all paper figures and quantitative benchmarks.
+
+---
+
+## Repository Layout
+
+Three parts:
+
+```text
+PSM2025-zigzag/
+├── calibration/    1. Calibrating the growth/hardening model by Bayesian optimization (Run 6, Run 9)
+│   ├── ewcal/          forward model, geometry, loss and BO library
+│   ├── bo/             campaign drivers (Run 6 BO, transfer to Run 9)
+│   ├── analysis/       post-processing and figure scripts
+│   ├── configs/        Run 6/7/9/10 configurations (solver settings are shared, see shellsim/)
+│   ├── data/           experimental scans and toolpaths
+│   ├── paper_figures/  one-click reproduction of the paper figures
+│   ├── notebooks/      demonstration notebook
+│   └── tests/
+├── dome_bo/        2. Finding a good dome toolpath by Bayesian optimization (square sheet)
+│   └── tests/          campaign, objective, mesh-study and verification code
+├── shellsim/       3. Using the solver: toolpath -> JSON -> simulation, in a notebook
+│   ├── toolpath.py, simulate.py
+│   ├── configs/default_adaptive_cutback.json   the one solver configuration
+│   └── examples/       notebook, ready-made trajectories, SVG toolpath input
+├── src/, test/, cmake/, CMakeLists.txt   C++ shell solver and its tests
+├── docs/           reports and records (start at docs/README.md)
+├── legacy/         earlier studies kept for reproduction (rectangular-sheet dome stages, ablations, benchmarks)
+└── environment.yml
+```
+
+Build the solver (below), then see `shellsim/README.md` to run your own toolpath; `docs/README.md` indexes the reports.
+
+---
 
 ---
 
@@ -42,7 +75,7 @@ This generates:
 - `./bin/sim_bilayer_growth`: Production CLI for bilayer sequence simulations.
 
 ### Running C++ Unit Tests
-Run the complete C++ test suite (127 passing tests across 37 suites):
+Run the complete C++ test suite:
 ```bash
 ./bin/testshell
 ```
@@ -51,54 +84,25 @@ Run the complete C++ test suite (127 passing tests across 37 suites):
 
 ## Running the Python Verification Suite
 
-Run the 56 automated unit and regression tests covering geometry processing, $SO(3)$ alignment, dual-area quadrature, and Bayesian optimization workflows:
+Run the automated unit and regression tests covering geometry processing, $SO(3)$ alignment, dual-area quadrature, and Bayesian optimization workflows:
 ```bash
 python -m unittest discover -s calibration/tests/ -p "test_*.py" -v
 ```
 
 ---
 
-## One-Click Paper Figure Reproduction
+## Reproducing the calibration figures
 
-To reproduce the paper's primary figures and quantitative tables from the optimal calibrated parameters (Attempt 209), run:
 ```bash
-./scripts/reproduce_paper_figures.sh --out-dir paper_figures --force
+python calibration/paper_figures/reproduce_paper_figures.py --force   # or ./calibration/paper_figures/reproduce_paper_figures.sh --force
 ```
-Or directly using Python:
-```bash
-python scripts/reproduce_paper_figures.py --out-dir paper_figures --force
-```
-
-### Generated Deliverables in `paper_figures/`:
-1. **2D Six-Panel Toolpath & Residual Figure**:
-   - `run6_run9_toolpath_deformation_residual.png` (High-res raster)
-   - `run6_run9_toolpath_deformation_residual.pdf` (Publication vector)
-   - Displays the wheeling path, continuous out-of-plane $z(x, y)$ deflection, and signed height residuals $\Delta z = z_{\text{sim}} - z_{\text{scan}}$ for both Run 6 and Run 9.
-2. **3D Isometric & Profile Comparison Figure**:
-   - `run6_run9_3d_deformation_residual.png` / `.pdf`
-   - Displays true 3D spatial curvature, saddle warpage, and end-on midline profile overlays.
-3. **Structured Provenance**:
-   - `provenance.json` & `caption.md` recording exact parameter values, input hashes, and metric breakdowns.
-
----
-
-## Interactive Jupyter Demonstration
-
-An interactive demonstration notebook is provided in `notebooks/`:
-```bash
-code notebooks/demo_zigzag_calibration.ipynb
-```
-The notebook contains:
-- Interactive walkthrough of the anisotropic bilayer formulation.
-- Step-by-step evaluation of the optimal parameters.
-- Inline visualization of the 2D toolpaths and 3D deformation shapes.
-- Pre-rendered outputs ready for immediate review.
+This regenerates the Run 6/Run 9 toolpath/deformation/residual figures (2D and 3D, PNG and PDF) from the Attempt 209 parameters into `calibration/paper_figures/`, with `provenance.json` and `caption.md` (parameters, input hashes, metrics). `calibration/notebooks/demo_zigzag_calibration.ipynb` walks through the same evaluation with pre-rendered outputs.
 
 ---
 
 ## Optimal Calibrated Parameters & Quantitative Results
 
-Calibrated on **Run 6** (29 passes, $130 \times 130\text{ mm}$ sheet) across 156 Bayesian optimization evaluations and independently evaluated on **Run 9** (33 passes):
+Calibrated on **Run 6** (29 passes, $200 \times 300\text{ mm}$ sheet) across 156 Bayesian optimization evaluations and independently evaluated on **Run 9** (33 passes):
 
 | Parameter | Optimal Value (Attempt 209) | Physical Role |
 | :--- | :--- | :--- |
@@ -116,33 +120,6 @@ Calibrated on **Run 6** (29 passes, $130 \times 130\text{ mm}$ sheet) across 156
   - Symmetric Dual-Area Weighted RMS: **$1.3725\text{ mm}$**
   - Single-Sided Forward RMS: **$1.0582\text{ mm}$**
   - Single-Sided Backward RMS: **$1.6272\text{ mm}$**
-
----
-
-## Repository Directory Structure
-
-```text
-PSM2025-zigzag/
-├── CMakeLists.txt              # Top-level C++ build configuration
-├── environment.yml             # Conda environment definition
-├── README.md                   # This document
-├── src/
-│   ├── libshell/               # C++ discrete shell equilibrium solver & hybrid Newton
-│   └── simulations/            # Bilayer growth simulation executable
-├── test/
-│   └── testshell/              # C++ unit tests
-├── calibration/
-│   ├── analysis/               # Figure generation & post-processing CLI tools
-│   ├── configs/                # Configuration specifications (Run 6 and Run 9)
-│   ├── data/raw/               # Raw experimental scan STLs and toolpath CSVs
-│   ├── ewcal/                  # Core Python evaluation & geometry libraries
-│   └── tests/                  # Python calibration unit & integration tests
-├── scripts/
-│   ├── reproduce_paper_figures.sh  # One-click reproduction script
-│   └── reproduce_paper_figures.py  # Python reproduction CLI
-└── notebooks/
-    └── demo_zigzag_calibration.ipynb # Interactive demonstration notebook
-```
 
 ---
 

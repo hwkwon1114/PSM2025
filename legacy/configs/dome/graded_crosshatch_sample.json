@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "units": {
+    "length": "mm",
+    "angle": "deg",
+    "growth": "engineering_strain"
+  },
+  "hardening": {
+    "model": "voce_decay",
+    "history_variable": "hit_count",
+    "beta": 0.2231435513142097,
+    "floor": 0,
+    "scope": "face_shared",
+    "count_rule": "plastic_hits"
+  },
+  "defaults": {
+    "start_mode": "left_bottom_up",
+    "profile": {
+      "mode": "center_peak",
+      "top_end_ratio": 0.35,
+      "top_profile_power": 2.0
+    }
+  },
+  "boundary_conditions": {
+    "enabled": false
+  },
+  "toolpaths": [
+    {
+      "id": "crosshatch_A_horizontal",
+      "enabled": true,
+      "repeat": 5,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 196.0,
+        "alpha_deg": 3.0,
+        "n_strips": 29,
+        "width_mm": 8.0,
+        "center_uv_mm": [
+          0.0,
+          0.0
+        ],
+        "shift_uv_mm": [
+          0.0,
+          0.0
+        ],
+        "shift_frame": "material",
+        "rotation_deg": 0.0,
+        "gtop": 0.00028835116227798787,
+        "gbot": 1.4587994001079146e-05,
+        "ortho_top": -0.3989157893255133,
+        "ortho_bottom": 0.960306323937336,
+        "profile": {
+          "mode": "center_peak",
+          "top_end_ratio": 0.35,
+          "top_profile_power": 2.0
+        }
+      }
+    },
+    {
+      "id": "crosshatch_B_vertical",
+      "enabled": true,
+      "repeat": 5,
+      "operation": {
+        "type": "zigzag",
+        "lv_mm": 284.0,
+        "alpha_deg": 2.5,
+        "n_strips": 25,
+        "width_mm": 4.0,
+        "center_uv_mm": [
+          0.0,
+          0.0
+        ],
+        "shift_uv_mm": [
+          0.0,
+          0.0
+        ],
+        "shift_frame": "material",
+        "rotation_deg": 90.0,
+        "gtop": 0.00028835116227798787,
+        "gbot": 1.4587994001079146e-05,
+        "ortho_top": -0.3989157893255133,
+        "ortho_bottom": 0.960306323937336,
+        "profile": {
+          "mode": "center_peak",
+          "top_end_ratio": 0.35,
+          "top_profile_power": 2.0
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "generator": "PitchGradedCrossHatch",
+    "parameters": {
+      "dose_a": 3.5,
+      "dose_b": 3.5,
+      "repeats_a": 5,
+      "repeats_b": 5,
+      "decay_power": 2.0,
+      "aspect_ratio": 1.25,
+      "center_pitch_a": 8.0,
+      "center_pitch_b": 6.0,
+      "edge_pitch_factor": 2.0,
+      "width_a": 8.0,
+      "width_b": 4.0,
+      "pitch_to_width_a": 1.0,
+      "pitch_to_width_b": 1.5,
+      "n_strips_a": 29,
+      "n_strips_b": 25
+    }
+  }
+}

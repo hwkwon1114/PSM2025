@@ -8,9 +8,9 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
-from scripts import run_run6_expanded_bo_recovery as recovery
-from scripts import run_run6_expanded_bo as runner
-from scripts import run_run6_bo_refinement as controller
+from calibration.bo import run_run6_expanded_bo_recovery as recovery
+from calibration.bo import run_run6_expanded_bo as runner
+from calibration.bo import run_run6_bo_refinement as controller
 from calibration.ewcal.common import Parameters, save_json
 
 

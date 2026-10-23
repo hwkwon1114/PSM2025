@@ -7,7 +7,7 @@ import platform
 import sys
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parents[2]
+BASE = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(BASE))
 import matplotlib
 matplotlib.use('Agg')

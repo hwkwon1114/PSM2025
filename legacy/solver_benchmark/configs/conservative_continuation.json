@@ -1,0 +1,24 @@
+{
+  "description": "BENCHMARK ONLY (solver_cutback_benchmark_report); not a default for new work. Conservative continuation solver configuration using incremental 10% load steps (delta_lambda <= 0.1) from flat state.",
+  "options": {
+    "-equilibrium_solver": "native_hybrid",
+    "-sequence_adaptive": "true",
+    "-sequence_initial_step": "0.1",
+    "-sequence_max_step": "0.1",
+    "-sequence_min_step": "0.015625",
+    "-sequence_step_growth": "2.0",
+    "-sequence_max_retries": "8",
+    "-sequence_warm_start": "true",
+    "-sequence_minimize_every": "1",
+    "-sequence_slope_feedback": "0",
+    "-equilibrium_grad_tol": "5e-14",
+    "-native_hybrid_grad_tol": "5e-14",
+    "-native_hybrid_refine_linear_solve": "true",
+    "-native_hybrid_warmup_attempts": "2000",
+    "-native_hybrid_seconds": "1800",
+    "-native_hybrid_handoff": "fixed",
+    "-native_hybrid_export_state": "true",
+    "-seed_escape": "false",
+    "-hessian_threads": "8"
+  }
+}

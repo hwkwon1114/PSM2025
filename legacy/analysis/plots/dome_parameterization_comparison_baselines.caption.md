@@ -1,0 +1,1 @@
+Post-solve Gaussian curvature of accepted equilibria computed with the repository geometric curvature (15 mm material neighbourhood). Gate = largest edge-connected coherent same-sign region (|k|min >= 0.1 1/m, |k|min >= 0.1|k|max) >= 80% of the 160x240 mm ROI. Settings matched across runs: True.

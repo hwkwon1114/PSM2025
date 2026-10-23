@@ -62,7 +62,7 @@ def freeze():
     names.update(relative(p) for p in (ROOT / 'calibration/ewcal').glob('*.py'))
     names.update(['calibration/analysis/orient_run9_edges.py', relative(Path(__file__)),
                   'calibration/analysis/reassess_failed_registration.py',
-                  'scripts/run_run6_bo_refinement.py', 'scripts/run_run6_bo_material_frame.sbatch'])
+                  'calibration/bo/run_run6_bo_refinement.py', 'calibration/bo/run_run6_bo_material_frame.sbatch'])
     names.update(relative(p) for p in OLD.glob('*') if p.is_file())
     for root in ('run/stage2_bayesian_optimization', 'run/run6_bo_refinement_240'):
         names.update(relative(p) for p in (ROOT / root).glob('*') if p.is_file())

@@ -1,0 +1,24 @@
+{
+  "sources_sha256": {
+    "run/two_gripper_comparison/analysis_never_clamped/forming_restraint_metrics.json": "30f09eafb1990a8df79055bcf0b57b545df8e68d05d2c234cf4ef18320c4d3c5",
+    "run/two_gripper_comparison/analysis_never_clamped/run6_full_field.npz": "34c96f79f553a2abf6af0bf50de8f8fcb2fdf928af0427da41566980b5247fde",
+    "/gpfs/projects/p33082/PSM2025-zigzag/calibration/configs/boundary_conditions/run6_two_gripper_cycle.json": "70a13f9ee685f8668b5980fa0e9d4fdffa4d43eebfa23f7381d1e85ea253c60a",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run6/paired_clamped_checkpoint.json": "21f413097781d0fec3a9734869f2576ebf1360b2449d03a0bc15f06182835771",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run6/release_putong.json": "55f9b1c26448c203b67058eb45c049a456f0682382ad56684d7b0d9a0f96d2f1",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run6/release_free.json": "55134570317a10a3e09909002a866e70cce63359ee49dfe9f2efd60a1c42bd75",
+    "run/two_gripper_comparison/analysis_never_clamped/run9_full_field.npz": "cad3e249e6d420cd416bbf12d1a1c76c252361fcfbeb52375494fbcc23fc85e3",
+    "/gpfs/projects/p33082/PSM2025-zigzag/calibration/configs/boundary_conditions/run9_two_gripper_cycle.json": "a7eb26cb34f82e68cf8c617e0104b2fbe9e26f21b1941dcd410b13ff457f418c",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run9/paired_clamped_checkpoint.json": "f68299db621e0e377fdcedf972ab3f18e78d4e56fd45f865da219dae442f6cd0",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run9/release_putong.json": "6dc3e52406ee266e1584fe43d5c2d540b7bc4411d5aac571c0a26d32a5e2bb60",
+    "/gpfs/projects/p33082/PSM2025-zigzag/run/two_gripper_comparison/run9/release_free.json": "8cc8a85968049771b63d06dee9fcfdd3f2233529f66c00802f568bcbbaa5ceb5",
+    "calibration/analysis/plot_never_clamped.py": "0d9277c72851787650e0383a4a65bf24e923e96d1b57830d067961156214eed6",
+    "calibration/analysis/plot_two_gripper_stages.py": "76a28ece7f8d04cebb257a44ca03bd0e6dcd5a6086a7ee6249e68343e89c2139",
+    "calibration/analysis/plot_two_gripper_release.py": "a54188b77c768f641de54c5f55bf58b4f9964b27f269332ad22d3d28084ef2ec"
+  },
+  "numpy": "1.24.4",
+  "matplotlib": "3.7.5",
+  "dpi": 220,
+  "visual_review": "pending",
+  "exclusions": "none",
+  "independent_cases": 2
+}
