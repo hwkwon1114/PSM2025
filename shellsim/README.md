@@ -11,6 +11,7 @@ x, y, z = simulate.height(state)
 
 - `toolpath.py`: build a sequence of zigzag passes (JSON schema: `docs/shellsim/zigzag_sequence_format.md`).
 - `simulate.py`: run `bin/shell` with the shared solver settings and read the equilibrium state.
+- `docs/shellsim/solver.md`: how the solver works (Hessian, CHOLMOD, cutback).
 - `configs/default_adaptive_cutback.json`: the one solver configuration (adaptive load steps, native hybrid L-BFGS + exact Newton with cutback, gradient gate 5e-14). `solver_settings.solver_options()` reads it. It is the default for calibration, `dome_bo/` and `shellsim`; `docs/README.md` lists the deliberate exceptions in `legacy/`.
 - `examples/notebooks/simulate_toolpath.ipynb`: toolpath, solve and plot in one notebook (run it from the repository root).
 - `examples/trajectories/`: ready-made toolpath JSON files; `examples/printpaths/`: SVG-to-toolpath input converter.
