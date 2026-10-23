@@ -27,15 +27,17 @@ class HybridSession
     HandoffPolicy policy;
     GradientWindow lbWindow, ntWindow;
     int lbAttempts_=0, ntAttempts_=0, probeAttempts_=0, probes_=0, fallbacks_=0;
-    int epochLbSteps=0, nextCheck=0, nextProbe=0, retryInterval=0, ntSteps=0, ntStalls=0;
+    int epochLbSteps=0, nextCheck=0, nextProbe=0, retryInterval=0, ntSteps=0, ntStalls=0, ntIndefinite=0;
     double lbSeconds_=0, ntSeconds_=0, initialNorm=0;
     Json events_=Json::array();
     void chargeBudget(){engine->chargeElapsed(elapsed());}
-    static bool recoverable(const std::string& status)
+    static bool isInnerFailure(const std::string& status)
     {return status=="line_search_failed" || status=="regularization_failed" ||
             status=="linear_solve_failed" || status=="non_descent";}
+    static bool recoverable(const std::string& status)
+    {return isInnerFailure(status) || status=="newton_stagnation" || status=="indefinite_curvature";}
     static bool resourceStop(const std::string& status)
-    {return status=="time_cap" || status=="iteration_cap" || status=="evaluation_cap" || status=="hessian_cap";}
+    {return status=="time_cap" || status=="iteration_cap" || status=="evaluation_cap" || status=="hessian_cap" || status=="newton_stagnation" || status=="indefinite_curvature";}
     void restartWarmup(const std::string& reason)
     {
         if(fallbacks_>=HandoffPolicy::maximumFallbacks)return;
@@ -100,7 +102,7 @@ class HybridSession
         if(qualified)
         {
             source_=saved;target_=transformed;engine=std::move(trial);
-            phase_="newton";transitioned_=true;ntSteps=1;ntStalls=0;
+            phase_="newton";transitioned_=true;ntSteps=1;ntStalls=0;ntIndefinite=0;
             ntWindow.clear();ntWindow.push(before,ntSeconds_-cost);ntWindow.push(after,ntSeconds_);
             chargeBudget();return;
         }
@@ -114,13 +116,62 @@ class HybridSession
         nextProbe=epochLbSteps+retryInterval;
         retryInterval=std::min(16*policy.window,2*retryInterval);
     }
+    void handleNewtonStep(bool moved)
+    {
+        if(phase_!="newton")return;
+        if(moved && engine->state().status=="ready")
+        {
+            if(engine->state().lastShift>0)
+                ++ntIndefinite;
+            else
+                ntIndefinite=0;
+            if(ntIndefinite>=policy.maxNewtonIndefinite)
+            {
+                if(policy.onNewtonStall=="cutback")
+                    engine->boundaryFailure("indefinite_curvature","persistent indefinite curvature detected (consecutive_shifts="+std::to_string(ntIndefinite)+")");
+                else if(policy.onNewtonStall=="lbfgs" && fallbacks_<HandoffPolicy::maximumFallbacks)
+                {
+                    restartWarmup("indefinite_curvature");
+                    return;
+                }
+            }
+            if(engine->state().status=="ready")
+            {
+                ++ntSteps;ntWindow.push(engine->state().g.norm(),ntSeconds_);
+                if(ntSteps>=policy.newtonStallGrace && ntSteps%policy.newtonStallWindow==0 && ntWindow.ready())
+                {
+                    ntStalls=ntWindow.ratio()>=policy.newtonStallRatio?ntStalls+1:0;
+                    if(ntStalls>=policy.maxNewtonStalls)
+                    {
+                        if(policy.onNewtonStall=="cutback")
+                            engine->boundaryFailure("newton_stagnation","newton plateau detected (ratio="+std::to_string(ntWindow.ratio())+")");
+                        else if(policy.onNewtonStall=="lbfgs" && fallbacks_<HandoffPolicy::maximumFallbacks)
+                        {
+                            restartWarmup("gradient_plateau");
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        else if(isInnerFailure(engine->state().status))
+        {
+            if(policy.onNewtonStall=="cutback")
+            {
+                engine->boundaryFailure(engine->state().status=="regularization_failed"?"indefinite_curvature":"newton_stagnation",
+                                       "newton failure ("+engine->state().status+"): "+engine->state().error);
+            }
+            else if(fallbacks_<HandoffPolicy::maximumFallbacks && policy.onNewtonStall=="lbfgs")
+                restartWarmup(engine->state().status);
+        }
+    }
 public:
     HybridSession(Problem& p,const Config& lb,const Config& nt,const Vec& initial,int switchAttempts,
                   std::function<double()> timer=Engine::wallClock,
                   double budgetStart=std::numeric_limits<double>::quiet_NaN(),
                   const HandoffPolicy& handoff=HandoffPolicy())
         :problem(p),lbfgs(lb),newton(nt),cut(switchAttempts),clock(std::move(timer)),
-         policy(handoff),lbWindow(handoff.window),ntWindow(HandoffPolicy::newtonWindow)
+         policy(handoff),lbWindow(handoff.window),ntWindow(handoff.newtonStallWindow)
     {
         const double entry=clock();origin=std::isnan(budgetStart)?entry:budgetStart;
         if(!std::isfinite(entry) || !std::isfinite(origin) || origin>entry)
@@ -194,19 +245,7 @@ public:
             }
             else if(phase_=="newton")
             {
-                if(moved && engine->state().status=="ready")
-                {
-                    ++ntSteps;ntWindow.push(engine->state().g.norm(),ntSeconds_);
-                    if(ntSteps%HandoffPolicy::newtonWindow==0 && ntWindow.ready())
-                    {
-                        ntStalls=ntWindow.ratio()>=HandoffPolicy::newtonPlateauRatio?ntStalls+1:0;
-                        if(ntStalls>=2 && fallbacks_<HandoffPolicy::maximumFallbacks)
-                            restartWarmup("gradient_plateau");
-                    }
-                }
-                if(phase_=="newton" && recoverable(engine->state().status) &&
-                   fallbacks_<HandoffPolicy::maximumFallbacks)
-                    restartWarmup(engine->state().status);
+                handleNewtonStep(moved);
             }
             chargeBudget();return engine->state().status=="ready";
         }
@@ -219,7 +258,13 @@ public:
             target_.elapsed=std::max(target_.elapsed,elapsed());
             engine=std::make_unique<Engine>(problem,newton,target_,clock);
             chargeBudget();phase_="newton";transitioned_=true;
+            ntSteps=0;ntStalls=0;ntIndefinite=0;ntWindow.clear();
         }
+        else if(phase_=="newton")
+        {
+            handleNewtonStep(moved);
+        }
+        chargeBudget();
         return engine->state().status=="ready";
     }
 };
@@ -227,8 +272,9 @@ public:
 struct HybridOptions
 {
     int warmupAttempts=2000, hessianThreads=1;
-    int maxAttempts=100000, maxEvaluations=200000, maxHessians=10000;
-    double seconds=1140, gradientTolerance=5e-14, physicalGate=1e-13;
+    bool refineLinearSolve=false;
+    int maxAttempts=100000, maxEvaluations=200000, maxHessians=40;
+    double seconds=1800, gradientTolerance=5e-14, physicalGate=1e-13;
     // Same steady-clock origin as the calling worker, or API entry by default.
     double budgetStart=std::numeric_limits<double>::quiet_NaN();
     std::string implementationIdentity="native-production-reference-v1";
@@ -243,8 +289,10 @@ inline std::pair<Config,Config> hybridConfigs(const HybridOptions& o)
     lb.implementationId=o.implementationIdentity;lb.dependencyIdentity=o.dependencyIdentity;
     lb.maxAttempts=o.maxAttempts;lb.maxEvaluations=o.maxEvaluations;lb.maxHessians=o.maxHessians;
     lb.seconds=o.seconds;lb.tolerance=o.gradientTolerance;lb.physicalGate=o.physicalGate;
+    lb.refineLinearSolve=o.refineLinearSolve; // Shared identity; only Newton uses this control.
     Config nt=lb;nt.method="sparse_newton";nt.hessianAssembly="local_dihedral_csc";
-    nt.hessianThreads=o.hessianThreads;lb.validate();nt.validate();return {lb,nt};
+    nt.hessianThreads=o.hessianThreads;nt.refineLinearSolve=o.refineLinearSolve;
+    lb.validate();nt.validate();return {lb,nt};
 }
 
 // A content fingerprint for an in-process solve, NOT a cryptographic build
@@ -317,7 +365,10 @@ HybridReport solveNativeHybridShell(Mesh& mesh,Energy& energy,double young,doubl
     const double start=std::isnan(options.budgetStart)?entry:options.budgetStart;
     if(!std::isfinite(start) || start>entry)throw std::invalid_argument("invalid cumulative budget origin");
     tbb::global_control one(tbb::global_control::max_allowed_parallelism,1);
-    const auto configs=hybridConfigs(options);
+    HybridOptions innerOptions = options;
+    if(options.maxHessians > 1)
+        innerOptions.maxHessians = options.maxHessians - 1;
+    const auto configs=hybridConfigs(innerOptions);
     const std::string id=options.problemIdentity.empty()?shellObjectiveFingerprint(mesh,young,nu,h):options.problemIdentity;
     ShellProblem<Mesh,Energy> problem(mesh,energy,young,nu,h,id,"local_dihedral_csc",options.hessianThreads);
     const Vec initial=Eigen::Map<const Vec>(mesh.getDataPointer(),problem.size());
@@ -345,7 +396,7 @@ HybridReport solveNativeHybridShell(Mesh& mesh,Energy& energy,double young,doubl
     {
         ++report.verificationEvaluations;
         const auto v=problem.evaluate(report.selected);report.energy=v.energy;report.gradientNorm=v.gradient.norm();
-        if(report.terminal.hessians<options.maxHessians && Engine::wallClock()-start<options.seconds+30)
+        if((report.terminal.hessians + 1)<=options.maxHessians && Engine::wallClock()-start<options.seconds+30)
         {
             ++report.verificationHessians;
             const auto H=problem.hessian(report.selected);

@@ -281,7 +281,9 @@ add_test(NAME testshell COMMAND testshell)
 # Focused opt-in correctness fixture; excluded from the normal build. It cannot
 # dispatch a physical forward/campaign and avoids compiling all legacy tests.
 if(ENABLE_NATIVE_HYBRID)
-    add_executable(native_hybrid_fixtures EXCLUDE_FROM_ALL test/testshell/Test_NativeHybridProduction.cpp)
+    add_executable(native_hybrid_fixtures EXCLUDE_FROM_ALL
+        test/testshell/Test_NativeHybridProduction.cpp
+        test/testshell/Test_ZigZagSequenceCheckpoint.cpp)
     target_compile_options(native_hybrid_fixtures PRIVATE -O1 ${PROJECT_CXX_WARNINGS})
     target_link_libraries(native_hybrid_fixtures PRIVATE gtest_main libshell)
 endif()

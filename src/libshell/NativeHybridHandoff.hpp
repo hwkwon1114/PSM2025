@@ -16,13 +16,24 @@ struct HandoffPolicy
     double trialGradientRatio=.95, rateAdvantage=1.1;
     static constexpr int maximumProbes=8, maximumFallbacks=2, newtonWindow=4;
     static constexpr double newtonPlateauRatio=.90;
+    std::string onNewtonStall="lbfgs"; // "lbfgs", "cutback", or "none"
+    int newtonStallWindow=5;
+    double newtonStallRatio=0.85;
+    int newtonStallGrace=10;
+    int maxNewtonStalls=2;
+    int maxNewtonIndefinite=3;
     void validate() const
     {
         if(window<2 || window>1000 || minimumWarmup<window || minimumWarmup>100000 ||
            !std::isfinite(plateauRatio) || plateauRatio<=0 || plateauRatio>1 ||
            !std::isfinite(relativeGradient) || relativeGradient<=0 || relativeGradient>=1 ||
            !std::isfinite(trialGradientRatio) || trialGradientRatio<=0 || trialGradientRatio>=1 ||
-           !std::isfinite(rateAdvantage) || rateAdvantage<1)
+           !std::isfinite(rateAdvantage) || rateAdvantage<1 ||
+           (onNewtonStall!="cutback" && onNewtonStall!="lbfgs" && onNewtonStall!="none") ||
+           newtonStallWindow<2 || newtonStallWindow>100 ||
+           !std::isfinite(newtonStallRatio) || newtonStallRatio<=0 || newtonStallRatio>1 ||
+           newtonStallGrace<1 || newtonStallGrace>1000 || maxNewtonStalls<1 || maxNewtonStalls>50 ||
+           maxNewtonIndefinite<1 || maxNewtonIndefinite>50)
             throw std::invalid_argument("invalid gradient handoff controls");
     }
     Json json() const
@@ -32,7 +43,10 @@ struct HandoffPolicy
             {"relative_gradient",relativeGradient},{"trial_gradient_ratio",trialGradientRatio},
             {"rate_advantage",rateAdvantage},{"maximum_probes",maximumProbes},
             {"maximum_fallbacks",maximumFallbacks},{"newton_window",newtonWindow},
-            {"newton_plateau_ratio",newtonPlateauRatio}};
+            {"newton_plateau_ratio",newtonPlateauRatio},
+            {"on_newton_stall",onNewtonStall},{"newton_stall_window",newtonStallWindow},
+            {"newton_stall_ratio",newtonStallRatio},{"newton_stall_grace",newtonStallGrace},
+            {"max_newton_stalls",maxNewtonStalls},{"max_newton_indefinite",maxNewtonIndefinite}};
     }
 };
 

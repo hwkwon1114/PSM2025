@@ -65,8 +65,12 @@ public:
     }
     bool acceptable(double floor) const
     {
-        if(!completed || !std::isfinite(floor) || floor<=0)return false;
-        for(double d:pivots())if(!std::isfinite(d) || !(d>floor))return false;return true;
+        if(!completed || !std::isfinite(floor) || floor<=0) return false;
+        for(double d:pivots())
+        {
+            if(!std::isfinite(d) || !(d>floor)) return false;
+        }
+        return true;
     }
     Eigen::VectorXd solve(const Eigen::VectorXd& b)
     {
@@ -81,8 +85,19 @@ public:
     size_t storedValues()const{return completed?factor->xsize:0;}
     double lowerColumnSquareProxy()const
     {
-        if(!completed)return 0;double total=0;const auto s=static_cast<const int*>(factor->super),p=static_cast<const int*>(factor->pi);
-        for(size_t k=0;k<factor->nsuper;++k)for(int j=0;j<s[k+1]-s[k];++j){double length=p[k+1]-p[k]-j;total+=length*length;}return total;
+        if(!completed) return 0;
+        double total=0;
+        const auto s=static_cast<const int*>(factor->super);
+        const auto p=static_cast<const int*>(factor->pi);
+        for(size_t k=0;k<factor->nsuper;++k)
+        {
+            for(int j=0;j<s[k+1]-s[k];++j)
+            {
+                double length=p[k+1]-p[k]-j;
+                total+=length*length;
+            }
+        }
+        return total;
     }
 };
 #endif

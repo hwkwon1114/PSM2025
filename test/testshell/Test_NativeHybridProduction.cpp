@@ -6,6 +6,7 @@
 #include "CombinedOperator_Parametric.hpp"
 #include "EnergyOperatorList.hpp"
 #include "NativeHybridShellSolver.hpp"
+#include "ContinuationStepping.hpp"
 #include <sstream>
 
 namespace
@@ -38,7 +39,7 @@ HybridOptions fixtureOptions()
 struct ControllerQuadratic : Problem
 {
     double& now;double hessianCost=.02,modelScale=1,gradientCost=.02;
-    bool zeroAfterFirst=false,cheapAfterHessian=false,asymmetric=false;
+    bool zeroAfterFirst=false,cheapAfterHessian=false,asymmetric=false,indefiniteHessian=false,indefiniteAfterFirst=false;
     int hessianCalls=0;Vec current=Vec::Ones(3);
     Eigen::Matrix3d A=Eigen::Vector3d(.001,1.,100.).asDiagonal();
     explicit ControllerQuadratic(double& time):now(time){}
@@ -48,11 +49,22 @@ struct ControllerQuadratic : Problem
     double energyReference() const override{return 1;}
     void restore(const Vec& x) override{current=x;}
     Value evaluate(const Vec& x) override
-    {now+=(cheapAfterHessian && hessianCalls>0)?.001:gradientCost;current=x;Vec g=A*x;return {.5*x.dot(g),g};}
+    {
+        now+=(cheapAfterHessian && hessianCalls>0)?.001:gradientCost;
+        current=x;
+        Vec g=A*x;
+        return {.5*x.dot(g),g};
+    }
     Sparse hessian(const Vec& x) override
-    {now+=hessianCost;current=x;++hessianCalls;Eigen::Matrix3d H=modelScale*A;
-     if(zeroAfterFirst && hessianCalls>1)H.setZero();
-     if(asymmetric)H(0,1)=.01;return H.sparseView();}
+    {
+        now+=hessianCost;current=x;++hessianCalls;
+        Eigen::Matrix3d H=modelScale*A;
+        if(zeroAfterFirst && hessianCalls>1)H.setZero();
+        if(indefiniteHessian)H(0,0)=-1.0;
+        if(indefiniteAfterFirst && hessianCalls>1)H(0,0)=-1.0;
+        if(asymmetric) H(0,1)=.01;
+        return H.sparseView();
+    }
 };
 HybridOptions adaptiveFixtureOptions()
 {
@@ -77,6 +89,48 @@ TEST(NativeHybridProduction, DeclaredReferenceControls)
 }
 
 #ifdef NONCONVEX_WITH_CHOLMOD
+TEST(NativeHybridProduction, LinearRefinementIsOptInAndIdentityBound)
+{
+    HybridOptions options;
+    auto original=hybridConfigs(options);
+    EXPECT_FALSE(original.second.refineLinearSolve);
+    options.refineLinearSolve=true;
+    auto repaired=hybridConfigs(options);
+    EXPECT_TRUE(repaired.second.refineLinearSolve);
+    EXPECT_TRUE(repaired.first.refineLinearSolve); // Identity shared across handoff; no L-BFGS use.
+    EXPECT_NE(original.second.json(),repaired.second.json());
+    EXPECT_EQ(original.second.linearTolerance,repaired.second.linearTolerance);
+    EXPECT_EQ(original.second.tolerance,repaired.second.tolerance);
+    Rosen problem;Vec x(2);x<<-.9,.4;
+    EXPECT_NO_THROW({HybridSession session(problem,repaired.first,repaired.second,x,1);
+        session.step();session.step();});
+}
+
+TEST(NativeHybridProduction, InaccurateLinearSolveRetriesWithinExistingShiftLimit)
+{
+    // Deliberately tighter than floating-point accuracy to exercise recovery,
+    // not a production tolerance or physical shell experiment.
+    double now=0;ControllerQuadratic problem(now);
+    problem.A << 4.13,.71,.23, .71,2.37,.41, .23,.41,1.19;
+    Vec x(3);x<<.913,.371,-.517;
+    Config config=hybridConfigs(HybridOptions()).second;
+    config.linearTolerance=1e-30;config.maxShiftAttempts=3;
+    config.refineLinearSolve=true;
+    Engine engine(problem,config,x);engine.step();
+    const auto state=engine.snapshot();
+    ASSERT_FALSE(state.trace.empty());
+    const auto row=state.trace.back();
+    ASSERT_TRUE(row.contains("factorization_trials"));
+    EXPECT_LE(row.at("factorization_trials").size(),3u);
+    bool refined=false;
+    for(const auto& trial:row.at("factorization_trials"))
+        refined=refined || trial.contains("residual_before_refinement");
+    EXPECT_TRUE(refined) << row.dump();
+    if(state.status=="ready")
+        EXPECT_LE(row.at("linear_residual").get<double>(),config.linearTolerance);
+    else EXPECT_EQ(state.status,"regularization_failed");
+}
+
 TEST(NativeHybridProduction, RelativeGradientWindowIsUnitScaleInvariant)
 {
     GradientWindow a(2),b(2);a.push(10,0);a.push(8,1);a.push(6,2);
@@ -146,7 +200,8 @@ TEST(NativeHybridProduction, NewtonFailureRestartsHistoryWithoutResettingBudget)
     ASSERT_TRUE(s.transitioned());ASSERT_EQ(s.state().status,"ready");s.step();
     ASSERT_EQ(s.fallbacks(),1);ASSERT_EQ(s.phase(),"lbfgs");const State resumed=s.snapshot();
     EXPECT_EQ(resumed.lbfgsStartIteration,resumed.iterations);EXPECT_EQ(resumed.ring,0);
-    for(double v:resumed.s)EXPECT_EQ(v,0);for(double v:resumed.rho)EXPECT_EQ(v,0);
+    for(double v:resumed.s) EXPECT_EQ(v,0);
+    for(double v:resumed.rho) EXPECT_EQ(v,0);
     const State decoded=State::fromJson(resumed.json(),p.size(),c.first);
     EXPECT_EQ(decoded.lbfgsStartIteration,resumed.lbfgsStartIteration);
     const int work=resumed.attempts;s.step();EXPECT_GT(s.state().attempts,work);
@@ -610,5 +665,291 @@ TEST(NativeHybridProduction, EndpointCheckNegativeDotProductClampThreshold)
     EXPECT_EQ(rep.status, "positive_pivots");
     EXPECT_GT(rep.decrement, 0.0);
     EXPECT_LE(rep.relativeSolveResidual, 1e-6);
+}
+
+TEST(NativeHybridProduction, MaxHessiansStopsStalledSolvesAtDeterministicCount)
+{
+    // Verifies that maxHessians deterministically terminates a stalled Newton solve
+    // at exactly the configured count, independent of wall-clock jitter.
+    double now = 0.0;
+    ControllerQuadratic problem(now);
+    problem.modelScale = 0.0001; // Tiny step ensures many iterations needed
+    problem.gradientCost = 0.0;
+    problem.hessianCost = 0.0;
+    Vec x(3); x << 10.0, 20.0, 30.0;
+
+    HybridOptions options;
+    options.warmupAttempts = 1;
+    options.maxAttempts = 1000;
+    options.maxHessians = 4;
+    options.seconds = 100000.0; // Infinite wall-clock budget
+    options.gradientTolerance = 1e-15;
+
+    const auto configs = hybridConfigs(options);
+    HybridSession session(problem, configs.first, configs.second, x, options.warmupAttempts,
+                          [&]{ return now; }, 0, options.handoff);
+
+    int steps = 0;
+    while(session.state().status == "ready" && steps < 100)
+    {
+        session.step();
+        ++steps;
+    }
+
+    const auto state = session.snapshot();
+    EXPECT_EQ(state.status, "hessian_cap");
+    EXPECT_EQ(state.hessians, 4);
+}
+
+TEST(NativeHybridProduction, NewtonStagnationTriggersCutbackFailure)
+{
+    // Verifies that when onNewtonStall == "cutback", gradient stagnation in Newton
+    // directly terminates with "newton_stagnation" instead of falling back to L-BFGS warmup.
+    double now = 0.0;
+    ControllerQuadratic problem(now);
+    problem.modelScale = 0.0001; // Scaled model produces gradient plateau in Newton
+    problem.gradientCost = 0.0;
+    problem.hessianCost = 0.0;
+    Vec x(3); x << 10.0, 20.0, 30.0;
+
+    HybridOptions options;
+    options.warmupAttempts = 2; // Transition to Newton after 2 L-BFGS steps
+    options.maxAttempts = 100;
+    options.maxHessians = 50;
+    options.seconds = 10000.0;
+    options.gradientTolerance = 1e-15;
+    options.handoff.onNewtonStall = "cutback";
+    options.handoff.newtonStallWindow = 2;
+    options.handoff.newtonStallRatio = 0.001; // With modelScale=0.0001, ratio ~0.048 >= 0.001 triggers stall
+    options.handoff.newtonStallGrace = 2;
+    options.handoff.maxNewtonStalls = 1;
+
+    const auto configs = hybridConfigs(options);
+    HybridSession session(problem, configs.first, configs.second, x, options.warmupAttempts,
+                          [&]{ return now; }, 0, options.handoff);
+
+    int steps = 0;
+    while(session.state().status == "ready" && steps < 20)
+    {
+        session.step();
+        ++steps;
+    }
+
+    const auto state = session.snapshot();
+    EXPECT_EQ(session.phase(), "newton");
+    EXPECT_EQ(state.status, "newton_stagnation");
+    EXPECT_EQ(session.fallbacks(), 0); // Did not restart L-BFGS warmup
+}
+
+TEST(NativeHybridProduction, NearOneTrialLoadSnappingAndContinuationHalving)
+{
+    // Verifies production ShellContinuation functions:
+    // 1. Snapping near-one trial loads
+    // Case A: remaining < 1e-6 snaps to 1.0
+    EXPECT_DOUBLE_EQ(ShellContinuation::snapTrialLoad(0.9999995, 0.0001), 1.0);
+    // Case B: effective step exceeds remaining snaps to 1.0
+    EXPECT_DOUBLE_EQ(ShellContinuation::snapTrialLoad(0.95, 0.10), 1.0);
+    // Case C: step leaves tiny remainder (<1e-6) snaps to 1.0
+    EXPECT_DOUBLE_EQ(ShellContinuation::snapTrialLoad(0.90, 0.0999995), 1.0);
+    // Case D: normal step below 1.0 stays unsnapped
+    EXPECT_DOUBLE_EQ(ShellContinuation::snapTrialLoad(0.50, 0.20), 0.70);
+
+    // 2. Halving actual attempted increment on failure
+    // Snapped step of 0.05 from 0.95 to 1.0 (even though nominal step was 0.2)
+    const double trialA = ShellContinuation::snapTrialLoad(0.95, 0.20); // 1.0, actual step = 0.05
+    const double nextStepA = ShellContinuation::computeNextStepOnFailure(trialA, 0.95, 0.001);
+    EXPECT_NEAR(nextStepA, 0.025, 1e-12); // 0.5 * 0.05, NOT 0.5 * 0.20!
+
+    // Clamping to minStep
+    const double nextStepB = ShellContinuation::computeNextStepOnFailure(0.950001, 0.95, 0.01);
+    EXPECT_DOUBLE_EQ(nextStepB, 0.01); // clamped to minStep
+}
+
+TEST(NativeHybridProduction, NewtonIndefiniteCurvatureTriggersCutbackFailure)
+{
+    // Verifies that persistent regularized Newton steps (lastShift > 0) due to indefinite
+    // curvature directly terminate with "indefinite_curvature" when onNewtonStall == "cutback".
+    double now = 0.0;
+    ControllerQuadratic problem(now);
+    problem.indefiniteHessian = true; // Negative eigenvalue forces Cholesky shift regularization
+    problem.gradientCost = 0.0;
+    problem.hessianCost = 0.0;
+    Vec x(3); x << 10.0, 20.0, 30.0;
+
+    HybridOptions options;
+    options.warmupAttempts = 2; // Transition to Newton after 2 L-BFGS steps
+    options.maxAttempts = 100;
+    options.maxHessians = 50;
+    options.seconds = 10000.0;
+    options.gradientTolerance = 1e-15;
+    options.handoff.onNewtonStall = "cutback";
+    options.handoff.maxNewtonIndefinite = 2; // Stop after 2 consecutive indefinite regularizations
+
+    const auto configs = hybridConfigs(options);
+    HybridSession session(problem, configs.first, configs.second, x, options.warmupAttempts,
+                          [&]{ return now; }, 0, options.handoff);
+
+    int steps = 0;
+    while(session.state().status == "ready" && steps < 20)
+    {
+        session.step();
+        ++steps;
+    }
+
+    const auto state = session.snapshot();
+    EXPECT_EQ(session.phase(), "newton");
+    EXPECT_EQ(state.status, "indefinite_curvature");
+    EXPECT_EQ(session.fallbacks(), 0); // Directly aborted to cutback without L-BFGS warmup restart
+}
+
+TEST(NativeHybridProduction, NewtonRegularizationFailureTriggersCutback)
+{
+    // Verifies that a hard regularization failure in Newton terminates directly
+    // with "indefinite_curvature" when onNewtonStall == "cutback".
+    double now = 0.0;
+    ControllerQuadratic problem(now);
+    problem.zeroAfterFirst = true; // Zero Hessian forces regularization failure
+    problem.hessianCalls = 1;      // Force zero Hessian on first Newton attempt
+    problem.gradientCost = 0.0;
+    problem.hessianCost = 0.0;
+    Vec x(3); x << 10.0, 20.0, 30.0;
+
+    HybridOptions options;
+    options.warmupAttempts = 1;
+    options.maxAttempts = 100;
+    options.maxHessians = 50;
+    options.seconds = 10000.0;
+    options.gradientTolerance = 1e-15;
+    options.handoff.onNewtonStall = "cutback";
+
+    auto configs = hybridConfigs(options);
+    configs.first.maxShiftAttempts = 1;
+    configs.second.maxShiftAttempts = 1; // Disallow diagonal shifting so zero Hessian triggers regularization failure
+
+    HybridSession session(problem, configs.first, configs.second, x, options.warmupAttempts,
+                          [&]{ return now; }, 0, options.handoff);
+
+    int steps = 0;
+    while(session.state().status == "ready" && steps < 20)
+    {
+        session.step();
+        ++steps;
+    }
+
+    const auto state = session.snapshot();
+    EXPECT_EQ(session.phase(), "newton");
+    EXPECT_EQ(state.status, "indefinite_curvature");
+    EXPECT_EQ(session.fallbacks(), 0);
+}
+
+TEST(NativeHybridProduction, AdaptiveHandoffCurvatureCutbackDoesNotThrowAndTerminatesCleanly)
+{
+    // Verifies the auditor scenario: when using adaptive handoff and onNewtonStall == "cutback",
+    // persistent indefinite curvature terminates directly with "indefinite_curvature" without throwing
+    // std::invalid_argument from Core.hpp:646-652 or attempting an invalid secondary transition.
+    auto o = adaptiveFixtureOptions();
+    o.gradientTolerance = 1e-30; o.physicalGate = 1e-30; // Exact Newton probe must not hit gradient_target before curvature failure
+    o.handoff.onNewtonStall = "cutback";
+    o.handoff.maxNewtonIndefinite = 1; // Trigger cutback on first shifted Hessian in Newton
+    auto c = hybridConfigs(o);
+
+    double now = 0;
+    ControllerQuadratic p(now);
+    p.indefiniteAfterFirst = true; // Probe Hessian is positive-definite, subsequent Newton Hessian is indefinite
+    Vec x(3); x << 1, 2, 3;
+
+    EXPECT_NO_THROW({
+        HybridSession s(p, c.first, c.second, x, 40, [&]{ return now; }, 0, o.handoff);
+        for(int i = 0; i < 60 && s.state().status == "ready"; ++i)
+            s.step();
+        const auto state = s.snapshot();
+        EXPECT_TRUE(s.transitioned());
+        EXPECT_EQ(s.phase(), "newton");
+        EXPECT_EQ(state.status, "indefinite_curvature");
+        EXPECT_EQ(s.fallbacks(), 0);
+    });
+}
+
+TEST(NativeHybridProduction, FallbackCurvatureReentryResetsIndefiniteCounter)
+{
+    // Verifies that when onNewtonStall == "lbfgs", a curvature-triggered fallback
+    // resets the consecutive indefinite shift counter and restarts L-BFGS warmup without leaking state.
+    auto o = adaptiveFixtureOptions();
+    o.gradientTolerance = 1e-30; o.physicalGate = 1e-30;
+    o.handoff.onNewtonStall = "lbfgs";
+    o.handoff.maxNewtonIndefinite = 1;
+    auto c = hybridConfigs(o);
+
+    double now = 0;
+    ControllerQuadratic p(now);
+    p.indefiniteAfterFirst = true;
+    Vec x(3); x << 1, 2, 3;
+
+    HybridSession s(p, c.first, c.second, x, 40, [&]{ return now; }, 0, o.handoff);
+    for(int i = 0; i < 40 && s.state().status == "ready" && s.fallbacks() == 0; ++i)
+        s.step();
+    EXPECT_EQ(s.fallbacks(), 1);
+    EXPECT_EQ(s.phase(), "lbfgs");
+}
+
+TEST(NativeHybridProduction, HessianReservationGuaranteesTotalHessiansWithinCap)
+{
+    // Exercises production solveNativeHybridShell directly on a bilayer shell plate.
+    // Verifies that solveNativeHybridShell reserves 1 Hessian for independent verification,
+    // guaranteeing that the total evaluated Hessians (terminal + verification) strictly obeys options.maxHessians.
+    BilayerMesh mesh;
+    RectangularPlate geometry(.02, .015, .5, {false, false}, {false, false});
+    geometry.setQuiet();
+    mesh.init(geometry, false);
+    MaterialProperties_Iso_Constant mat(1., .33, .0006);
+    CombinedOperator_Parametric<BilayerMesh, Material_Isotropic, bottom> bot(mat);
+    CombinedOperator_Parametric<BilayerMesh, Material_Isotropic, top> topEnergy(mat);
+    EnergyOperatorList<BilayerMesh> energy({&bot, &topEnergy});
+
+    // Perturb vertices slightly to force non-zero gradient requiring optimization
+    mesh.getDataPointer()[0] += 0.005;
+    mesh.updateDeformedConfiguration();
+
+    auto o = fixtureOptions();
+    o.warmupAttempts = 1; // Transition to Newton after 1 step
+    o.maxHessians = 3;    // Cap total Hessians at 3
+    o.gradientTolerance = 1e-15; // Tight tolerance ensures Newton runs up against the cap
+
+    const auto report = solveNativeHybridShell(mesh, energy, 1., .33, .0006, o);
+    EXPECT_LE(report.terminal.hessians + report.verificationHessians, o.maxHessians);
+    EXPECT_LE(report.terminal.hessians, o.maxHessians - 1);
+}
+
+TEST(NativeHybridProduction, MetricStrainJumpCalculationIsCoordinateInvariantAndLinear)
+{
+    // Verifies production ShellContinuation::compute2DMetricStrainJump:
+    // eta = 0.5 * max spectral_radius(A_acc^{-1} dA) is strictly invariant under
+    // 2D coordinate frame rotation Q in SO(2), and scales linearly with load step.
+    Eigen::Matrix2d A_acc;
+    A_acc << 1.05, 0.02,
+             0.02, 0.98;
+
+    Eigen::Matrix2d dA_unit;
+    dA_unit << 0.08, -0.01,
+              -0.01,  0.04;
+
+    const double eta1 = ShellContinuation::compute2DMetricStrainJump(A_acc, dA_unit);
+    EXPECT_GT(eta1, 0.0);
+
+    // Linearity: doubling the increment doubles the strain jump
+    const double eta2 = ShellContinuation::compute2DMetricStrainJump(A_acc, 2.0 * dA_unit);
+    EXPECT_NEAR(eta2, 2.0 * eta1, 1e-14);
+
+    // Coordinate invariance: rotate by arbitrary angle theta
+    const double theta = 0.7853981633974483; // 45 degrees
+    Eigen::Matrix2d Q;
+    Q << std::cos(theta), -std::sin(theta),
+         std::sin(theta),  std::cos(theta);
+
+    const Eigen::Matrix2d A_rot = Q.transpose() * A_acc * Q;
+    const Eigen::Matrix2d dA_rot = Q.transpose() * dA_unit * Q;
+
+    const double eta_rot = ShellContinuation::compute2DMetricStrainJump(A_rot, dA_rot);
+    EXPECT_NEAR(eta_rot, eta1, 1e-14);
 }
 #endif // SHELL_WITH_NATIVE_HYBRID

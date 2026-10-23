@@ -50,6 +50,7 @@ struct Config
     std::string method="native_lbfgs", implementationId="nonconvex-core-v8-local-dihedral-optin";
     std::string newtonBackend="eigen",dependencyIdentity,hessianAssembly="triplets";
     bool reuseNewtonSymbolic=false, guardedHessianReuse=false;
+    bool refineLinearSolve=false; // Opt-in residual correction and shift recovery.
     int hessianThreads=1; // Explicit benchmark-only local-dihedral assembly team.
     int memory=10, maxAttempts=10000, maxEvaluations=100000, maxHessians=10000;
     int maxLineEvaluations=30, maxShiftAttempts=12, maxCG=250;
@@ -65,6 +66,7 @@ struct Config
         {"pivotFloor",pivotFloor},{"linearTolerance",linearTolerance},{"initialRadius",initialRadius},
         {"minRadius",minRadius},{"maxRadius",maxRadius},{"trAcceptance",trAcceptance},
         {"cgForcing",cgForcing},{"cgAbsolute",cgAbsolute}};
+      if(refineLinearSolve)j["refineLinearSolve"]=true;
       if(reuseNewtonSymbolic)j["reuseNewtonSymbolic"]=true;
       if(guardedHessianReuse)j["guardedHessianReuse"]=true;
       if(hessianThreads!=1)j["hessianThreads"]=hessianThreads;
@@ -500,10 +502,27 @@ class Engine
             {
                 const double solveStart=clock();y=factor.solve(-b);
                 row["solve_seconds"]=clock()-solveStart;timeCheck();
-                const double residual=(B*y+b).norm()/std::max(b.norm(),1e-300);
+                double residual=(B*y+b).norm()/std::max(b.norm(),1e-300);
+                if(config.refineLinearSolve && factor.successful() && y.allFinite() &&
+                   std::isfinite(residual) && residual>config.linearTolerance)
+                {
+                    // One correction with the same factors; never accept a worse residual.
+                    const Vec correction=factor.solve(-(B*y+b));timeCheck();
+                    const Vec refined=y+correction;
+                    const double improved=(B*refined+b).norm()/std::max(b.norm(),1e-300);
+                    row["factorization_trials"].back()["residual_before_refinement"]=residual;
+                    row["factorization_trials"].back()["residual_after_refinement"]=improved;
+                    if(factor.successful() && refined.allFinite() && std::isfinite(improved) && improved<residual)
+                    {y=refined;residual=improved;}
+                }
                 row["linear_residual"]=residual;
                 if(!factor.successful() || !y.allFinite() || !std::isfinite(residual) || residual>config.linearTolerance)
-                    throw Stop{"linear_solve_failed"};
+                {
+                    if(!config.refineLinearSolve)throw Stop{"linear_solve_failed"};
+                    row["factorization_trials"].back()["linear_solve_rejected"]=true;
+                    shift=shift==0?1e-6*scale:10*shift;
+                    continue; // Existing shift-attempt/time limits still apply.
+                }
                 row[config.newtonBackend=="cholmod"?"factor_stored_values":"factor_nnz"]=factor.storedValues();
                 row["factor_column_square_proxy"]=factor.columnSquareWorkProxy();
                 solved=true;break;
@@ -626,9 +645,12 @@ public:
     }
     void boundaryFailure(const std::string& reason,const std::string& error="")
     {
-        if(!s.boundary || s.status!="ready" || reason.empty() || reason=="ready" || reason=="gradient_target")
+        const bool allowTransition = s.status=="ready" || s.status==reason ||
+            s.status=="regularization_failed" || s.status=="line_search_failed" ||
+            s.status=="linear_solve_failed" || s.status=="non_descent";
+        if(!s.boundary || !allowTransition || reason.empty() || reason=="ready" || reason=="gradient_target")
             throw std::invalid_argument("invalid live failure propagation");
-        s.status=reason;s.error=error;
+        s.status=reason;if(!error.empty())s.error=error;
     }
     State snapshot()
     {if(!s.boundary)throw std::logic_error("snapshot requested inside active step");chargeElapsed(s.elapsed);return s;}

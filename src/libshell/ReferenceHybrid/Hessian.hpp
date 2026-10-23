@@ -160,7 +160,6 @@ class NativeHybridHessian_Bilayer
 
         const Vec3A fn_unnorm = e2.cross(e0);
         const ADouble dbl_area = fn_unnorm.norm();
-        const Vec3A n_own = fn_unnorm / dbl_area;
 
         const ADouble height0 = dbl_area / e0.norm();
         const ADouble height1 = dbl_area / e1.norm();

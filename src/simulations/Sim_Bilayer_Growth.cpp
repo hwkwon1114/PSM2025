@@ -34,6 +34,8 @@
 // Updates @07/19: JSON-defined recurring toolpath sequence.
 #include "ZigZagSequenceGrowth.hpp"
 #include "ZigZagSequenceBoundaryConditions.hpp"
+#include "ZigZagSequenceCheckpoint.hpp"
+#include "ContinuationStepping.hpp"
 
 #include <stdexcept>
 #include <fstream>   // Updates @07/19: sequence summary CSV
@@ -1043,6 +1045,21 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             parser.parse<std::string>("-sequence_solve_mode", "every_cycle");
         if(sequence_solve_mode != "every_cycle" && sequence_solve_mode != "final_only")
             throw std::runtime_error("-sequence_solve_mode must be every_cycle or final_only.");
+        const bool paired_release = parser.parse<bool>("-sequence_paired_release", false);
+        const bool never_clamped = parser.parse<bool>("-sequence_never_clamped", false);
+        const bool checkpointed_sequence = paired_release || never_clamped;
+        if(never_clamped && (paired_release || use_sequence_bc || sequence.toolpaths.size()!=1))
+            throw std::runtime_error("never-clamped control requires one toolpath, native solver and no BC/release");
+        const std::string checkpoint_resume = parser.parse<std::string>("-sequence_resume", "");
+        const std::string checkpoint_identity = parser.parse<std::string>("-sequence_checkpoint_identity", "");
+        const int checkpoint_stop_after = parser.parse<int>("-sequence_stop_after", 0);
+        if(paired_release && (!use_sequence_bc || !sequence.boundary_conditions.release_after_final_cycle ||
+           sequence.toolpaths.size()!=1 || sequence_solve_mode!="every_cycle"))
+            throw std::runtime_error("paired release requires one repeated toolpath, BC release and every_cycle");
+        if(!checkpointed_sequence && (!checkpoint_resume.empty() || checkpoint_stop_after!=0))
+            throw std::runtime_error("sequence checkpoint options require paired release or never-clamped control");
+        if(checkpointed_sequence && ::access("sequence_history.csv", F_OK)==0)
+            throw std::runtime_error("checkpointed sequence requires a new output directory (including on resume)");
         int requested_cycles = 0;
         for(const auto& tp : sequence.toolpaths) requested_cycles += tp.repeat;
         int equilibrium_solves = 0;
@@ -1270,12 +1287,17 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             std::max(1, parser.parse<int>("-hessian_threads", 1));
         zigzag_sequence::json lastNativeReport;
 #ifdef SHELL_WITH_NATIVE_HYBRID
-        auto runNativeHybrid = [&](const Real acceptanceTolerance, const bool isTerminalEndpoint = false)
+        auto runNativeHybrid = [&](const Real acceptanceTolerance, const bool isTerminalEndpoint = false,
+                                   const std::string& endpoint = std::string())
         {
             ShellNativeHybrid::HybridOptions options;
             options.warmupAttempts = parser.parse<int>("-native_hybrid_warmup_attempts", 2000);
             options.hessianThreads = hessian_threads;
-            const Real timeoutSeconds = parser.parse<Real>("-native_hybrid_seconds", 3600.0);
+            options.refineLinearSolve = parser.parse<bool>("-native_hybrid_refine_linear_solve", true);
+            options.maxHessians = parser.parse<int>("-native_hybrid_max_hessians", 40);
+            options.maxAttempts = parser.parse<int>("-native_hybrid_max_attempts", 100000);
+            options.maxEvaluations = parser.parse<int>("-native_hybrid_max_evaluations", 200000);
+            const Real timeoutSeconds = parser.parse<Real>("-native_hybrid_seconds", 1800.0);
             if(!std::isfinite(timeoutSeconds) || timeoutSeconds <= 0.0)
                 throw std::runtime_error("native_hybrid seconds budget must be finite and positive");
             options.seconds = timeoutSeconds;
@@ -1287,6 +1309,12 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             options.handoff.window = parser.parse<int>("-native_hybrid_window", 20);
             options.handoff.plateauRatio = parser.parse<Real>("-native_hybrid_plateau_ratio", .90);
             options.handoff.relativeGradient = parser.parse<Real>("-native_hybrid_relative_gradient", .01);
+            options.handoff.onNewtonStall = parser.parse<std::string>("-native_hybrid_on_newton_stall", "cutback");
+            options.handoff.newtonStallWindow = parser.parse<int>("-native_hybrid_newton_stall_window", 5);
+            options.handoff.newtonStallRatio = parser.parse<Real>("-native_hybrid_newton_stall_ratio", 0.85);
+            options.handoff.newtonStallGrace = parser.parse<int>("-native_hybrid_newton_stall_grace", 10);
+            options.handoff.maxNewtonStalls = parser.parse<int>("-native_hybrid_max_newton_stalls", 2);
+            options.handoff.maxNewtonIndefinite = parser.parse<int>("-native_hybrid_max_newton_indefinite", 3);
             options.handoff.validate();
             const Real requested = parser.parse<Real>("-native_hybrid_grad_tol", 5e-14);
             if(!std::isfinite(requested) || requested <= 0 || requested > 1e-13)
@@ -1303,8 +1331,32 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 report.energy, report.gradientNorm);
             fflush(stdout);
             lastNativeReport = report.proof(options.gradientTolerance);
-            std::ofstream nativeProof(tag + "_native_hybrid_proof.jsonl", std::ios::app);
+            std::ofstream nativeProof(tag + endpoint + "_native_hybrid_proof.jsonl", std::ios::app);
             report.writeProof(nativeProof, options.gradientTolerance);
+            const std::string canonicalProofPath = tag + "_native_hybrid_proof.jsonl";
+            if(canonicalProofPath != (tag + endpoint + "_native_hybrid_proof.jsonl"))
+            {
+                std::ofstream canonicalProof(canonicalProofPath, std::ios::app);
+                if(canonicalProof)
+                    report.writeProof(canonicalProof, options.gradientTolerance);
+            }
+            // Export the existing in-memory trace after solving, including failures.
+            // No extra oracle evaluations or optimizer changes.
+            if(parser.parse<bool>("-native_hybrid_export_trace", false))
+            {
+                const std::string tracePath = tag + endpoint + "_native_hybrid_trace.json";
+                std::ifstream previousTrace(tracePath);
+                if(previousTrace.good())
+                    throw std::runtime_error("Refusing to replace native hybrid trace export: " + tracePath);
+                std::ofstream traceFile(tracePath);
+                if(!traceFile) throw std::runtime_error("Cannot open native hybrid trace export");
+                traceFile << zigzag_sequence::json({
+                    {"scope", "diagnostic trace; not a restart checkpoint"},
+                    {"proof", lastNativeReport},
+                    {"terminal_trace", report.terminal.trace}}).dump() << '\n';
+                traceFile.close();
+                if(!traceFile) throw std::runtime_error("Failed writing native hybrid trace export");
+            }
             // Opt-in diagnostic export only: read the selected, independently
             // checked state without altering optimizer/mesh/acceptance behavior.
             // Only written once for the final accepted equilibrium endpoint.
@@ -1328,7 +1380,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     for(const auto& form : forms) result.push_back(matrixJson(form));
                     return result;
                 };
-                const std::string statePath = tag + "_native_hybrid_state.json";
+                const std::string statePath = tag + endpoint + "_native_hybrid_state.json";
                 std::ifstream previous(statePath);
                 if(previous.good())
                     throw std::runtime_error("Refusing to replace native hybrid state export");
@@ -1351,6 +1403,17 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 stateFile << state.dump() << '\n';
                 stateFile.close();
                 if(!stateFile) throw std::runtime_error("Failed writing native hybrid state export");
+
+                const std::string canonicalStatePath = tag + "_native_hybrid_state.json";
+                if(canonicalStatePath != statePath)
+                {
+                    std::ofstream canonicalFile(canonicalStatePath);
+                    if(canonicalFile)
+                    {
+                        canonicalFile << state.dump() << '\n';
+                        canonicalFile.close();
+                    }
+                }
             }
             return report;
         };
@@ -1522,7 +1585,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             << "substep_attempt,"
             << "lambda_from,lambda_trial,step_size,retry_count,solver,"
             << "solver_code,iterations,evaluations,final_gradient_norm,"
-            << "equilibrium_accepted,recomputed_energy\n";
+            << "equilibrium_accepted,recomputed_energy,"
+            << "termination_status,max_metric_strain_jump\n";
         convergenceSummary << std::setprecision(17);
         std::ofstream stabilitySummary("sequence_stability.csv");
         if(!stabilitySummary)
@@ -2313,6 +2377,38 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 forceStateCurvature = false;
             };
 
+        zigzag_sequence::json checkpointIdentity;
+        int resumedCycle = 0;
+        if(checkpointed_sequence)
+        {
+            if(!sequence_warm_start || minimize_every!=1 || prescribed_enabled || sequence_slope_feedback!=0 ||
+               parser.parse<bool>("-seed_escape", false) || checkpoint_stop_after<0 || checkpoint_stop_after>requested_cycles)
+                throw std::runtime_error("unsupported checkpointed sequence cadence/state modification");
+            if(never_clamped && sequence_solve_mode=="final_only" &&
+               (adaptive_continuation || checkpoint_stop_after!=0))
+                throw std::runtime_error("final-only control forbids intermediate continuation or stop_after");
+            if(never_clamped && mesh.getBoundaryConditions().getVertexBoundaryConditions().count()!=0)
+                throw std::runtime_error("never-clamped control has fixed vertex coordinates");
+            std::ifstream recipeFile(cycle_file);
+            zigzag_sequence::json recipe; recipeFile >> recipe;
+            recipe["effective_material"]={{"E",E},{"nu",nu},{"h_total",h_total}};
+            if(never_clamped && sequence_solve_mode=="final_only")
+                recipe["equilibrium_cadence"]="final_only";
+            checkpointIdentity=zigzag_checkpoint::immutable(mesh,materialCoordinates,recipe,checkpoint_identity);
+            if(!checkpoint_resume.empty())
+            {
+                const auto saved=zigzag_checkpoint::read(checkpoint_resume);
+                if(never_clamped && sequence_solve_mode=="final_only" &&
+                   saved.at("cycle").get<int>()!=requested_cycles)
+                    throw std::runtime_error("final-only control can resume only an accepted terminal checkpoint");
+                resumedCycle=zigzag_checkpoint::restore(mesh,totalPassCount,saved,checkpointIdentity,
+                                                        requested_cycles,equilibrium_gradient_tolerance);
+                lastNativeReport=saved.at("proof");
+                if(checkpoint_stop_after && checkpoint_stop_after<=resumedCycle)
+                    throw std::runtime_error("stop_after must follow resume cycle");
+            }
+        }
+
         for(const auto& toolpath : sequence.toolpaths)
         {
             ++toolpath_sequence_index;
@@ -2402,6 +2498,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 repeat_index <= toolpath.repeat;
                 ++repeat_index)
             {
+                if(checkpointed_sequence && executed_cycle<resumedCycle) { ++executed_cycle; continue; }
                 if(!sequence_warm_start)
                     mesh.resetToRestState();
                 // Reset before mapping so cold-start diagnostics describe the
@@ -2682,11 +2779,16 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
 
                     while(acceptedLambda < 1.0)
                     {
+                        const Real remainingLambda = 1.0 - acceptedLambda;
+                        if(remainingLambda <= 1e-12) break;
+                        const Real trialLambda = ShellContinuation::snapTrialLoad(acceptedLambda, stepSize);
+                        const Real metricStrainJump = ShellContinuation::computeMaxMetricStrainJump(
+                            pathStartAformsTop, pathEndAformsTop, pathStartAformsBot, pathEndAformsBot,
+                            acceptedLambda, trialLambda);
+
                         ++attempt;
-                        const Real trialLambda =
-                            std::min<Real>(1.0, acceptedLambda + stepSize);
                         setPathLoad(trialLambda);
-                        if(equilibrium_solver == "native_hybrid" && trialLambda == 1.0)
+                        if(equilibrium_solver == "native_hybrid" && trialLambda >= 1.0)
                         {
                             // Qualify the exact final metrics, not a rounded
                             // start + (end-start) interpolation later replaced.
@@ -2696,11 +2798,14 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         pathState = acceptedState;
                         mesh.updateDeformedConfiguration();
 
+                        std::string terminationStatus = "unknown";
 #ifdef SHELL_WITH_NATIVE_HYBRID
                         verifyOracle("before_native_hybrid");
                         const bool isTerminalEndpoint =
                             (!use_sequence_bc && executed_cycle == requested_cycles && trialLambda >= 1.0);
-                        const auto report = runNativeHybrid(equilibrium_gradient_tolerance, isTerminalEndpoint);
+                        const std::string substepSuffix = "_cycle" + std::to_string(executed_cycle) +
+                                                         "_attempt" + std::to_string(attempt);
+                        const auto report = runNativeHybrid(equilibrium_gradient_tolerance, isTerminalEndpoint, substepSuffix);
                         verifyOracle("after_native_hybrid");
                         solveCode = report.code();
                         solveIterations = report.iterations();
@@ -2708,6 +2813,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         solveGradient = report.gradientNorm;
                         solveConverged = report.accepted;
                         totalEnergy = report.energy;
+                        terminationStatus = report.terminal.status;
 #endif
 
                         convergenceSummary
@@ -2723,7 +2829,9 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                             << solveEvaluations << ","
                             << solveGradient << ","
                             << (solveConverged ? 1 : 0) << ","
-                            << totalEnergy << "\n";
+                            << totalEnergy << ","
+                            << terminationStatus << ","
+                            << metricStrainJump << "\n";
                         convergenceSummary.flush();
 
                         if(solveConverged)
@@ -2742,9 +2850,10 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         mesh.updateDeformedConfiguration();
                         setPathLoad(acceptedLambda);
                         ++retries;
+                        const Real actualAttemptedStep = trialLambda - acceptedLambda;
                         if(!adaptive_continuation ||
                            retries > continuation_max_retries ||
-                           stepSize <=
+                           actualAttemptedStep <=
                                continuation_min_step *
                                (1.0 + 10.0 *
                                 std::numeric_limits<Real>::epsilon()))
@@ -2753,9 +2862,10 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                                 "at cycle " + std::to_string(executed_cycle) +
                                 ", lambda=" + std::to_string(trialLambda) +
                                 ", gradient_norm=" +
-                                std::to_string(solveGradient) + ".");
-                        stepSize = std::max(
-                            continuation_min_step, 0.5 * stepSize);
+                                std::to_string(solveGradient) +
+                                ", termination=" + terminationStatus + ".");
+                        stepSize = ShellContinuation::computeNextStepOnFailure(
+                            trialLambda, acceptedLambda, continuation_min_step);
                     }
 
                     // Preserve the exact constitutive endpoint rather than its
@@ -2769,13 +2879,20 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         {"return_code_available", !use_sequence_bc}});
                     if(equilibrium_solver == "native_hybrid")
                         solve_records.back()["native_hybrid"] = lastNativeReport;
+                    if(checkpointed_sequence)
+                    {
+                        const auto saved=zigzag_checkpoint::capture(mesh,totalPassCount,executed_cycle,
+                                                                    lastNativeReport,checkpointIdentity);
+                        zigzag_checkpoint::publish("accepted_cycle_"+helpers::ToString(executed_cycle,3)+".json",saved);
+                        if(checkpoint_stop_after==executed_cycle) return;
+                    }
                 }
                 else
                 {
                     convergenceSummary
                         << executed_cycle << ",0,pending,0,0,0,0,0,"
                         << equilibrium_solver
-                        << ",-1,0,0,nan,0,nan\n";
+                        << ",-1,0,0,nan,0,nan,not_minimized,0.0\n";
                     convergenceSummary.flush();
                 }
                 if(minimize_this_cycle && track_sequence_stability)
@@ -2933,6 +3050,123 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                 " times instead of exactly once.");
 
 
+        if(never_clamped)
+        {
+#ifdef SHELL_WITH_NATIVE_HYBRID
+            if(executed_cycle!=requested_cycles ||
+               mesh.getBoundaryConditions().getVertexBoundaryConditions().count()!=0)
+                throw std::runtime_error("incomplete or constrained never-clamped endpoint");
+            if(sequence_solve_mode=="final_only" && equilibrium_solves!=(resumedCycle ? 0 : 1))
+                throw std::runtime_error("final-only control performed an unexpected number of equilibria");
+            const auto endpoint=zigzag_checkpoint::capture(mesh,totalPassCount,executed_cycle,
+                                                           lastNativeReport,checkpointIdentity);
+            const int rigid=ShellEquilibrium::RigidModeProjector::fromMesh(mesh).numberOfRigidModes();
+            Eigen::VectorXd raw=Eigen::VectorXd::Zero(mesh.getCurrentConfiguration().getPositions().size());
+            const Real energy=engOps.compute(mesh,raw);
+            const Real acceptedEnergy=lastNativeReport.at("energy").get<Real>();
+            if(rigid!=6 || !raw.allFinite() || !std::isfinite(energy) ||
+               std::abs(energy-acceptedEnergy)>1e-12*std::abs(acceptedEnergy)+1e-24 ||
+               zigzag_checkpoint::capture(mesh,totalPassCount,executed_cycle,lastNativeReport,checkpointIdentity)!=endpoint)
+                throw std::runtime_error("never-clamped endpoint diagnostic mismatch");
+            // Also export when resuming after the last accepted repeat: no cycle
+            // is replayed, so the usual in-loop final VTP would not be written.
+            writeSequenceState(executed_cycle,"never_clamped_final",zeroHits,zeroField,zeroField,
+                               zeroField,zeroField,zeroField,zeroField);
+            zigzag_checkpoint::publish("never_clamped_final_checkpoint.json",endpoint);
+            zigzag_checkpoint::publish("never_clamped_result.json",{{"complete",true},
+                {"cycles",executed_cycle},{"resumed_cycle",resumedCycle},{"final_vtp","never_clamped_final.vtp"},
+                {"solve_mode",sequence_solve_mode},{"equilibrium_solves",equilibrium_solves},
+                {"checkpoint_checksum",zigzag_checkpoint::checksum(endpoint)},
+                {"proof",lastNativeReport},{"remaining_rigid_modes",rigid},
+                {"fixed_vertex_dofs",0},{"unmasked_energy",energy},
+                {"unmasked_gradient",zigzag_checkpoint::matrix(raw)},{"unmasked_gradient_norm",raw.norm()}});
+            return;
+#endif
+        }
+
+        if(paired_release)
+        {
+#ifdef SHELL_WITH_NATIVE_HYBRID
+            const auto clamped=zigzag_checkpoint::capture(mesh,totalPassCount,executed_cycle,
+                                                          lastNativeReport,checkpointIdentity);
+            zigzag_checkpoint::publish("paired_clamped_checkpoint.json",clamped);
+            const auto gauge=zigzag_sequence_bc::buildMinimalReleaseGaugeMask(materialCoordinates);
+            zigzag_sequence::json endpoints=zigzag_sequence::json::array();
+            for(const std::string& branch : {std::string("putong"),std::string("free")})
+            {
+                zigzag_checkpoint::restore(mesh,totalPassCount,clamped,checkpointIdentity,
+                                            requested_cycles,equilibrium_gradient_tolerance);
+                if(zigzag_checkpoint::capture(mesh,totalPassCount,executed_cycle,lastNativeReport,checkpointIdentity)!=clamped)
+                    throw std::runtime_error("paired release start differs from clamped checkpoint");
+                const Eigen::MatrixXb releaseMask=branch=="putong"?gauge.vertex_mask:initialBC;
+                zigzag_sequence_bc::applyVertexMask(mesh,releaseMask);
+                const Eigen::VectorXd start=mesh.getCurrentConfiguration().getPositions();
+                const int startRigidModes=ShellEquilibrium::RigidModeProjector::fromMesh(mesh).numberOfRigidModes();
+                const auto startGaugeGeometry=zigzag_checkpoint::gaugeGeometry(
+                    mesh.getCurrentConfiguration().getVertices(),gauge.vertex_ids);
+                const auto report=runNativeHybrid(equilibrium_gradient_tolerance,true,"_release_"+branch);
+                // Keep failed endpoints too; never publish a successful pair if either fails.
+                zigzag_sequence::json result={{"branch",branch},{"parent_checksum",zigzag_checkpoint::checksum(clamped)},
+                    {"proof",lastNativeReport},{"start_state_checksum",zigzag_checkpoint::checksum(zigzag_checkpoint::matrix(start))},
+                    {"vertex_mask",zigzag_checkpoint::matrix(releaseMask)},
+                    {"state",zigzag_checkpoint::matrix(mesh.getCurrentConfiguration().getPositions())},
+                    {"gauge_geometry_start",startGaugeGeometry},
+                    {"gauge_geometry_end",zigzag_checkpoint::gaugeGeometry(mesh.getCurrentConfiguration().getVertices(),gauge.vertex_ids)},
+                    {"remaining_rigid_modes_start",startRigidModes},
+                    {"remaining_rigid_modes_end",ShellEquilibrium::RigidModeProjector::fromMesh(mesh).numberOfRigidModes()}};
+                if(!report.accepted) {
+                    zigzag_checkpoint::publish("release_"+branch+"_failed.json",result);
+                    throw std::runtime_error("paired release failed: "+branch);
+                }
+                const Eigen::VectorXd end=mesh.getCurrentConfiguration().getPositions();
+                const int nv=mesh.getNumberOfVertices();
+                for(int i=0;i<nv;++i) for(int k=0;k<3;++k)
+                    if(releaseMask(i,k) && end[k*nv+i]!=start[k*nv+i])
+                        throw std::runtime_error("release changed fixed coordinate");
+                if(zigzag_checkpoint::forms(aformsTop)!=clamped.at("top") ||
+                   zigzag_checkpoint::forms(aformsBot)!=clamped.at("bottom") ||
+                   zigzag_checkpoint::matrix(totalPassCount)!=clamped.at("counts") ||
+                   zigzag_checkpoint::forms(mesh.getRestConfiguration().getSecondFundamentalForms())!=checkpointIdentity.at("bbar"))
+                    throw std::runtime_error("release changed target/history");
+                // Reactions must not be taken from the BC-zeroed solver gradient.
+                Eigen::VectorXd raw=Eigen::VectorXd::Zero(end.size());
+                Real rawEnergy;
+                try {
+                    zigzag_sequence_bc::applyVertexMask(mesh,initialBC);
+                    rawEnergy=engOps.compute(mesh,raw);
+                    zigzag_sequence_bc::applyVertexMask(mesh,releaseMask);
+                } catch(...) {
+                    zigzag_sequence_bc::applyVertexMask(mesh,releaseMask);
+                    throw;
+                }
+                if(!raw.allFinite() || !std::isfinite(rawEnergy) ||
+                   std::abs(rawEnergy-report.energy)>1e-12*std::abs(report.energy)+1e-24 ||
+                   (mesh.getCurrentConfiguration().getPositions().array()!=end.array()).any())
+                    throw std::runtime_error("unmasked reaction evaluation changed energy/state");
+                result["unmasked_gradient"]=zigzag_checkpoint::matrix(raw);
+                result["unmasked_gradient_norm"]=raw.norm();
+                result["unmasked_energy"]=rawEnergy;
+                result["gauge_vertices"]=gauge.vertex_ids;
+                result["target_history_unchanged"]=true;
+                result["fixed_coordinates_unchanged"]=true;
+                bcOutputIndex=executed_cycle+1;
+                bcOutputIsRelease=true;
+                bcOutputPhysicalClampsActive=false;
+                bcOutputGaugeActive=(branch=="putong");
+                writeSequenceState(executed_cycle,"release_"+branch,zeroHits,zeroField,zeroField,
+                                   zeroField,zeroField,zeroField,zeroField);
+                zigzag_checkpoint::publish("release_"+branch+".json",result);
+                endpoints.push_back(result);
+                // Do not retain the previous branch's optimizer proof as the parent proof.
+                lastNativeReport=clamped.at("proof");
+            }
+            zigzag_checkpoint::publish("paired_release_result.json",{{"complete",true},
+                {"clamped_checkpoint_checksum",zigzag_checkpoint::checksum(clamped)},
+                {"resumed_cycle",resumedCycle},{"cycles",executed_cycle},{"endpoints",endpoints}});
+            return;
+#endif
+        }
+
         if(use_sequence_bc &&
            sequence.boundary_conditions.release_after_final_cycle)
         {
@@ -2946,7 +3180,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             Real releaseEnergy = std::numeric_limits<Real>::quiet_NaN();
 
 #ifdef SHELL_WITH_NATIVE_HYBRID
-            const Real release_tol = std::max(equilibrium_gradient_tolerance, static_cast<Real>(1e-11));
+            const Real release_tol = equilibrium_gradient_tolerance;
             const auto report = runNativeHybrid(release_tol, true);
             releaseCode = report.code();
             releaseIterations = report.iterations();

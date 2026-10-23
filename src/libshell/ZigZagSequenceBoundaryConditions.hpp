@@ -220,8 +220,9 @@ inline GaugeMaskResult buildMinimalReleaseGaugeMask(
         throw std::runtime_error(
             "zigzag_sequence_BC: release gauge vertices are collinear in material space.");
 
-    // Six numerical gauge DOFs. These remove only rigid translation/rotation:
-    // A fixes x,y,z; B fixes y,z; C fixes z.
+    // Six intended numerical gauge DOFs: A fixes x,y,z; B fixes y,z; C fixes z.
+    // Material-space selection does not guarantee current-state rigid-gauge rank
+    // or finite-motion compatibility; inspect the deformed gauge geometry.
     result.vertex_mask(vertex_a,0) = true;
     result.vertex_mask(vertex_a,1) = true;
     result.vertex_mask(vertex_a,2) = true;
