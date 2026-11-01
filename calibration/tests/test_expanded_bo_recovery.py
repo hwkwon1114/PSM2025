@@ -17,6 +17,9 @@ from calibration.ewcal.common import Parameters, save_json
 class TestRecovery(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        packet = recovery.predecessor.REVIEW / 'review_packet.json'
+        if not packet.is_file():
+            raise unittest.SkipTest(f'Historical review packet is unavailable: {packet}')
         cls.old_history, cls.observations, cls.pins, cls.identity, cls.migration = recovery.validated_source()
         cls.best = runner.select_best(cls.observations)
 

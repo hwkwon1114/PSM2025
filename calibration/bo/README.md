@@ -1,6 +1,20 @@
 # Calibration BO drivers
 
-Finished campaigns, kept for reproduction. Later stages import earlier ones (`run_run6_bo_refinement.py` is the shared controller library), so the files form one chain rather than separate scripts.
+## Research workflows and paper selection
+
+- The paper uses fixed-hardening Attempt 209; figures and reproduction instructions are in `calibration/paper_figures/attempt209_publication_clean/README.md`.
+- Later joint-search controller: `calibration/bo/joint_calibration.py`, with scalar and Pareto specifications. `pairwise_floor1.py` runs the matched-pair wrapper.
+- `fresh_lhs_joint4.json`, `multiobjective_joint4.json` and `pairwise_floor1.json` describe completed investigations; none supersedes the paper selection.
+- Shared forward evaluation and metric: `calibration/ewcal/runner.py` and `calibration/ewcal/material_frame.py`.
+- Current scientific state, results, limits and public-to-historical case mapping: `docs/calibration/bayesian_calibration/convention_corrected_investigation.md` and `calibration/case_labels.py`.
+
+Completed campaigns are not launch permission. Any new scientific execution requires applicable authorization and review of the actual code/configuration identities. `calibration_manuscript_draft.tex` and `current_joint_calibration/` describe a different joint fit, not the selected Attempt 209 paper.
+
+## Archived campaigns
+
+Original pilot, joint-stage and interim sources, launchers and configurations are preserved in `legacy/calibration_bo/`. Their former `calibration/bo/` paths are symbolic links to the pre-cleanup bytes, preserving old imports and their hashes at the time of this cleanup; they are not additional current workflows. Earlier reviews remain tied to the versions they recorded, which can differ from these later snapshots. Historical figure drafts are similarly preserved in `legacy/analysis/`, and the original versions of updated test fixtures are in `legacy/tests/*_pre_cleanup.py.txt`. The archived controller `run_joint_run6_run10.py` remains distinct from the refactored current controller and is needed to inspect historical stage behavior.
+
+The following finished pilot campaigns are kept for their recorded evidence. Later stages import earlier ones (`run_run6_bo_refinement.py` is their shared controller library), so they cannot be treated as interchangeable copies:
 
 | Stage | Script | Role |
 |---|---|---|

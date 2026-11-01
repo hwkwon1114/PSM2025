@@ -1,0 +1,17 @@
+{
+  "arm": "success",
+  "base": "run/pairwise_floor1",
+  "active": ["gtop", "ortho_top", "beta", "floor"],
+  "fixed": {"gbot": 0.0, "ortho_bottom": 0.0},
+  "gtop": [2e-5, 5e-4],
+  "gbot": [0.0, 1e-3],
+  "gbot_shift": 1e-5,
+  "beta": [0.01, 1.0],
+  "floor": [0.0, 1.0],
+  "fresh_lhs": true,
+  "seed": 20261026,
+  "design_waves": 4,
+  "waves": 24,
+  "early_from": 12,
+  "early_window": 4
+}

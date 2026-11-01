@@ -1,0 +1,17 @@
+{
+  "method": "multiobjective",
+  "arm": "success",
+  "base": "run/multiobjective_joint4",
+  "seed_source": "run/fresh_lhs_joint4",
+  "active": ["gtop", "ortho_top", "beta", "floor"],
+  "fixed": {"gbot": 0.0, "ortho_bottom": 0.0},
+  "gtop": [2e-5, 5e-4],
+  "gbot": [0.0, 1e-3],
+  "gbot_shift": 1e-5,
+  "beta": [0.01, 1.0],
+  "floor": [0.0, 0.5],
+  "reference_mm": [33.77012132607033, 21.7870455543547],
+  "min_separation": 0.01,
+  "plateau_batches": 4,
+  "seed": 20261028
+}

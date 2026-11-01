@@ -10,9 +10,9 @@ This repository contains the C++ discrete differential geometry shell solver, Ba
 
 We model the plastic deformation induced by an English wheel / sequential roller toolpath as an anisotropic bilayer eigenstrain shell problem. The repository provides:
 1. **High-Performance C++ Mechanics Solver**: A discrete differential geometry shell formulation using the native hybrid L-BFGS warmup + exact Newton optimizer with positive-definite Cholesky factorizations (CHOLMOD/SuiteSparse) terminating at a gradient-norm gate (5e-14 in the shared configuration `shellsim/configs/default_adaptive_cutback.json`). Legacy solver branches have been pruned to streamline future temporal growth modeling.
-2. **Bayesian Optimization Framework**: A 4-parameter anisotropic growth law ($g_{\text{top}}, g_{\text{bottom}}, \text{ortho}_{\text{top}}, \text{ortho}_{\text{bottom}}$) calibrated against 3D optical scans of formed sheet metal (Run 6) with held-out generalization to different toolpaths (Run 9).
-3. **Rigorous Geometric Loss**: Material-frame rigid alignment ($SO(3)$ Kabsch) and discrete shell dual-area Voronoi quadrature weighting ($L_{\text{sym}}$).
-4. **Reproducibility Suite**: One-click scripts and interactive Jupyter notebooks reproducing all paper figures and quantitative benchmarks.
+2. **Bayesian Optimization Framework**: The selected paper calibration is Run 1, Attempt 209, with fixed hardening and four layer-growth/orthotropy parameters. Later joint and pairwise searches are retained as separate investigations.
+3. **Geometric Loss**: A fixed material-reference frame and a symmetric, shared-footprint surface discrepancy; the scan is not rigidly fitted to each prediction.
+4. **Research Records**: The selected Attempt 209 calibration and figure provenance are described in [`docs/calibration/bayesian_calibration/convention_corrected_investigation.md`](docs/calibration/bayesian_calibration/convention_corrected_investigation.md). Some older documentation was deleted at the researcher's direction; see [`docs/README.md`](docs/README.md).
 
 ---
 
@@ -22,15 +22,16 @@ Three parts:
 
 ```text
 PSM2025-zigzag/
-├── calibration/    1. Calibrating the growth/hardening model by Bayesian optimization (Run 6, Run 9)
-│   ├── ewcal/          forward model, geometry, loss and BO library
-│   ├── bo/             campaign drivers (Run 6 BO, transfer to Run 9)
-│   ├── analysis/       post-processing and figure scripts
-│   ├── configs/        Run 6/7/9/10 configurations (solver settings are shared, see shellsim/)
+├── calibration/    1. Calibration, exploratory searches and publication figures
+│   ├── ewcal/          shared forward model, geometry, loss and BO library
+│   ├── bo/             joint controller, campaign configurations and historical drivers
+│   ├── analysis/       post-processing and figure scripts, including historical analyses
+│   ├── configs/        configurations with historical case identifiers (see case_labels.py)
 │   ├── data/           experimental scans and toolpaths
-│   ├── paper_figures/  one-click reproduction of the paper figures
+│   ├── paper_figures/  selected Attempt 209 figures and historical figure bundles
 │   ├── notebooks/      demonstration notebook
 │   └── tests/
+├── shape_design/   Frozen Attempt 209 exploratory shapes and collaborator exports
 ├── dome_bo/        2. Finding a good dome toolpath by Bayesian optimization (square sheet)
 │   └── tests/          campaign, objective, mesh-study and verification code
 ├── shellsim/       3. Using the solver: toolpath -> JSON -> simulation, in a notebook
@@ -91,35 +92,21 @@ python -m unittest discover -s calibration/tests/ -p "test_*.py" -v
 
 ---
 
-## Reproducing the calibration figures
+## Current calibration and figures
 
+**Selected paper figures:** [`calibration/paper_figures/attempt209_publication_clean/`](calibration/paper_figures/attempt209_publication_clean/README.md). These use frozen Attempt 209 parameters: historical optimization/GP scores and later corrected-convention shape evaluations are explicitly distinguished. Runs 2 and 3 are exploratory transfers, not blind validation. See the [investigation record](docs/calibration/bayesian_calibration/convention_corrected_investigation.md) for the decision, numerical values and public Run 1/2/3 mapping.
+
+Reproduce all seven 16 pt figures without simulations, into a new directory:
 ```bash
-python calibration/paper_figures/reproduce_paper_figures.py --force   # or ./calibration/paper_figures/reproduce_paper_figures.sh --force
+python calibration/analysis/reproduce_attempt209_publication.py --out-dir run/attempt209_paper_reproduction
 ```
-This regenerates the Run 6/Run 9 toolpath/deformation/residual figures (2D and 3D, PNG and PDF) from the Attempt 209 parameters into `calibration/paper_figures/`, with `provenance.json` and `caption.md` (parameters, input hashes, metrics). `calibration/notebooks/demo_zigzag_calibration.ipynb` walks through the same evaluation with pre-rendered outputs.
+Existing outputs are refused. The older `reproduce_paper_figures.py` and demonstration notebook reproduce a historical pilot, not this delivered bundle.
 
----
+**Manuscript draft:** `docs/calibration/bayesian_calibration/attempt209_manuscript_draft.tex` matches the selected Attempt 209 figure set and distinguishes the historical optimization objective from later shape evaluation. The researcher must check editorial notes and references before submission. `calibration_manuscript_draft.tex` and `calibration/paper_figures/current_joint_calibration/` describe a different joint fit and remain historical.
 
-## Optimal Calibrated Parameters & Quantitative Results
+Later scalar, Pareto and pairwise searches remain under `calibration/bo/` and `run/`; they do not replace the paper selection. Archived source paths are compatibility links to `legacy/` snapshots. Changes to reviewed code require applicable authorization and re-review before scientific execution.
 
-Calibrated on **Run 6** (29 passes, $200 \times 300\text{ mm}$ sheet) across 156 Bayesian optimization evaluations and independently evaluated on **Run 9** (33 passes):
-
-| Parameter | Optimal Value (Attempt 209) | Physical Role |
-| :--- | :--- | :--- |
-| **$g_{\text{top}}$** | $2.8835 \times 10^{-4}$ | Top layer longitudinal growth |
-| **$g_{\text{bottom}}$** | $1.4588 \times 10^{-5}$ | Bottom layer growth |
-| **$\text{ortho}_{\text{top}}$** | $-0.3989$ | Directional anisotropy |
-| **$\text{ortho}_{\text{bottom}}$** | $+0.9603$ | Transverse Poisson coupling |
-
-### Quantitative Error Metrics:
-- **Run 6 (Training Sheet)**:
-  - Symmetric Dual-Area Weighted RMS: **$1.1823\text{ mm}$**
-  - Single-Sided Forward RMS: **$0.6497\text{ mm}$**
-  - Single-Sided Backward RMS: **$1.5406\text{ mm}$**
-- **Run 9 (Independent Validation Sheet)**:
-  - Symmetric Dual-Area Weighted RMS: **$1.3725\text{ mm}$**
-  - Single-Sided Forward RMS: **$1.0582\text{ mm}$**
-  - Single-Sided Backward RMS: **$1.6272\text{ mm}$**
+The separate [shape-design protocol](docs/shape_design/attempt209_double_curvature.md) describes exploratory 0.61 mm sheet predictions and collaborator exports. These extrapolate beyond calibration and are not machine-ready programs.
 
 ---
 

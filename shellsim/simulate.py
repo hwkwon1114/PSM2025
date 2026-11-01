@@ -28,7 +28,9 @@ def run(sequence, out_dir, lx=0.1, ly=0.1, res=0.02, h_total=0.00077, tolerance=
                '-nsteps': '1', '-stepwise': 'false', '-export_stl': 'false', '-cycle_write_state': 'false'}
     options.update(solver_options(tolerance=tolerance, threads=threads))
     command = [str(binary)] + [str(v) for kv in options.items() for v in kv] + ['-cycle_file', str(cycle_file)]
-    env = dict(os.environ, OMP_NUM_THREADS=str(threads), OPENBLAS_NUM_THREADS='1')
+    env = dict(os.environ, OMP_NUM_THREADS=str(threads), OPENBLAS_NUM_THREADS='1', BLIS_NUM_THREADS='1')
+    for key in ('BLIS_JC_NT', 'BLIS_PC_NT', 'BLIS_IC_NT', 'BLIS_JR_NT', 'BLIS_IR_NT'):
+        env.pop(key, None)
     with (out / 'solver.log').open('w') as log:
         subprocess.run(command, cwd=out, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=timeout, check=True)
     state = json.loads((out / 'bilayer_zigzag_sequence_native_hybrid_state.json').read_text())

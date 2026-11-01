@@ -19,7 +19,9 @@ from calibration.analysis.success_aware_bo.model import training_records
 @lru_cache(maxsize=1)
 def mock_measurement():
     p, ref, faces = fixture()
-    target = p + 1
+    target = p.copy()
+    target[:, :2] *= 0.9  # Inset support for the shared-footprint metric.
+    target += 1
     target[-1, 2] += 0.5
     measurement, *_ = score_material_frame(triangle_mesh(p, faces), target, ref, faces)
     return measurement

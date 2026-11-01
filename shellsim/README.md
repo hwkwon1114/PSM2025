@@ -16,4 +16,11 @@ x, y, z = simulate.height(state)
 - `examples/notebooks/simulate_toolpath.ipynb`: toolpath, solve and plot in one notebook (run it from the repository root).
 - `examples/trajectories/`: ready-made toolpath JSON files; `examples/printpaths/`: SVG-to-toolpath input converter.
 
-Build the solver first: see the root `README.md`.
+For ordinary solver runs, the Python launcher sets `BLIS_NUM_THREADS=1` and clears per-loop BLIS thread overrides. When launching `bin/shell` directly, set the same environment before starting it:
+
+```bash
+export BLIS_NUM_THREADS=1
+unset BLIS_JC_NT BLIS_PC_NT BLIS_IC_NT BLIS_JR_NT BLIS_IR_NT
+```
+
+This does not change the solver's OpenMP thread count. A separately authorized threading diagnostic may use different settings. Build the solver first: see the root `README.md`.

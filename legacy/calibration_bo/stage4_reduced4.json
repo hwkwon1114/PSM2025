@@ -1,0 +1,5 @@
+{"arm": "success", "base": "run/joint_stage4_reduced4",
+ "active": ["gtop", "ortho_top", "beta", "floor"], "fixed": {"gbot": 0.0, "ortho_bottom": 0.0},
+ "beta": [0.01, 1.0], "floor": [0.0, 0.5], "gbot": [0.0, 1e-3], "gbot_shift": 1e-5,
+ "warm_start": "run/joint_stage3_gbot0", "warm_require": {"gbot": 0.0},
+ "initial_from_warm": [19, 24, 17, 14], "waves": 24, "early_from": 12, "early_window": 4}

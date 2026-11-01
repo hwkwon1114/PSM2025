@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#SBATCH -A p33082
+#SBATCH -p normal
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH -c 32
+#SBATCH --mem=64G
+#SBATCH -t 12:00:00
+#SBATCH -J run6_bo_plus20
+#SBATCH -o run/run6_expanded_bo_continue20/slurm-%j.out
+set -euo pipefail
+cd /gpfs/projects/p33082/PSM2025-zigzag
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8 VECLIB_MAXIMUM_THREADS=8 NUMEXPR_NUM_THREADS=8
+: "${PACKET_SHA256:?Reviewed continuation packet digest required}"
+PYTHON=/gpfs/home/pxl1051/miniforge/envs/DHD/bin/python
+echo "Run6 continuation20 waves $(date -Iseconds) job=${SLURM_JOB_ID}"
+exec "$PYTHON" -u calibration/bo/run_run6_expanded_bo_continue20.py run --packet-sha256 "$PACKET_SHA256"

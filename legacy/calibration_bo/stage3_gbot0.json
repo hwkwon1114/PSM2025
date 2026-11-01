@@ -1,0 +1,3 @@
+{"arm": "success", "base": "run/joint_stage3_gbot0", "beta": [0.01, 0.30], "floor": [0.0, 0.5],
+ "gbot": [0.0, 1e-3], "gbot_shift": 1e-5, "warm_start": "run/joint_stage2/arm_A",
+ "initial_from_warm": [26, 43, 30, 25], "waves": 6, "early_from": 4, "early_window": 3}
