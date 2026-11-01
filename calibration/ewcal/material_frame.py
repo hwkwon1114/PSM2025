@@ -1,7 +1,7 @@
 """Direction-first rigid gauge and symmetric shape score; no scan-fitted pose gates."""
 import numpy as np
-from .geometry import (SurfaceDistance, compute_bidirectional_metrics, points,
-                       reference_dual_areas, rigid_fit, set_points)
+from .geometry import (SurfaceDistance, compute_shared_footprint_metrics, interpolate_mesh_z, points,
+                       reference_dual_areas, rigid_fit, sample_mesh_on_shared_footprint, set_points)
 
 METHOD = 'material_reference'
 
@@ -41,18 +41,49 @@ def direction_frame(p, reference, faces):
 
 
 def score_material_frame(mesh, target, reference, faces):
-    """Return metrics, transformed mesh, centered scan, distances and closest points."""
+    """Return metrics, transformed mesh, centered scan, distances and closest points.
+    Both scan and simulation are leveled to the flat shared-footprint reference (x_i, y_i, 0)
+    using actual simulation connectivity so identical shapes produce zero double-sided error
+    without scan-to-sim pose fitting."""
     target = np.asarray(target, float)
     if target.ndim != 2 or target.shape[1] != 3 or len(target) < 3 or not np.isfinite(target).all():
         raise ValueError('Invalid scan for material-reference scoring')
     q, transform = direction_frame(points(mesh), reference, faces)
-    framed_mesh = set_points(mesh, q)
     scan_centroid = target.mean(0)
-    aligned = target - scan_centroid
+    t0 = target - scan_centroid
+    ref_t = np.column_stack([t0[:, 0], t0[:, 1], np.zeros(len(t0))])
+    r_scan, t_scan = rigid_fit(t0, ref_t)
+    aligned = t0 @ r_scan + t_scan
+
+    flat_aligned = np.column_stack([aligned[:, 0], aligned[:, 1], np.zeros(len(aligned))])
+    r_sim_tot = np.eye(3)
+    t_sim_tot = np.zeros(3)
+    for _ in range(6):
+        s0 = sample_mesh_on_shared_footprint(q, reference, faces, aligned[:, :2])
+        r_sim, t_sim = rigid_fit(s0, flat_aligned)
+        q = q @ r_sim + t_sim
+        r_sim_tot = r_sim_tot @ r_sim
+        t_sim_tot = t_sim_tot @ r_sim + t_sim
+        if np.linalg.norm(r_sim - np.eye(3)) < 1e-13 and np.linalg.norm(t_sim) < 1e-13:
+            break
+
+    r_dir = np.asarray(transform['row_vector_rotation'], float)
+    t_dir = np.asarray(transform['translation_mm'], float)
+    transform = dict(
+        transform,
+        row_vector_rotation=(r_dir @ r_sim_tot).tolist(),
+        translation_mm=(t_dir @ r_sim_tot + t_sim_tot).tolist(),
+        shared_footprint_rotation=r_sim_tot.tolist(),
+        shared_footprint_translation_mm=t_sim_tot.tolist(),
+    )
+
+    framed_mesh = set_points(mesh, q)
     distances, closest = SurfaceDistance(framed_mesh).closest(aligned)
-    metrics = compute_bidirectional_metrics(framed_mesh, aligned, reference, faces, distances)
+    metrics = compute_shared_footprint_metrics(framed_mesh, aligned, reference, faces, distances)
     if not all(np.isfinite(v) for v in metrics.values()):
         raise ValueError('Nonfinite material-reference shape score')
     metrics.update(rms_mm=metrics['rms_symmetric_mm'], scoring_method=METHOD, shape_scored=True,
-                   simulation_transform=transform, scan_centroid_original_mm=scan_centroid.tolist())
+                   simulation_transform=transform, scan_centroid_original_mm=scan_centroid.tolist(),
+                   scan_flat_reference_rotation=r_scan.tolist(),
+                   scan_flat_reference_translation_mm=t_scan.tolist())
     return metrics, framed_mesh, aligned, distances, closest

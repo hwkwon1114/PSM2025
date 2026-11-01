@@ -110,8 +110,9 @@ class TestGeometry(unittest.TestCase):
 
     def test_compute_bidirectional_metrics(self):
         # Simulate target points at z = 2.0 mm
-        grid_x, grid_y = np.meshgrid(np.linspace(0, 20, 5), np.linspace(0, 30, 5))
-        target_pts = np.column_stack([grid_x.ravel(), grid_y.ravel(), np.full(25, 2.0)])
+        # A 1 mm grid supplies valid shared-footprint triangles under the metric's edge limit.
+        grid_x, grid_y = np.meshgrid(np.linspace(0, 20, 21), np.linspace(0, 30, 31))
+        target_pts = np.column_stack([grid_x.ravel(), grid_y.ravel(), np.full(grid_x.size, 2.0)])
         fwd_dist = np.full(len(target_pts), 2.0)
 
         # Sim vertices at z = 0.0 mm

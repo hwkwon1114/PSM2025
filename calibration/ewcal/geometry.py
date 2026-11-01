@@ -124,20 +124,150 @@ def physical_step(old_x, new_x, angle, sample_points):
         point_motion_rms_mm=motion_rms_mm
     )
 
+def interpolate_mesh_z(mesh_pts, faces, xy):
+    """Interpolate z on the exact simulation triangle connectivity (no retriangulation).
+    Fails closed if any query (x, y) lies outside the simulation mesh footprint."""
+    from matplotlib.tri import Triangulation, LinearTriInterpolator
+    pts = np.asarray(mesh_pts, float)
+    f = np.asarray(faces, int)
+    q_xy = np.asarray(xy, float)
+    tri = Triangulation(pts[:, 0], pts[:, 1], f)
+    z = np.asarray(LinearTriInterpolator(tri, pts[:, 2])(q_xy[:, 0], q_xy[:, 1]), float)
+    if not np.all(np.isfinite(z)):
+        raise ValueError('Shared footprint points lie outside predicted mesh footprint')
+    return z
+
+_REF_TRI_CACHE = {}
+
+def sample_mesh_on_shared_footprint(mesh_pts, ref_pts, faces, xy):
+    """Sample the predicted triangular surface on the shared footprint using actual mesh faces.
+    Fails closed if any query point lies outside the reference sheet footprint. Uses vertical
+    interpolation on deformed triangles where defined, and material-coordinate barycentric
+    interpolation on the same shared footprint where large curling contracts the (x, y) projection."""
+    import hashlib
+    from matplotlib.tri import Triangulation, LinearTriInterpolator
+    pts = np.asarray(mesh_pts, float)
+    ref = np.asarray(ref_pts, float)
+    f = np.asarray(faces, int)
+    q_xy = np.asarray(xy, float)
+    key = (ref.shape, f.shape, hashlib.blake2b(np.ascontiguousarray(ref[:, :2]).view(np.uint8), digest_size=8).digest(),
+           hashlib.blake2b(np.ascontiguousarray(f).view(np.uint8), digest_size=8).digest())
+    cached = _REF_TRI_CACHE.get(key)
+    if cached is None:
+        ref_tri = Triangulation(ref[:, 0], ref[:, 1], f)
+        rf = ref_tri.get_trifinder()
+        if len(_REF_TRI_CACHE) >= 8:
+            _REF_TRI_CACHE.clear()
+        _REF_TRI_CACHE[key] = (ref_tri, rf)
+    else:
+        ref_tri, rf = cached
+    if np.any(rf(q_xy[:, 0], q_xy[:, 1]) < 0):
+        raise ValueError('Shared footprint points lie outside predicted mesh footprint')
+    ok = np.zeros(len(q_xy), dtype=bool)
+    out = np.empty((len(q_xy), 3), dtype=float)
+    try:
+        def_tri = Triangulation(pts[:, 0], pts[:, 1], f)
+        z_vert = np.asarray(LinearTriInterpolator(def_tri, pts[:, 2])(q_xy[:, 0], q_xy[:, 1]), float)
+        ok = np.isfinite(z_vert)
+        out[ok, 0] = q_xy[ok, 0]
+        out[ok, 1] = q_xy[ok, 1]
+        out[ok, 2] = z_vert[ok]
+    except Exception:
+        ok[:] = False
+    if not np.all(ok):
+        miss = ~ok
+        mx, my = q_xy[miss, 0], q_xy[miss, 1]
+        mat_x = np.asarray(LinearTriInterpolator(ref_tri, pts[:, 0], trifinder=rf)(mx, my), float)
+        mat_y = np.asarray(LinearTriInterpolator(ref_tri, pts[:, 1], trifinder=rf)(mx, my), float)
+        mat_z = np.asarray(LinearTriInterpolator(ref_tri, pts[:, 2], trifinder=rf)(mx, my), float)
+        if not (np.all(np.isfinite(mat_x)) and np.all(np.isfinite(mat_y)) and np.all(np.isfinite(mat_z))):
+            raise ValueError('Shared footprint points lie outside predicted mesh footprint')
+        out[miss, 0] = mat_x
+        out[miss, 1] = mat_y
+        out[miss, 2] = mat_z
+    return out
+
+def shared_footprint_faces(xy, max_edge_factor=1.75, min_area_factor=1e-6):
+    """Triangulate 2D material-plane points without bridging missing-data gaps.
+    Retains only triangles with max edge <= max_edge_factor * h and area > min_area_factor * h^2,
+    where h is the positive median nearest-neighbor spacing, failing closed if none survive."""
+    from scipy.spatial import Delaunay, cKDTree
+    pts2 = np.asarray(xy, float)
+    if len(pts2) < 3:
+        raise ValueError('At least 3 points required for surface triangulation')
+    d_nn, _ = cKDTree(pts2).query(pts2, k=2)
+    pos = d_nn[:, 1]
+    pos = pos[np.isfinite(pos) & (pos > 0.0)]
+    if len(pos) == 0:
+        raise ValueError('Shared footprint has no positive point spacing')
+    h = float(np.median(pos))
+    tri = Delaunay(pts2).simplices
+    v0 = pts2[tri[:, 0]]
+    v1 = pts2[tri[:, 1]]
+    v2 = pts2[tri[:, 2]]
+    e01 = np.linalg.norm(v1 - v0, axis=1)
+    e12 = np.linalg.norm(v2 - v1, axis=1)
+    e20 = np.linalg.norm(v0 - v2, axis=1)
+    max_e = np.maximum(np.maximum(e01, e12), e20)
+    area = 0.5 * np.abs((v1[:, 0] - v0[:, 0]) * (v2[:, 1] - v0[:, 1]) - (v2[:, 0] - v0[:, 0]) * (v1[:, 1] - v0[:, 1]))
+    keep = (max_e <= float(max_edge_factor) * h) & (area > float(min_area_factor) * (h ** 2))
+    if not np.any(keep):
+        raise ValueError('No valid shared-footprint triangles within edge/area threshold')
+    return tri[keep]
+
 def compute_bidirectional_metrics(mesh, aligned_target_mm, ref_positions_mm, faces, fwd_distances_mm):
-    """Compute bidirectional shape discrepancy combining forward (scan-to-sim)
-    and reference-area-weighted reverse (sim-to-scan) metrics."""
+    """Historical point-cloud reverse metric for bounded 3-D registration.
+
+    Unlike material-frame scoring, this route does not require a planar reference mesh.
+    """
     from scipy.spatial import cKDTree
     dual_areas = reference_dual_areas(ref_positions_mm, faces)
     tot_area = float(np.sum(dual_areas))
-    weights = dual_areas / tot_area
+    rev_dist, _ = cKDTree(aligned_target_mm).query(points(mesh))
+    fwd_mse = float(np.mean(fwd_distances_mm**2))
+    rev_mse = float(np.sum((dual_areas / tot_area) * rev_dist**2))
+    return dict(
+        rms_target_to_sim_mm=float(np.sqrt(fwd_mse)),
+        rms_sim_to_target_weighted_mm=float(np.sqrt(rev_mse)),
+        rms_symmetric_mm=float(np.sqrt(0.5 * (fwd_mse + rev_mse))),
+        reference_area_quadrature_rms_mm=float(np.sqrt(rev_mse)),
+        reference_area_mm2=tot_area,
+        p95_target_to_sim_mm=float(np.quantile(fwd_distances_mm, 0.95)),
+        max_target_to_sim_mm=float(np.max(fwd_distances_mm)),
+        p95_sim_to_target_mm=float(np.quantile(rev_dist, 0.95)),
+        max_sim_to_target_mm=float(np.max(rev_dist))
+    )
+
+
+def compute_shared_footprint_metrics(mesh, aligned_target_mm, ref_positions_mm, faces, fwd_distances_mm):
+    """Compute double-sided surface-to-surface shape discrepancy on the shared footprint
+    using actual simulation connectivity so identical shapes yield zero error in both directions."""
+    dual_areas = reference_dual_areas(ref_positions_mm, faces)
+    tot_area = float(np.sum(dual_areas))
+
+    target_pts = np.asarray(aligned_target_mm, float)
+    scan_faces = shared_footprint_faces(target_pts[:, :2])
+    scan_mesh = triangle_mesh(target_pts, scan_faces)
+    v0 = target_pts[scan_faces[:, 0], :2]
+    v1 = target_pts[scan_faces[:, 1], :2]
+    v2 = target_pts[scan_faces[:, 2], :2]
+    tri_areas = 0.5 * np.abs((v1[:, 0] - v0[:, 0]) * (v2[:, 1] - v0[:, 1]) - (v2[:, 0] - v0[:, 0]) * (v1[:, 1] - v0[:, 1]))
+    scan_areas = np.zeros(len(target_pts), dtype=float)
+    for k in range(3):
+        np.add.at(scan_areas, scan_faces[:, k], tri_areas / 3.0)
+    area_sum = float(np.sum(scan_areas))
+    if area_sum <= 0.0 or not np.isfinite(area_sum):
+        raise ValueError('Non-positive shared-footprint scan surface area')
+    scan_weights = scan_areas / area_sum
 
     sim_pts = points(mesh)
-    kdtree = cKDTree(aligned_target_mm)
-    rev_dist, _ = kdtree.query(sim_pts)
+    sim_shared = sample_mesh_on_shared_footprint(sim_pts, ref_positions_mm, faces, target_pts[:, :2])
+    rev_weights = scan_weights
+
+    rev_dist, _ = SurfaceDistance(scan_mesh).closest(sim_shared)
 
     fwd_mse = float(np.mean(fwd_distances_mm**2))
-    rev_mse_weighted = float(np.sum(weights * (rev_dist**2)))
+    rev_mse_weighted = float(np.sum(rev_weights * (rev_dist**2)))
     sym_rms = float(np.sqrt(0.5 * (fwd_mse + rev_mse_weighted)))
 
     return dict(

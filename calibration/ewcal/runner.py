@@ -97,14 +97,19 @@ def command(config, case, sequence_path):
         result += [key, str(value).lower() if isinstance(value, bool) else str(value)]
     return result
 
-def launch(args, cwd, timeout, heartbeat_seconds=30):
+def launch(args, cwd, timeout, heartbeat_seconds=30, *, solver_environment=None):
+    # An explicit environment is reserved for controlled threading diagnostics.
+    if solver_environment is None:
+        solver_environment = dict(os.environ, BLIS_NUM_THREADS='1')
+        for key in ('BLIS_JC_NT', 'BLIS_PC_NT', 'BLIS_IC_NT', 'BLIS_JR_NT', 'BLIS_IR_NT'):
+            solver_environment.pop(key, None)
     heartbeat_seconds = float(heartbeat_seconds)
     if heartbeat_seconds <= 0 or not np.isfinite(heartbeat_seconds):
         raise ValueError('heartbeat_seconds must be positive and finite')
     started = time.monotonic()
     with open(cwd/'solver.log', 'wb') as log:
-        proc = subprocess.Popen(args, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
-                                start_new_session=True)
+        proc = subprocess.Popen(args, cwd=cwd, env=solver_environment, stdout=log,
+                                stderr=subprocess.STDOUT, start_new_session=True)
         message('SOLVER', f'PID={proc.pid}; log={cwd / "solver.log"}')
         try:
             while True:
