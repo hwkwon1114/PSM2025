@@ -1,0 +1,19 @@
+[srun-here] short cpus=1 mem=2G time=00:03:00 conda=DHD
+srun: job 5178556 queued and waiting for resources
+srun: job 5178556 has been allocated resources
+----------------------------------------
+srun job start: Sat Oct 24 10:41:50 CDT 2026
+Job ID: 5178556
+Username: pxl1051
+Queue: short
+Account: p33082
+----------------------------------------
+The following variables are not
+guaranteed to be the same in the
+prologue and the job run script
+----------------------------------------
+PATH (in prologue) : /home/pxl1051/.pi/agent/bin:/software/jq/1.6/bin:/home/pxl1051/bin:/gpfs/software/2025/pseudo-system-utils:/gpfs/home/pxl1051/.vscode-server/cli/servers/Stable-2d0b7506a36c1d6db9a466440131a8e01eab2289/server/bin/remote-cli:/gpfs/home/pxl1051/miniforge/condabin:/home/pxl1051/.cargo/bin:/home/pxl1051/.nvm/versions/node/v26.9.0/bin:/home/pxl1051/.local/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/usr/lpp/mmfs/bin:/hpc/usertools:/home/pxl1051/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand:/gpfs/home/pxl1051/.vscode-server/cli/servers/Stable-2d0b7506a36c1d6db9a466440131a8e01eab2289/server/bin/copilot-shim
+WORKDIR is: /home/pxl1051
+----------------------------------------
+bash: ninja: command not found
+srun: error: qnode0121: task 0: Exited with exit code 127

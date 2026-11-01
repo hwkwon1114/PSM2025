@@ -1,0 +1,55 @@
+[
+  {
+    "run": "run6",
+    "solver_exact_match": true,
+    "parameters_exact_match": true,
+    "differences": [
+      "/cases/0/operation/alpha_deg",
+      "/cases/0/scan_orientation/basis_columns/0/0",
+      "/cases/0/scan_orientation/basis_columns/0/1",
+      "/cases/0/scan_orientation/basis_columns/1/0",
+      "/cases/0/scan_orientation/basis_columns/1/1",
+      "/cases/0/scan_orientation/basis_columns/2/0",
+      "/cases/0/scan_orientation/basis_columns/2/1",
+      "/cases/0/target",
+      "/output_dir",
+      "/report_dir"
+    ]
+  },
+  {
+    "run": "run9",
+    "solver_exact_match": true,
+    "parameters_exact_match": true,
+    "differences": [
+      "/cases/0/operation/alpha_deg",
+      "/cases/0/operation/shift_uv_mm/1",
+      "/cases/0/scan_orientation/basis_columns/0/0",
+      "/cases/0/scan_orientation/basis_columns/0/1",
+      "/cases/0/scan_orientation/basis_columns/1/0",
+      "/cases/0/scan_orientation/basis_columns/1/1",
+      "/cases/0/scan_orientation/basis_columns/2/0",
+      "/cases/0/scan_orientation/basis_columns/2/1",
+      "/cases/0/target",
+      "/output_dir",
+      "/report_dir"
+    ]
+  },
+  {
+    "run": "run10",
+    "solver_exact_match": true,
+    "parameters_exact_match": true,
+    "differences": [
+      "/cases/0/operation/alpha_deg",
+      "/cases/0/operation/shift_uv_mm/1",
+      "/cases/0/scan_orientation/basis_columns/0/0",
+      "/cases/0/scan_orientation/basis_columns/0/1",
+      "/cases/0/scan_orientation/basis_columns/1/0",
+      "/cases/0/scan_orientation/basis_columns/1/1",
+      "/cases/0/scan_orientation/basis_columns/2/0",
+      "/cases/0/scan_orientation/basis_columns/2/1",
+      "/cases/0/target",
+      "/output_dir",
+      "/report_dir"
+    ]
+  }
+]

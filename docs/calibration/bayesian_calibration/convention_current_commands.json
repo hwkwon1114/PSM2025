@@ -1,0 +1,1002 @@
+[
+  {
+    "run": "run6",
+    "sha256": {
+      "calibration/bo/run_convention_corrected.py": "8821a2c6d9e07b07d25e334d7edd0d3e22651f47eab786401f22508506fd6490",
+      "shellsim/configs/default_adaptive_cutback.json": "94252b22fd97d165de5fa0c1b203dbf0ef5c9d77639ef5474f9fa925fc187ce3",
+      "run/convention_corrected/run6/proposed_config.json": "519e5053eaee2d3e7218e96c208fbe1f899d697cbaf711310f8577a2e85fc591",
+      "run/convention_corrected/run6/frozen_parameters.json": "d34a6bdd0ee759b0c051884b5795ad7dd63709128c13e5f276fceb2fb92bae94",
+      "run/putong_convention_check/preserved_samples/run6.npz": "00d64e18d28eab6c7254d674af8424d169cac3672abaa2bcf072cab59673a348"
+    },
+    "differences": [
+      {
+        "path": "/cases/0/operation/alpha_deg",
+        "old": 1,
+        "new": -1
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/0/0",
+        "old": 0.99229234893452,
+        "new": -0.99229234893452
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/0/1",
+        "old": 0.1226977642614524,
+        "new": -0.1226977642614524
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/1/0",
+        "old": 0.12277098226406499,
+        "new": -0.12277098226406499
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/1/1",
+        "old": -0.9924298222214456,
+        "new": 0.9924298222214456
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/2/0",
+        "old": 0.01682795768741631,
+        "new": -0.01682795768741631
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/2/1",
+        "old": 0.005320395732549228,
+        "new": -0.005320395732549228
+      },
+      {
+        "path": "/cases/0/target",
+        "old": "calibration/data/processed/run6_edge_aligned_refined.npz",
+        "new": "run/putong_convention_check/preserved_samples/run6.npz"
+      },
+      {
+        "path": "/output_dir",
+        "old": "run/run6_expanded_bo",
+        "new": "run/convention_corrected/run6"
+      },
+      {
+        "path": "/report_dir",
+        "old": "run/run6_expanded_bo/report",
+        "new": "run/convention_corrected/run6/report"
+      },
+      {
+        "path": "/solver/args/-equilibrium_grad_tol",
+        "old": 5e-14,
+        "new": "5e-14"
+      },
+      {
+        "path": "/solver/args/-hessian_threads",
+        "old": 8,
+        "new": "8"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_export_state",
+        "old": true,
+        "new": "true"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_grad_tol",
+        "old": 5e-14,
+        "new": "5e-14"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_handoff",
+        "old": null,
+        "new": "fixed"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_max_hessians",
+        "old": null,
+        "new": "40"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_max_newton_indefinite",
+        "old": null,
+        "new": "3"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_max_newton_stalls",
+        "old": null,
+        "new": "2"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_newton_stall_grace",
+        "old": null,
+        "new": "10"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_newton_stall_ratio",
+        "old": null,
+        "new": "0.85"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_newton_stall_window",
+        "old": null,
+        "new": "5"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_on_newton_stall",
+        "old": null,
+        "new": "cutback"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_refine_linear_solve",
+        "old": null,
+        "new": "true"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_warmup_attempts",
+        "old": 2000,
+        "new": "2000"
+      },
+      {
+        "path": "/solver/args/-seed_escape",
+        "old": null,
+        "new": "false"
+      },
+      {
+        "path": "/solver/args/-sequence_adaptive",
+        "old": true,
+        "new": "true"
+      },
+      {
+        "path": "/solver/args/-sequence_initial_step",
+        "old": null,
+        "new": "1.0"
+      },
+      {
+        "path": "/solver/args/-sequence_max_retries",
+        "old": null,
+        "new": "8"
+      },
+      {
+        "path": "/solver/args/-sequence_max_step",
+        "old": null,
+        "new": "1.0"
+      },
+      {
+        "path": "/solver/args/-sequence_min_step",
+        "old": null,
+        "new": "0.015625"
+      },
+      {
+        "path": "/solver/args/-sequence_minimize_every",
+        "old": null,
+        "new": 1
+      },
+      {
+        "path": "/solver/args/-sequence_slope_feedback",
+        "old": null,
+        "new": "0"
+      },
+      {
+        "path": "/solver/args/-sequence_step_growth",
+        "old": null,
+        "new": "2.0"
+      },
+      {
+        "path": "/solver/args/-sequence_warm_start",
+        "old": null,
+        "new": "true"
+      },
+      {
+        "path": "/solver/executable",
+        "old": "run/native_shape_refinement/build_9060950/bin/shell",
+        "new": "bin/shell"
+      }
+    ],
+    "command": [
+      "/gpfs/projects/p33082/PSM2025-zigzag/bin/shell",
+      "-sim",
+      "bilayer_growth",
+      "-case",
+      "custom",
+      "-geometry",
+      "rectangle",
+      "-lx",
+      "0.1",
+      "-ly",
+      "0.15",
+      "-res",
+      "0.01",
+      "-enable_passE",
+      "false",
+      "-nsteps",
+      "1",
+      "-tol",
+      "3e-12",
+      "-stepwise",
+      "false",
+      "-hessian_threads",
+      "8",
+      "-equilibrium_solver",
+      "native_hybrid",
+      "-native_hybrid_warmup_attempts",
+      "2000",
+      "-native_hybrid_grad_tol",
+      "5e-14",
+      "-equilibrium_grad_tol",
+      "5e-14",
+      "-sequence_adaptive",
+      "true",
+      "-native_hybrid_seconds",
+      "3600",
+      "-native_hybrid_export_state",
+      "true",
+      "-sequence_initial_step",
+      "1.0",
+      "-sequence_max_step",
+      "1.0",
+      "-sequence_min_step",
+      "0.015625",
+      "-sequence_step_growth",
+      "2.0",
+      "-sequence_max_retries",
+      "8",
+      "-sequence_warm_start",
+      "true",
+      "-sequence_minimize_every",
+      "1",
+      "-sequence_slope_feedback",
+      "0",
+      "-native_hybrid_refine_linear_solve",
+      "true",
+      "-native_hybrid_max_hessians",
+      "40",
+      "-native_hybrid_on_newton_stall",
+      "cutback",
+      "-native_hybrid_newton_stall_window",
+      "5",
+      "-native_hybrid_newton_stall_ratio",
+      "0.85",
+      "-native_hybrid_newton_stall_grace",
+      "10",
+      "-native_hybrid_max_newton_stalls",
+      "2",
+      "-native_hybrid_max_newton_indefinite",
+      "3",
+      "-native_hybrid_handoff",
+      "fixed",
+      "-seed_escape",
+      "false",
+      "-cycle_file",
+      "/gpfs/projects/p33082/PSM2025-zigzag/run/convention_corrected/run6/sequence_preview.json",
+      "-sequence_solve_mode",
+      "final_only",
+      "-h_total",
+      "0.0007700000000000001",
+      "-growth_type",
+      "zigzag_sequence",
+      "-cycle_write_state",
+      "false",
+      "-export_stl",
+      "false"
+    ],
+    "sequence": {
+      "schema_version": 1,
+      "units": {
+        "length": "mm",
+        "angle": "deg",
+        "growth": "engineering_strain"
+      },
+      "defaults": {
+        "start_mode": "left_bottom_up",
+        "profile": {
+          "mode": "uniform"
+        }
+      },
+      "hardening": {
+        "model": "voce_decay",
+        "history_variable": "hit_count",
+        "beta": 0.2231435513142097,
+        "floor": 0,
+        "scope": "face_shared",
+        "count_rule": "plastic_hits"
+      },
+      "boundary_conditions": {
+        "enabled": false
+      },
+      "toolpaths": [
+        {
+          "id": "run6",
+          "repeat": 29,
+          "operation": {
+            "type": "zigzag",
+            "lv_mm": 130,
+            "alpha_deg": -1,
+            "n_strips": 68,
+            "width_mm": 2,
+            "shift_uv_mm": [
+              0.0,
+              0.0
+            ],
+            "shift_frame": "material",
+            "rotation_deg": 0,
+            "gtop": 0.00028835116227798787,
+            "gbot": 1.4587994001079146e-05,
+            "ortho_top": -0.3989157893255133,
+            "ortho_bottom": 0.960306323937336
+          }
+        }
+      ]
+    },
+    "decoded": {
+      "gtop": 0.00028835116227798787,
+      "gbot": 1.4587994001079146e-05,
+      "ortho_top": -0.3989157893255133,
+      "ortho_bottom": 0.960306323937336
+    },
+    "roundtrip_rtol": 1e-14,
+    "roundtrip_pass": true
+  },
+  {
+    "run": "run9",
+    "sha256": {
+      "calibration/bo/run_convention_corrected.py": "8821a2c6d9e07b07d25e334d7edd0d3e22651f47eab786401f22508506fd6490",
+      "shellsim/configs/default_adaptive_cutback.json": "94252b22fd97d165de5fa0c1b203dbf0ef5c9d77639ef5474f9fa925fc187ce3",
+      "run/convention_corrected/run9/proposed_config.json": "2041610df3629d668aaea75a4e2405fc1bef8a695d71060090ead57f15c4ce57",
+      "run/convention_corrected/run9/frozen_parameters.json": "d34a6bdd0ee759b0c051884b5795ad7dd63709128c13e5f276fceb2fb92bae94",
+      "run/putong_convention_check/preserved_samples/run9.npz": "aa1fc209fa1b1eee7929a050957c3551ec959d09ed0fec92b02769a01451890e"
+    },
+    "differences": [
+      {
+        "path": "/cases/0/operation/alpha_deg",
+        "old": 1,
+        "new": -1
+      },
+      {
+        "path": "/cases/0/operation/shift_uv_mm/1",
+        "old": -28.75,
+        "new": 28.75
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/0/0",
+        "old": 0.999326385848079,
+        "new": -0.999326385848079
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/0/1",
+        "old": 0.03524185875254713,
+        "new": -0.03524185875254713
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/1/0",
+        "old": 0.0354339703616547,
+        "new": -0.0354339703616547
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/1/1",
+        "old": -0.9991868955443485,
+        "new": 0.9991868955443485
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/2/0",
+        "old": -0.009550303253070845,
+        "new": 0.009550303253070845
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/2/1",
+        "old": -0.019584666556076356,
+        "new": 0.019584666556076356
+      },
+      {
+        "path": "/cases/0/target",
+        "old": "calibration/data/processed/run9_oriented.npz",
+        "new": "run/putong_convention_check/preserved_samples/run9.npz"
+      },
+      {
+        "path": "/output_dir",
+        "old": "run/run9_transfer_expanded",
+        "new": "run/convention_corrected/run9"
+      },
+      {
+        "path": "/report_dir",
+        "old": "run/run9_transfer_expanded/report",
+        "new": "run/convention_corrected/run9/report"
+      },
+      {
+        "path": "/solver/args/-equilibrium_grad_tol",
+        "old": 5e-14,
+        "new": "5e-14"
+      },
+      {
+        "path": "/solver/args/-hessian_threads",
+        "old": 8,
+        "new": "8"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_export_state",
+        "old": true,
+        "new": "true"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_grad_tol",
+        "old": 5e-14,
+        "new": "5e-14"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_handoff",
+        "old": null,
+        "new": "fixed"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_max_hessians",
+        "old": null,
+        "new": "40"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_max_newton_indefinite",
+        "old": null,
+        "new": "3"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_max_newton_stalls",
+        "old": null,
+        "new": "2"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_newton_stall_grace",
+        "old": null,
+        "new": "10"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_newton_stall_ratio",
+        "old": null,
+        "new": "0.85"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_newton_stall_window",
+        "old": null,
+        "new": "5"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_on_newton_stall",
+        "old": null,
+        "new": "cutback"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_refine_linear_solve",
+        "old": null,
+        "new": "true"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_warmup_attempts",
+        "old": 2000,
+        "new": "2000"
+      },
+      {
+        "path": "/solver/args/-seed_escape",
+        "old": null,
+        "new": "false"
+      },
+      {
+        "path": "/solver/args/-sequence_adaptive",
+        "old": true,
+        "new": "true"
+      },
+      {
+        "path": "/solver/args/-sequence_initial_step",
+        "old": null,
+        "new": "1.0"
+      },
+      {
+        "path": "/solver/args/-sequence_max_retries",
+        "old": null,
+        "new": "8"
+      },
+      {
+        "path": "/solver/args/-sequence_max_step",
+        "old": null,
+        "new": "1.0"
+      },
+      {
+        "path": "/solver/args/-sequence_min_step",
+        "old": null,
+        "new": "0.015625"
+      },
+      {
+        "path": "/solver/args/-sequence_minimize_every",
+        "old": null,
+        "new": 1
+      },
+      {
+        "path": "/solver/args/-sequence_slope_feedback",
+        "old": null,
+        "new": "0"
+      },
+      {
+        "path": "/solver/args/-sequence_step_growth",
+        "old": null,
+        "new": "2.0"
+      },
+      {
+        "path": "/solver/args/-sequence_warm_start",
+        "old": null,
+        "new": "true"
+      },
+      {
+        "path": "/solver/executable",
+        "old": "run/native_shape_refinement/build_9060950/bin/shell",
+        "new": "bin/shell"
+      }
+    ],
+    "command": [
+      "/gpfs/projects/p33082/PSM2025-zigzag/bin/shell",
+      "-sim",
+      "bilayer_growth",
+      "-case",
+      "custom",
+      "-geometry",
+      "rectangle",
+      "-lx",
+      "0.1",
+      "-ly",
+      "0.15",
+      "-res",
+      "0.01",
+      "-enable_passE",
+      "false",
+      "-nsteps",
+      "1",
+      "-tol",
+      "3e-12",
+      "-stepwise",
+      "false",
+      "-hessian_threads",
+      "8",
+      "-equilibrium_solver",
+      "native_hybrid",
+      "-native_hybrid_warmup_attempts",
+      "2000",
+      "-native_hybrid_grad_tol",
+      "5e-14",
+      "-equilibrium_grad_tol",
+      "5e-14",
+      "-sequence_adaptive",
+      "true",
+      "-native_hybrid_seconds",
+      "3600",
+      "-native_hybrid_export_state",
+      "true",
+      "-sequence_initial_step",
+      "1.0",
+      "-sequence_max_step",
+      "1.0",
+      "-sequence_min_step",
+      "0.015625",
+      "-sequence_step_growth",
+      "2.0",
+      "-sequence_max_retries",
+      "8",
+      "-sequence_warm_start",
+      "true",
+      "-sequence_minimize_every",
+      "1",
+      "-sequence_slope_feedback",
+      "0",
+      "-native_hybrid_refine_linear_solve",
+      "true",
+      "-native_hybrid_max_hessians",
+      "40",
+      "-native_hybrid_on_newton_stall",
+      "cutback",
+      "-native_hybrid_newton_stall_window",
+      "5",
+      "-native_hybrid_newton_stall_ratio",
+      "0.85",
+      "-native_hybrid_newton_stall_grace",
+      "10",
+      "-native_hybrid_max_newton_stalls",
+      "2",
+      "-native_hybrid_max_newton_indefinite",
+      "3",
+      "-native_hybrid_handoff",
+      "fixed",
+      "-seed_escape",
+      "false",
+      "-cycle_file",
+      "/gpfs/projects/p33082/PSM2025-zigzag/run/convention_corrected/run9/sequence_preview.json",
+      "-sequence_solve_mode",
+      "final_only",
+      "-h_total",
+      "0.0007700000000000001",
+      "-growth_type",
+      "zigzag_sequence",
+      "-cycle_write_state",
+      "false",
+      "-export_stl",
+      "false"
+    ],
+    "sequence": {
+      "schema_version": 1,
+      "units": {
+        "length": "mm",
+        "angle": "deg",
+        "growth": "engineering_strain"
+      },
+      "defaults": {
+        "start_mode": "left_bottom_up",
+        "profile": {
+          "mode": "uniform"
+        }
+      },
+      "hardening": {
+        "model": "voce_decay",
+        "history_variable": "hit_count",
+        "beta": 0.2231435513142097,
+        "floor": 0,
+        "scope": "face_shared",
+        "count_rule": "plastic_hits"
+      },
+      "boundary_conditions": {
+        "enabled": false
+      },
+      "toolpaths": [
+        {
+          "id": "run9",
+          "repeat": 33,
+          "operation": {
+            "type": "zigzag",
+            "lv_mm": 187.5,
+            "alpha_deg": -1,
+            "n_strips": 32,
+            "width_mm": 2,
+            "shift_uv_mm": [
+              0.0,
+              28.75
+            ],
+            "shift_frame": "material",
+            "rotation_deg": 0,
+            "gtop": 0.00028835116227798787,
+            "gbot": 1.4587994001079146e-05,
+            "ortho_top": -0.3989157893255133,
+            "ortho_bottom": 0.960306323937336
+          }
+        }
+      ]
+    },
+    "decoded": {
+      "gtop": 0.00028835116227798787,
+      "gbot": 1.4587994001079146e-05,
+      "ortho_top": -0.3989157893255133,
+      "ortho_bottom": 0.960306323937336
+    },
+    "roundtrip_rtol": 1e-14,
+    "roundtrip_pass": true
+  },
+  {
+    "run": "run10",
+    "sha256": {
+      "calibration/bo/run_convention_corrected.py": "8821a2c6d9e07b07d25e334d7edd0d3e22651f47eab786401f22508506fd6490",
+      "shellsim/configs/default_adaptive_cutback.json": "94252b22fd97d165de5fa0c1b203dbf0ef5c9d77639ef5474f9fa925fc187ce3",
+      "run/convention_corrected/run10/proposed_config.json": "ac2bd195ba70233246e3f1452604cd2d5868c095e1421540a8b57e5fd9869cfc",
+      "run/convention_corrected/run10/frozen_parameters.json": "d34a6bdd0ee759b0c051884b5795ad7dd63709128c13e5f276fceb2fb92bae94",
+      "run/putong_convention_check/preserved_samples/run10.npz": "97a0e13ba494487578107c39fc0eff8e44706eb8f0ba783ab0b78583adcbd578"
+    },
+    "differences": [
+      {
+        "path": "/cases/0/operation/alpha_deg",
+        "old": 1.5,
+        "new": -1.5
+      },
+      {
+        "path": "/cases/0/operation/shift_uv_mm/1",
+        "old": -22.5,
+        "new": 22.5
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/0/0",
+        "old": 0.99356674393314,
+        "new": -0.99356674393314
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/0/1",
+        "old": 0.11183196341287557,
+        "new": -0.11183196341287557
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/1/0",
+        "old": 0.11186533152426537,
+        "new": -0.11186533152426537
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/1/1",
+        "old": -0.9937229876578065,
+        "new": 0.9937229876578065
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/2/0",
+        "old": -0.017642929265410518,
+        "new": 0.017642929265410518
+      },
+      {
+        "path": "/cases/0/scan_orientation/basis_columns/2/1",
+        "old": -0.0028698013284206717,
+        "new": 0.0028698013284206717
+      },
+      {
+        "path": "/cases/0/target",
+        "old": "calibration/data/processed/run10_oriented.npz",
+        "new": "run/putong_convention_check/preserved_samples/run10.npz"
+      },
+      {
+        "path": "/output_dir",
+        "old": "run/run10_transfer",
+        "new": "run/convention_corrected/run10"
+      },
+      {
+        "path": "/report_dir",
+        "old": "run/run10_transfer/report",
+        "new": "run/convention_corrected/run10/report"
+      },
+      {
+        "path": "/solver/args/-equilibrium_grad_tol",
+        "old": 5e-14,
+        "new": "5e-14"
+      },
+      {
+        "path": "/solver/args/-hessian_threads",
+        "old": 8,
+        "new": "8"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_export_state",
+        "old": true,
+        "new": "true"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_grad_tol",
+        "old": 5e-14,
+        "new": "5e-14"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_handoff",
+        "old": null,
+        "new": "fixed"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_max_hessians",
+        "old": null,
+        "new": "40"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_max_newton_indefinite",
+        "old": null,
+        "new": "3"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_max_newton_stalls",
+        "old": null,
+        "new": "2"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_newton_stall_grace",
+        "old": null,
+        "new": "10"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_newton_stall_ratio",
+        "old": null,
+        "new": "0.85"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_newton_stall_window",
+        "old": null,
+        "new": "5"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_on_newton_stall",
+        "old": null,
+        "new": "cutback"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_refine_linear_solve",
+        "old": null,
+        "new": "true"
+      },
+      {
+        "path": "/solver/args/-native_hybrid_warmup_attempts",
+        "old": 2000,
+        "new": "2000"
+      },
+      {
+        "path": "/solver/args/-seed_escape",
+        "old": null,
+        "new": "false"
+      },
+      {
+        "path": "/solver/args/-sequence_adaptive",
+        "old": true,
+        "new": "true"
+      },
+      {
+        "path": "/solver/args/-sequence_initial_step",
+        "old": null,
+        "new": "1.0"
+      },
+      {
+        "path": "/solver/args/-sequence_max_retries",
+        "old": null,
+        "new": "8"
+      },
+      {
+        "path": "/solver/args/-sequence_max_step",
+        "old": null,
+        "new": "1.0"
+      },
+      {
+        "path": "/solver/args/-sequence_min_step",
+        "old": null,
+        "new": "0.015625"
+      },
+      {
+        "path": "/solver/args/-sequence_minimize_every",
+        "old": null,
+        "new": 1
+      },
+      {
+        "path": "/solver/args/-sequence_slope_feedback",
+        "old": null,
+        "new": "0"
+      },
+      {
+        "path": "/solver/args/-sequence_step_growth",
+        "old": null,
+        "new": "2.0"
+      },
+      {
+        "path": "/solver/args/-sequence_warm_start",
+        "old": null,
+        "new": "true"
+      },
+      {
+        "path": "/solver/executable",
+        "old": "run/native_shape_refinement/build_9060950/bin/shell",
+        "new": "bin/shell"
+      }
+    ],
+    "command": [
+      "/gpfs/projects/p33082/PSM2025-zigzag/bin/shell",
+      "-sim",
+      "bilayer_growth",
+      "-case",
+      "custom",
+      "-geometry",
+      "rectangle",
+      "-lx",
+      "0.1",
+      "-ly",
+      "0.15",
+      "-res",
+      "0.01",
+      "-enable_passE",
+      "false",
+      "-nsteps",
+      "1",
+      "-tol",
+      "3e-12",
+      "-stepwise",
+      "false",
+      "-hessian_threads",
+      "8",
+      "-equilibrium_solver",
+      "native_hybrid",
+      "-native_hybrid_warmup_attempts",
+      "2000",
+      "-native_hybrid_grad_tol",
+      "5e-14",
+      "-equilibrium_grad_tol",
+      "5e-14",
+      "-sequence_adaptive",
+      "true",
+      "-native_hybrid_seconds",
+      "3600",
+      "-native_hybrid_export_state",
+      "true",
+      "-sequence_initial_step",
+      "1.0",
+      "-sequence_max_step",
+      "1.0",
+      "-sequence_min_step",
+      "0.015625",
+      "-sequence_step_growth",
+      "2.0",
+      "-sequence_max_retries",
+      "8",
+      "-sequence_warm_start",
+      "true",
+      "-sequence_minimize_every",
+      "1",
+      "-sequence_slope_feedback",
+      "0",
+      "-native_hybrid_refine_linear_solve",
+      "true",
+      "-native_hybrid_max_hessians",
+      "40",
+      "-native_hybrid_on_newton_stall",
+      "cutback",
+      "-native_hybrid_newton_stall_window",
+      "5",
+      "-native_hybrid_newton_stall_ratio",
+      "0.85",
+      "-native_hybrid_newton_stall_grace",
+      "10",
+      "-native_hybrid_max_newton_stalls",
+      "2",
+      "-native_hybrid_max_newton_indefinite",
+      "3",
+      "-native_hybrid_handoff",
+      "fixed",
+      "-seed_escape",
+      "false",
+      "-cycle_file",
+      "/gpfs/projects/p33082/PSM2025-zigzag/run/convention_corrected/run10/sequence_preview.json",
+      "-sequence_solve_mode",
+      "final_only",
+      "-h_total",
+      "0.0007700000000000001",
+      "-growth_type",
+      "zigzag_sequence",
+      "-cycle_write_state",
+      "false",
+      "-export_stl",
+      "false"
+    ],
+    "sequence": {
+      "schema_version": 1,
+      "units": {
+        "length": "mm",
+        "angle": "deg",
+        "growth": "engineering_strain"
+      },
+      "defaults": {
+        "start_mode": "left_bottom_up",
+        "profile": {
+          "mode": "uniform"
+        }
+      },
+      "hardening": {
+        "model": "voce_decay",
+        "history_variable": "hit_count",
+        "beta": 0.2231435513142097,
+        "floor": 0,
+        "scope": "face_shared",
+        "count_rule": "plastic_hits"
+      },
+      "boundary_conditions": {
+        "enabled": false
+      },
+      "toolpaths": [
+        {
+          "id": "run10",
+          "repeat": 50,
+          "operation": {
+            "type": "zigzag",
+            "lv_mm": 175.0,
+            "alpha_deg": -1.5,
+            "n_strips": 24,
+            "width_mm": 2,
+            "shift_uv_mm": [
+              0.0,
+              22.5
+            ],
+            "shift_frame": "material",
+            "rotation_deg": 0,
+            "gtop": 0.00028835116227798787,
+            "gbot": 1.4587994001079146e-05,
+            "ortho_top": -0.3989157893255133,
+            "ortho_bottom": 0.960306323937336
+          }
+        }
+      ]
+    },
+    "decoded": {
+      "gtop": 0.00028835116227798787,
+      "gbot": 1.4587994001079146e-05,
+      "ortho_top": -0.3989157893255133,
+      "ortho_bottom": 0.960306323937336
+    },
+    "roundtrip_rtol": 1e-14,
+    "roundtrip_pass": true
+  }
+]

@@ -1,0 +1,102 @@
+[srun-here] short cpus=4 mem=8G time=01:00:00 conda=DHD
+srun: job 5295153 queued and waiting for resources
+srun: job 5295153 has been allocated resources
+----------------------------------------
+srun job start: Sun Oct 25 08:59:46 CDT 2026
+Job ID: 5295153
+Username: pxl1051
+Queue: short
+Account: p33082
+----------------------------------------
+The following variables are not
+guaranteed to be the same in the
+prologue and the job run script
+----------------------------------------
+PATH (in prologue) : /home/pxl1051/.pi/agent/bin:/software/jq/1.6/bin:/home/pxl1051/.cargo/bin:/home/pxl1051/.nvm/versions/node/v26.9.0/bin:/home/pxl1051/bin:/home/pxl1051/.local/bin:/gpfs/software/2025/pseudo-system-utils:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/usr/lpp/mmfs/bin:/hpc/usertools
+WORKDIR is: /home/pxl1051
+----------------------------------------
+done box
+done sequential
+done loo
+done proposals
+{
+ "n": 48,
+ "n_valid": 29,
+ "n_fail": 19,
+ "waves": 12,
+ "box": {
+  "all": {
+   "n": 48,
+   "success": 29,
+   "rate": 0.6041666666666666
+  },
+  "lit_box_floor_le_0p10_beta_0p01_0p30": {
+   "n": 14,
+   "success": 12,
+   "rate": 0.8571428571428571
+  },
+  "floor_le_0p5": {
+   "n": 35,
+   "success": 28,
+   "rate": 0.8
+  },
+  "floor_gt_0p5": {
+   "n": 13,
+   "success": 1,
+   "rate": 0.07692307692307693
+  },
+  "outside_lit_box": {
+   "n": 34,
+   "success": 17,
+   "rate": 0.5
+  }
+ },
+ "sequential": {
+  "n_test": 36,
+  "success_rate": 0.6944444444444444,
+  "prior": {
+   "brier": 0.26304194415665366,
+   "logloss": 0.7198610411070772,
+   "auc": 0.4127272727272727
+  },
+  "logistic": {
+   "brier": 0.12116003085542348,
+   "logloss": 0.40596204129925845,
+   "auc": 0.9490909090909091
+  },
+  "gpc": {
+   "brier": 0.09512689583233792,
+   "logloss": 0.3210737989741354,
+   "auc": 0.9418181818181819
+  },
+  "imputed_gp_score": {
+   "auc": 0.9090909090909091
+  }
+ },
+ "loo": {
+  "prior": {
+   "brier": 0.24902818270165214,
+   "logloss": 0.6919053049070825,
+   "auc": 0.0
+  },
+  "logistic": {
+   "brier": 0.08687217110646878,
+   "logloss": 0.32112182189232236,
+   "auc": 0.983666061705989
+  },
+  "gpc": {
+   "brier": 0.09435033380873718,
+   "logloss": 0.30963741535169637,
+   "auc": 0.9473684210526316
+  }
+ }
+}
+4 actual p=0.51 succ=0.75 | alt p=0.75 [(0.18, True), (0.38, True), (0.6, True), (0.48, True)]
+5 actual p=0.74 succ=1.00 | alt p=0.88 [(0.42, True), (0.28, True), (0.47, True), (0.49, False)]
+6 actual p=0.47 succ=0.25 | alt p=0.87 [(0.32, True), (0.46, True), (0.33, True), (0.55, True)]
+7 actual p=0.46 succ=0.25 | alt p=0.93 [(0.36, True), (0.27, True), (0.42, True), (0.19, True)]
+8 actual p=0.81 succ=1.00 | alt p=0.93 [(0.4, True), (0.37, True), (0.33, True), (0.29, True)]
+9 actual p=0.82 succ=0.75 | alt p=0.80 [(0.42, True), (0.42, True), (0.36, True), (0.19, True)]
+10 actual p=0.54 succ=0.50 | alt p=0.76 [(0.59, True), (0.4, True), (0.35, True), (0.72, True)]
+11 actual p=0.69 succ=1.00 | alt p=0.75 [(0.91, True), (0.5, True), (0.92, True), (0.48, True)]
+12 actual p=0.76 succ=0.75 | alt p=0.95 []

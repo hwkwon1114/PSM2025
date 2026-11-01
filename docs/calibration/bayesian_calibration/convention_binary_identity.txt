@@ -1,0 +1,9 @@
+522633cff2d7ff14b392c0ddd58a80df5049ed9648f8f6de258ff7d1801c4841  bin/shell
+c639c9ca7502a1698bdca297a3e3150cd042ab96f7c264d8c07c5e968d75b91a  run/native_shape_refinement/build_9060950/bin/shell
+/gpfs/projects/p33082/PSM2025-zigzag/bin/shell
+8ef30a3fe0b820f2c613aa70326f7bc37948686e
+-rwxrwxr-x 1 pxl1051 p33082 2195728 Oct 21 09:19 bin/shell
+-rwxrwxr-x 1 pxl1051 p33082 2094864 Oct  8 19:44 run/native_shape_refinement/build_9060950/bin/shell
+run/native_shape_refinement/build_9060950/binary.sha256
+run/native_shape_refinement/build_9060950/measurement_source.sha256
+run/native_shape_refinement/build_9060950/source.sha256
