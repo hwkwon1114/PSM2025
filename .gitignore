@@ -48,24 +48,9 @@ bin/*
 # Appcode shit
 .idea/*
 
-# Reference PDFs (copyrighted; keep README.md map only, not the papers)
-docs/papers/*.pdf
-docs/papers/**/*.pdf
-docs/*.pdf
-docs/**/*.pdf
-!docs/reports/trajectory_information_world_model_math.pdf
-docs/*.png
-docs/**/*.png
-!docs/figures/*.png
-!docs/figures/*.pdf
-!docs/reports/trajectory_information_world_model_math_preview.png
-docs/*_preview/
-docs/**/*_preview/
-docs/*_checked/
-docs/**/*_checked/
-docs/notebooks/
-docs/optimization_diagnostics/
-docs/reorganization_manifest.json
+# Private research documentation, drafts, and publication figures (local only)
+docs/
+calibration/paper_figures/
 
 # Build logs
 bld.log

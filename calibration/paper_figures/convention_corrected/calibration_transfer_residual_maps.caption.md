@@ -1,7 +1,0 @@
-# Full-field agreement for Run 6 (calibration) and Runs 9 and 10 (transfer)
-
-Public axes: x width, z length, y height (plan view is x–z). Rows are Run 6, Run 9 and Run 10. (a) Experiment: centred scan heights. (b) Analytical: heights of the predicted shell at the same scan xy locations. (c) Height difference, Δy = Analytical − Experiment, at the same locations. Panels (a, b) share one colour scale and panel (c) one zero-centred scale across all rows. (d) Distribution of scan-to-surface distances for all scan points of the run; vertical lines mark the RMS and 95th percentile.
-
-One frozen parameter set (Attempt 209: g_t = 2.884e-4, g_b = 1.459e-5, o_t = −0.399, o_b = 0.960) was used for all rows, with the corrected toolpath convention and current adaptive-cutback solver; Run 6 is the calibration case and Runs 9 and 10 were evaluated without refitting. Each run is one scan and one forward solve; no uncertainty interval is shown. Maps interpolate between scan points and omit triangles with edges > 5 mm.
-
-Δy is a height difference and is not the geometric distance used by the objective. Both the binned scan and the deformed simulation are rigid-fit to the same flat shared-footprint reference coordinates (x_i, y_i, 0) without fitting the scan to the prediction. The optimized score is the shared-footprint double-sided surface RMS combining scan-to-surface and area-weighted surface-to-scan triangle distances (Run 6/9/10: 0.626/0.678/0.719 mm); panel (d) shows the scan-to-surface term (RMS 0.630/0.687/0.726 mm; 95th percentile 1.184/1.324/1.389 mm).
