@@ -36,5 +36,5 @@ If Newton stalls (`-native_hybrid_on_newton_stall cutback`, window 5, ratio 0.85
 ## Limits
 
 - Determinism is of the numerics (fixed assembly order, ordering and thread count), not bitwise equality across machines or thread counts; that was not checked.
-- The solver benchmark (`docs/history/`) mixed binaries; read its qualification claims with that caveat.
+- Some older solver benchmarks mixed binaries; do not interpret them as whole-solver approval.
 - The upstream HLBFGS kernels are kept under their non-commercial license (header of `ReferenceHybrid/Core.hpp`); relevant for publication.

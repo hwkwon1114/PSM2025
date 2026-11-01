@@ -1,26 +1,25 @@
-# Documentation
+# Attempt 209 documentation
 
-Three parts, matching the top-level folders. Reports not named as current are historical evidence, kept with their recorded identities; they cite the old paths listed in [Moved files](#moved-files).
+## Calibration and paper
 
-## 1. Calibration by BO — `calibration/`
-- Entry points: root [`README.md`](../README.md) (calibrated parameters, Run 6/9 results, figure reproduction) and `python -m calibration.ewcal forward|doctor|evaluate` with `calibration/configs/run{6,7,9,10}.json`. BO controllers are in `calibration/bo/`, the library in `calibration/ewcal/`; the campaign drivers there are finished runs, kept for reproduction.
-- Method and reports: [`calibration/`](calibration/) (Bayesian-calibration write-up, sampling/sensitivity benchmarks), [`history/boundary_conditions_and_springback_synthesis.md`](history/boundary_conditions_and_springback_synthesis.md), [`history/directional_path_dependence_synthesis_and_scaling.md`](history/directional_path_dependence_synthesis_and_scaling.md).
-- Solver settings are shared: the configs reference `shellsim/configs/default_adaptive_cutback.json`; `calibration/tests/test_solver_settings.py` fails on drift. Under it one Attempt-209 evaluation takes ~3100 s (Run 6 symmetric RMS 1.1822 mm vs recorded 1.1823 mm) against the 3600 s `timeout_seconds` ceiling in the configs.
+- [Attempt 209 manuscript draft](calibration/bayesian_calibration/attempt209_manuscript_draft.tex) — methods, equations and results for transcription.
+- [Current calibration record](calibration/bayesian_calibration/convention_corrected_investigation.md) — selected fixed-hardening fit, corrected forward evaluations, conventions and limitations.
+- [Calibration reconstruction and verification](calibration/bayesian_calibration/calibration_draft_verification.md) — evidence for the historical search and selected parameters.
+- [Attempt 209 publication figures](../calibration/paper_figures/attempt209_publication_clean/README.md) — seven figure sets, captions and reproduction instructions.
 
-## 2. Dome toolpath by BO — `dome_bo/`
-- **Current record:** [`dome_bo/dome_toolpath_investigation.md`](dome_bo/dome_toolpath_investigation.md) (state block at the top); results [`square_bo_result.md`](dome_bo/square_bo_result.md), [`square_mesh_study_result.md`](dome_bo/square_mesh_study_result.md); pre-execution reviews `dome_bo/*_review.md`; next search [`square_bo_v2_protocol.md`](dome_bo/square_bo_v2_protocol.md).
-- Code: `dome_bo/` (square-sheet campaign, objective, GP, mesh study, ranking). Do not edit files whose hashes are recorded in a campaign identity manifest without a new review.
-- Superseded rectangular-sheet stages (reproduction only): `legacy/scripts/dome_*`, `legacy/scripts/prepare_dome_*`, `legacy/tests/test_dome_*`, and `history/dome_*_review.md`.
+The original Run 1 search used a historical scoring convention; the corrected Run 1–3 shape figures use the revised shared-footprint metric. Runs 2 and 3 were previously inspected and are **exploratory transfers**, not blind validation. Public Run 1/2/3 labels map to historical identifiers via `calibration/case_labels.py`.
 
-## 3. Source and solver — `src/`, `shellsim/`
-- C++: `src/libshell/`, `src/simulations/`, `test/testshell/`, `CMakeLists.txt`. Mechanics [`shellsim/bilayer_zigzag_workflow.md`](shellsim/bilayer_zigzag_workflow.md); toolpath JSON schema [`shellsim/zigzag_sequence_format.md`](shellsim/zigzag_sequence_format.md).
-- Using it: [`shellsim/README.md`](../shellsim/README.md) and the notebook `shellsim/examples/notebooks/simulate_toolpath.ipynb` (toolpath → JSON → solve → plot).
-- **One solver configuration:** `shellsim/configs/default_adaptive_cutback.json` (adaptive load steps, native hybrid L-BFGS + exact Newton, gradient gate 5e-14; 1e-14 for verification and mesh studies), read by `shellsim.solver_settings.solver_options()`.
-- Solver benchmark and ablation reports ([`shellsim/`](shellsim/), [`history/sequence_*`](history/)) are historical; the cutback benchmark report carries a correction note (mixed binaries, no whole-solver approval).
-- Exceptions to the shared settings, all deliberate: `legacy/scripts/run_sequence_order*.py` (adaptive stepping off is the experimental condition), `run_zigzag_certified.sbatch` (legacy HLBFGS), `legacy/solver_benchmark/` (0.1-step benchmark), and `dome_bo/mesh_study.py` (14400 s watchdog for the 1 mm cell only). `newton_window`/`newton_plateau_ratio` in proof receipts are compatibility-only.
+## Exploratory shape design
 
-## Other
-`build_clean.sbatch` (Slurm build of the solver + C++ tests), `env_settings` (historical command log), `figures/`, `slides/`, `papers/README.md` (bibliography), `optimization_diagnostics/`. Path-representation notebooks: `legacy/notebooks/`.
+- [Attempt 209 double-curvature family](shape_design/attempt209_double_curvature.md) — sheet dimensions, toolpaths, solver checks, PCA and mesh-comparison limitations.
+- [PCA and mesh-comparison figure](../run/shape_design/mesh_comparison_figures/family_pca_mesh_comparison.pdf) — descriptive model results; no physical validation is implied.
 
-## Moved files
-`reorganization_manifest.json` (earlier move, with hashes). The 2026-10-22 reorganization moved, by prefix: `scripts/run_run*`→`calibration/bo/`; `scripts/dome_gp_surrogate.py`, `run_dome_continuation.py`, `calibration/dome/*`, `calibration/analysis/dome_*`→`dome_bo/`; other `scripts/`, `python/`, `benchmarks/`, superseded `calibration/analysis/*` and `calibration/tests/*`, `notebooks/`→`legacy/`; `trajectories/`, `printpaths/`→`shellsim/examples/`; `paper_figures/`→`calibration/paper_figures/`; `reports/`→`docs/{calibration,dome_bo,shellsim,history}/`; `calibration/configs/solver/default_adaptive_cutback.json`→`shellsim/configs/`. The full file-by-file list is in `docs/history/reorganization_2026-10-22_moves.json`. Script consolidation (same day): `run_run7_transfer.py`/`run_run10_transfer.py`→`calibration/bo/run_transfer.py`; `prepare_run7.py`/`prepare_run10.py`→`calibration/analysis/prepare_transfer_run.py`; `plot_run7_transfer.py`/`plot_run10_transfer.py`→`calibration/analysis/plot_transfer.py` (outputs reproduced byte-identically; the originals are in `legacy/`). `run7_run10_six_panel.py`→`run6_run9_six_panel.py --pair run7_run10` (PNG and residual arrays byte-identical; PDF identical apart from timestamps; provenance `script_sha256` and the reproduction line in the caption now name the shared script; original in `legacy/analysis/`). One-off Run 9 orientation, registration and manifest scripts moved from `calibration/analysis/` to `legacy/analysis/`; the superseded `dome_bo/radius_scan.py` (+ `run_radius_scan.sbatch`) and `plot_square_verification.py` moved to `legacy/dome_bo/` (paths fixed; `radius_scan.py --summary` reproduces its table).
+## Solver and mechanics
+
+- [Bilayer zigzag workflow](shellsim/bilayer_zigzag_workflow.md) and [sequence format](shellsim/zigzag_sequence_format.md).
+- [Native equilibrium solver](shellsim/solver.md) and [shell simulation usage](../shellsim/README.md).
+- Shared solver settings: `shellsim/configs/default_adaptive_cutback.json`. New or changed scientific code requires the applicable pre-execution review.
+
+## Cleanup record
+
+On researcher approval, 95 older history, dome-study and optimization-diagnostics files were deleted. Their exact paths and pre-deletion hashes are retained in `run/document_cleanup/proposed_deletions.txt` and `run/document_cleanup/proposed_deletions.sha256`; this inventory is not a backup. The reorganization manifest `history/reorganization_2026-10-22_moves.json` remains. Existing research papers, manuscript drafts, solver documentation, code, data and result artifacts were excluded from that deletion.
