@@ -1,0 +1,3 @@
+# Historical Run 1 optimization history
+
+The first 80 records were retrospectively rescored prior observations, not a contemporaneous trajectory. The next 160 are the expanded search and continuation; the incumbent is the running minimum over valid records in that stage. Crosses denote invalid attempts, not objective values. Attempt IDs are archival order, not completion time. Attempt 209 is selected at 1.182314 mm under the historical material-reference metric. This search used earlier solver/convention settings and an older metric; its objective is not numerically comparable with the corrected-convention shared-footprint shape scores. The axes are logarithmic; this single adaptive search does not establish global convergence.

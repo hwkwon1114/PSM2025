@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "created_at": "2026-10-27T02:29:01.823056+00:00",
+  "source": "/gpfs/projects/p33082/PSM2025-zigzag/docs/calibration/bayesian_calibration/calibration_manuscript_draft.pdf",
+  "source_sha256": "4aa7583a461b0bec22dec92beb40604f77f6c31647cb5f4408d5aa9d10b7bcfd",
+  "total_pages": 4,
+  "selected_pages": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "page_numbering": "1-based physical PDF page index, not printed labels",
+  "backend": "pdftoppm",
+  "backend_version": "pdftoppm version 26.09.0\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC",
+  "format": "png",
+  "longest_dimension_requested": 1200,
+  "ocr_performed": false,
+  "visually_verified": false,
+  "warnings": [],
+  "pages": [
+    {
+      "pdf_page": 1,
+      "path": "page-0001.png",
+      "sha256": "6d0039f37c09891d6333486c688dc5aa4d60aafa8e31e390c44c1a8836a44074",
+      "width": 928,
+      "height": 1200,
+      "command": [
+        "/gpfs/home/pxl1051/miniforge/envs/DHD/bin/pdftoppm",
+        "-f",
+        "1",
+        "-l",
+        "1",
+        "-singlefile",
+        "-scale-to",
+        "1200",
+        "-png",
+        "/gpfs/projects/p33082/PSM2025-zigzag/docs/calibration/bayesian_calibration/calibration_manuscript_draft.pdf",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/paper_figures/current_joint_calibration/manuscript_pdf_review_final/page-0001"
+      ],
+      "visually_verified": false,
+      "warnings": []
+    },
+    {
+      "pdf_page": 2,
+      "path": "page-0002.png",
+      "sha256": "acac73edc1e7d61528f1749aceccf46f814f0450dbafbcc72f21a5adf00d9d5b",
+      "width": 928,
+      "height": 1200,
+      "command": [
+        "/gpfs/home/pxl1051/miniforge/envs/DHD/bin/pdftoppm",
+        "-f",
+        "2",
+        "-l",
+        "2",
+        "-singlefile",
+        "-scale-to",
+        "1200",
+        "-png",
+        "/gpfs/projects/p33082/PSM2025-zigzag/docs/calibration/bayesian_calibration/calibration_manuscript_draft.pdf",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/paper_figures/current_joint_calibration/manuscript_pdf_review_final/page-0002"
+      ],
+      "visually_verified": false,
+      "warnings": []
+    },
+    {
+      "pdf_page": 3,
+      "path": "page-0003.png",
+      "sha256": "a4ececc6edd52f5fee787935265399a3d0d4edcbe5c9f6630a112c2e7cdfe21b",
+      "width": 928,
+      "height": 1200,
+      "command": [
+        "/gpfs/home/pxl1051/miniforge/envs/DHD/bin/pdftoppm",
+        "-f",
+        "3",
+        "-l",
+        "3",
+        "-singlefile",
+        "-scale-to",
+        "1200",
+        "-png",
+        "/gpfs/projects/p33082/PSM2025-zigzag/docs/calibration/bayesian_calibration/calibration_manuscript_draft.pdf",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/paper_figures/current_joint_calibration/manuscript_pdf_review_final/page-0003"
+      ],
+      "visually_verified": false,
+      "warnings": []
+    },
+    {
+      "pdf_page": 4,
+      "path": "page-0004.png",
+      "sha256": "ad9c105893910b16d2efa51ad688cd4634461914669f70687c5529fa960074f4",
+      "width": 928,
+      "height": 1200,
+      "command": [
+        "/gpfs/home/pxl1051/miniforge/envs/DHD/bin/pdftoppm",
+        "-f",
+        "4",
+        "-l",
+        "4",
+        "-singlefile",
+        "-scale-to",
+        "1200",
+        "-png",
+        "/gpfs/projects/p33082/PSM2025-zigzag/docs/calibration/bayesian_calibration/calibration_manuscript_draft.pdf",
+        "/gpfs/projects/p33082/PSM2025-zigzag/calibration/paper_figures/current_joint_calibration/manuscript_pdf_review_final/page-0004"
+      ],
+      "visually_verified": false,
+      "warnings": []
+    }
+  ],
+  "errors": [],
+  "source_unchanged": true
+}

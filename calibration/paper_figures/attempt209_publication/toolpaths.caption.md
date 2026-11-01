@@ -1,0 +1,3 @@
+# Corrected toolpaths
+
+Nominal centerlines from the corrected-convention sequences for Runs 1, 2 and 3. Orange circles mark the start. The grey rectangle is the undeformed sheet, not a measured gripper. Each centerline is shown once; cycle counts are repetitions. Line width is graphical, not the effective physical track width. Public coordinates are width x, length z and height y; z = internal v + 65 mm. The source CSV x coordinates are mirrored to match the saved sequence’s negative-angle model builder, and the first point is checked against that builder. This is the nominal model toolpath, not independent confirmation of the physical travel direction. No solve or registration was performed for this figure.

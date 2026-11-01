@@ -1,0 +1,3 @@
+# Corrected-convention height differences and distributions
+
+Runs 1–3 use the same frozen Attempt 209 parameters. The signed height difference is simulation minus experiment at scan x–z coordinates using native-facet interpolation, not the symmetric geometric optimization objective. All accepted scan points supported by the model are shown; unsupported points, if present, are black crosses. Grey denotes background. Shared color limits include all supported values without clipping. The distributions weight each supported scan point equally; spatially dependent points from one specimen per run are not independent replicates. Runs 2 and 3 were previously inspected and are exploratory transfers, not blind validation.

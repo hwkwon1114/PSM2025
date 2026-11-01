@@ -1,0 +1,3 @@
+# Width–height projections
+
+Run 1 calibration and Runs 2–3 exploratory transfers using frozen Attempt 209 parameters in the corrected convention. Points are the same 2,500 scan points per case selected uniformly without replacement in the original overlay, using seed 20261029. Lines are model grids interpolated on saved native facets and masked outside the mesh. The x–y view projects all lengths z together; it is not a fixed-z section, and overlapping points need not be corresponding material positions. Axes have unequal display scales. All panels share axis limits. No new solve or registration.

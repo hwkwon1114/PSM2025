@@ -1,0 +1,149 @@
+{
+  "input_sha256": {
+    "run/convention_corrected/run6/evaluations/attempt_0001/case_00/comparison.npz": "97aa72f4bea005e5a487b8cac6e239af8e4f37582915399d583d1559b5c38576",
+    "run/convention_corrected/run6/evaluations/attempt_0001/case_00/prediction_mm.vtp": "dd7c9d1cde34bf61595ce664f037c2c5c025bca58f4d9e63056114878177730b",
+    "run/convention_corrected/run6/evaluations/attempt_0001/case_00/bilayer_zigzag_sequence_native_hybrid_state.json": "e249c2db6681b5da90ae2e59c5563205cb572130c6594aa0522ddbab9b97f394",
+    "run/convention_corrected/run6/evaluations/attempt_0001/case_00/sequence.json": "2bdefb2df44bdb28a3a4694d6c04d3951d97619dc79e953a12094b027fa02421",
+    "run/convention_corrected/run6/evaluations/attempt_0001/result.json": "3b551d3a217ca523837a8cb167cd7f9c71b1fa65089f3531614aa878d5ba11bb",
+    "calibration/data/raw/run6_zigzag_path.csv": "9913ec8e6b0672bc58b69ce2146da285ce4a68409b1e44d2728f2a9493f15602",
+    "run/convention_corrected/run6/forward_result.json": "3b551d3a217ca523837a8cb167cd7f9c71b1fa65089f3531614aa878d5ba11bb",
+    "run/convention_corrected/run9/evaluations/attempt_0001/case_00/comparison.npz": "cac7965a42de37ada23a91898858797110a6c9fa5aed74e3b74ad198332c4116",
+    "run/convention_corrected/run9/evaluations/attempt_0001/case_00/prediction_mm.vtp": "7ff26e3e5f8c6e353cca1d86207f565b57d98a266a5bd364a085f2d8f176fa5b",
+    "run/convention_corrected/run9/evaluations/attempt_0001/case_00/bilayer_zigzag_sequence_native_hybrid_state.json": "6437ac8a9e74e562f9fd9c3d9f1de14284ac22b1c52ff14ed1a7b08c6539be56",
+    "run/convention_corrected/run9/evaluations/attempt_0001/case_00/sequence.json": "b3559a8cd849f0bfacaa666f9d6d452d9f89e2290ec40a72647294d45850756a",
+    "run/convention_corrected/run9/evaluations/attempt_0001/result.json": "c1b93033ed32326c7fa7e90d98177acbd9f06adbf61b6fcf13dd77e163100676",
+    "calibration/data/raw/run9_zigzag_path.csv": "fe54d3080384f773a398e0fa80215633434aae70945c1b9dc0b439c0aec15f29",
+    "run/convention_corrected/run9/forward_result.json": "c1b93033ed32326c7fa7e90d98177acbd9f06adbf61b6fcf13dd77e163100676",
+    "run/convention_corrected/run10/evaluations/attempt_0001/case_00/comparison.npz": "ffdedf24448bb183278b5e06c60e1ac04bc6a6b60db8dd8b1e666a7527eae16b",
+    "run/convention_corrected/run10/evaluations/attempt_0001/case_00/prediction_mm.vtp": "93838a294d328a7bc7e737f759ec80340cd2f19018333afc57359c967a8a3e7a",
+    "run/convention_corrected/run10/evaluations/attempt_0001/case_00/bilayer_zigzag_sequence_native_hybrid_state.json": "6c62594c1411d5fe517b729013a66bb2a6d5ea695a858bd456c6b99716ce15cc",
+    "run/convention_corrected/run10/evaluations/attempt_0001/case_00/sequence.json": "2affc3050b826869adf49044f1b72d723db004b899041b86cbc5febbd2d824dc",
+    "run/convention_corrected/run10/evaluations/attempt_0001/result.json": "4a6eb60039b67723103b0cd8305c3d3b525b0251270ccbb82ef8a30221ecfb40",
+    "calibration/data/raw/run10_zigzag_path.csv": "a715c58c63cef3eda618907a509cc9bdcddfe0a41663ef5df5a4ae7c467f997f",
+    "run/convention_corrected/run10/forward_result.json": "4a6eb60039b67723103b0cd8305c3d3b525b0251270ccbb82ef8a30221ecfb40"
+  },
+  "script_sha256": "af977b5f20ec7502f4fbadf847bca1eec64b2d454232def035fb8d33d5aecee7",
+  "frozen_parameters": {
+    "gtop": 0.00028835116227798787,
+    "gbot": 1.4587994001079146e-05,
+    "ortho_top": -0.3989157893255133,
+    "ortho_bottom": 0.960306323937336
+  },
+  "maps": {
+    "height_limits_mm": [
+      -6.5,
+      3.5
+    ],
+    "delta_z_limit_mm": 2.5,
+    "points_beyond_delta_z_limit": {
+      "run6": 0,
+      "run9": 62,
+      "run10": 0
+    },
+    "distance_axis_max_mm": 3.25,
+    "max_distance_mm": {
+      "run6": 2.110799521463841,
+      "run9": 3.0869550776531742,
+      "run10": 2.239601125370638
+    }
+  },
+  "sections": {
+    "z_limits_mm": [
+      -7.0,
+      4.0
+    ],
+    "delta_z_limit_mm": 3.0,
+    "x_spacing_mm": 0.5,
+    "joint_finite_counts": {
+      "run6_z-35": 388,
+      "run6_z65": 388,
+      "run6_z165": 388,
+      "run9_z-35": 388,
+      "run9_z65": 388,
+      "run9_z165": 388,
+      "run10_z-35": 388,
+      "run10_z65": 388,
+      "run10_z165": 388
+    },
+    "experiment_max_triangle_edge_mm": 5.0
+  },
+  "height_difference_statistics": {
+    "run6": {
+      "name": "run6",
+      "repeat": 29,
+      "length_mm": 130.0,
+      "accepted_scan_points": 14504,
+      "supported_points": 14504,
+      "unsupported_points": 0,
+      "prediction_vertices": 15251,
+      "minimum_projected_triangle_area_mm2": 1.981824005587044,
+      "mean_signed_dz_mm": 1.6607417775970351e-15,
+      "rms_dz_mm": 0.6316393569105933,
+      "p95_absolute_dz_mm": 1.1865198996137418,
+      "dz_range_mm": [
+        -1.3214313334573868,
+        2.1151943535346036
+      ],
+      "scan_height_range_mm": [
+        -4.837741919190963,
+        2.3399078684811716
+      ],
+      "model_height_range_mm": [
+        -4.614432675946785,
+        2.647018098069614
+      ]
+    },
+    "run9": {
+      "name": "run9",
+      "repeat": 33,
+      "length_mm": 187.5,
+      "accepted_scan_points": 14468,
+      "supported_points": 14468,
+      "unsupported_points": 0,
+      "prediction_vertices": 15251,
+      "minimum_projected_triangle_area_mm2": 1.9905578673357232,
+      "mean_signed_dz_mm": -4.6832565165940806e-15,
+      "rms_dz_mm": 0.6889334349100632,
+      "p95_absolute_dz_mm": 1.3268533785321182,
+      "dz_range_mm": [
+        -3.0893170847758156,
+        2.7185825365858283
+      ],
+      "scan_height_range_mm": [
+        -6.406634927764115,
+        3.3334201974462414
+      ],
+      "model_height_range_mm": [
+        -4.231670631718406,
+        2.671288497943829
+      ]
+    },
+    "run10": {
+      "name": "run10",
+      "repeat": 50,
+      "length_mm": 175.0,
+      "accepted_scan_points": 14504,
+      "supported_points": 14504,
+      "unsupported_points": 0,
+      "prediction_vertices": 15251,
+      "minimum_projected_triangle_area_mm2": 1.9948301416976169,
+      "mean_signed_dz_mm": 4.028890967244252e-15,
+      "rms_dz_mm": 0.7264358237460882,
+      "p95_absolute_dz_mm": 1.3916706938397807,
+      "dz_range_mm": [
+        -1.1134375950049313,
+        2.2444909528170465
+      ],
+      "scan_height_range_mm": [
+        -4.961169913173704,
+        2.6613988062165155
+      ],
+      "model_height_range_mm": [
+        -2.956527579778428,
+        2.0193228994675967
+      ]
+    }
+  },
+  "matplotlib": "3.10.8",
+  "numpy": "2.3.5"
+}

@@ -1,0 +1,29 @@
+{
+  "run6": {
+    "rms_symmetric_mm": 0.6259319939869645,
+    "rms_target_to_sim_mm": 0.6301882775004604,
+    "rms_sim_to_target_weighted_mm": 0.6216465692771074,
+    "p95_target_to_sim_mm": 1.183657648285558,
+    "p95_sim_to_target_mm": 1.183211365475331,
+    "max_target_to_sim_mm": 2.110799521463841,
+    "max_sim_to_target_mm": 2.1086968540734583
+  },
+  "run9": {
+    "rms_symmetric_mm": 0.6784382148757283,
+    "rms_target_to_sim_mm": 0.6872456764155856,
+    "rms_sim_to_target_weighted_mm": 0.6695149012946716,
+    "p95_target_to_sim_mm": 1.3237853964548514,
+    "p95_sim_to_target_mm": 1.3141571365442675,
+    "max_target_to_sim_mm": 3.0869550776531742,
+    "max_sim_to_target_mm": 2.688822686486815
+  },
+  "run10": {
+    "rms_symmetric_mm": 0.7192048473273612,
+    "rms_target_to_sim_mm": 0.7255121330561964,
+    "rms_sim_to_target_weighted_mm": 0.7128417563713518,
+    "p95_target_to_sim_mm": 1.38916658350499,
+    "p95_sim_to_target_mm": 1.3846272486712718,
+    "max_target_to_sim_mm": 2.239601125370638,
+    "max_sim_to_target_mm": 2.2266582693734955
+  }
+}
