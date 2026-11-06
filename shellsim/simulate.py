@@ -27,7 +27,7 @@ def run(sequence, out_dir, lx=0.1, ly=0.1, res=0.02, h_total=0.00077, tolerance=
                '-sequence_solve_mode': 'final_only', '-metric_update': 'multiplicative', '-enable_passE': 'false',
                '-nsteps': '1', '-stepwise': 'false', '-export_stl': 'false', '-cycle_write_state': 'false'}
     options.update(solver_options(tolerance=tolerance, threads=threads))
-    command = [str(binary)] + [str(v) for kv in options.items() for v in kv] + ['-cycle_file', str(cycle_file)]
+    command = [str(Path(binary).resolve())] + [str(v) for kv in options.items() for v in kv] + ['-cycle_file', str(cycle_file)]
     env = dict(os.environ, OMP_NUM_THREADS=str(threads), OPENBLAS_NUM_THREADS='1', BLIS_NUM_THREADS='1')
     for key in ('BLIS_JC_NT', 'BLIS_PC_NT', 'BLIS_IC_NT', 'BLIS_JR_NT', 'BLIS_IR_NT'):
         env.pop(key, None)

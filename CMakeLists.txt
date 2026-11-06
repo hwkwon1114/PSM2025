@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 project(ShellSolver LANGUAGES C CXX)
 
+# Minimal toolchains (e.g. conda-forge c-compiler/cxx-compiler >= 2.0 on a machine
+# without system binutils) provide no unprefixed `ar`; use the compiler's wrapper.
+if(NOT CMAKE_AR AND CMAKE_CXX_COMPILER_AR)
+    set(CMAKE_AR "${CMAKE_CXX_COMPILER_AR}" CACHE FILEPATH "Archiver" FORCE)
+endif()
+if(NOT CMAKE_RANLIB AND CMAKE_CXX_COMPILER_RANLIB)
+    set(CMAKE_RANLIB "${CMAKE_CXX_COMPILER_RANLIB}" CACHE FILEPATH "Ranlib" FORCE)
+endif()
+
 # Suppress deprecation warnings emitted by third-party external subprojects
 if(POLICY CMP0218)
     cmake_policy(SET CMP0218 OLD)
@@ -46,7 +55,25 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Wno-missing-braces
     )
     set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3")
-    set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O3 -march=native -mtune=native")
+    set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O3")
+endif()
+
+# Tune for the build machine when the compiler supports it (Apple clang on arm64
+# may reject -march=native). Turn off to build a binary for other machines.
+option(SHELL_NATIVE_ARCH "Optimize Release builds for the build machine's CPU" ON)
+if(SHELL_NATIVE_ARCH AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-march=native" SHELL_HAS_MARCH_NATIVE)
+    check_cxx_compiler_flag("-mcpu=native" SHELL_HAS_MCPU_NATIVE)
+    if(SHELL_HAS_MARCH_NATIVE)
+        string(APPEND CMAKE_CXX_FLAGS_RELEASE " -march=native")
+    elseif(SHELL_HAS_MCPU_NATIVE)
+        string(APPEND CMAKE_CXX_FLAGS_RELEASE " -mcpu=native")
+    endif()
+    check_cxx_compiler_flag("-mtune=native" SHELL_HAS_MTUNE_NATIVE)
+    if(SHELL_HAS_MTUNE_NATIVE)
+        string(APPEND CMAKE_CXX_FLAGS_RELEASE " -mtune=native")
+    endif()
 endif()
 
 # Source files with CONFIGURE_DEPENDS so adding/removing files updates build graph
@@ -200,7 +227,7 @@ endif()
 FetchContent_Declare(
     triangle
     GIT_REPOSITORY https://github.com/libigl/triangle
-    GIT_TAG master
+    GIT_TAG 62f02db9ab4ff4b62d5ff82a77c8ea458c84c23a  # pinned: commit used by the Quest production build
 )
 FetchContent_MakeAvailable(triangle)
 message(STATUS "Triangle available in: ${triangle_SOURCE_DIR}")
@@ -213,7 +240,7 @@ target_link_libraries(libshell PUBLIC triangle)
 FetchContent_Declare(
     libigl
     GIT_REPOSITORY https://github.com/libigl/libigl.git
-    GIT_TAG main
+    GIT_TAG 7100764c2a2833284a8bdfa9b948d2b3bf124624  # pinned: commit used by the Quest production build
 )
 FetchContent_MakeAvailable(libigl)
 message(STATUS "LIBIGL available in: ${libigl_SOURCE_DIR}")
@@ -221,7 +248,13 @@ target_include_directories(libshell SYSTEM PUBLIC ${libigl_SOURCE_DIR}/include)
 
 # TBB
 set(TBB_USE_DEBUG_BUILD FALSE)
-find_package(TBB REQUIRED)
+# Prefer oneTBB's own TBBConfig.cmake: VTK >= 9.4 also loads it, and the legacy
+# cmake/FindTBB.cmake would define a conflicting partial set of TBB:: targets.
+find_package(TBB CONFIG QUIET)
+if(NOT TBB_FOUND)
+    find_package(TBB REQUIRED)  # legacy module in cmake/FindTBB.cmake (old TBB installs)
+endif()
+message(STATUS "TBB: ${TBB_VERSION} (${TBB_DIR})")
 target_include_directories(libshell SYSTEM PUBLIC ${TBB_INCLUDE_DIRS})
 target_link_libraries(libshell PUBLIC TBB::tbb TBB::tbbmalloc)
 
@@ -267,7 +300,7 @@ set(BUILD_GMOCK ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG main
+    GIT_TAG 4267679b6887f349f17b01ccd70c9e3483689b25  # pinned: commit used by the Quest production build
 )
 FetchContent_MakeAvailable(googletest)
 

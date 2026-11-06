@@ -1,24 +1,32 @@
+# Shell solver (bin/shell) + shellsim Python wrapper, for Linux x86_64/aarch64
+# and macOS (Intel or Apple Silicon). Everything comes from conda-forge,
+# including the compilers, so no system compiler, HPC module or Slurm is needed.
+# Checked on a clean Ubuntu 24.04 container (scratch/portability/).
+# The Bayesian calibration tools need more packages: see calibration/environment.yml.
 name: psm2025-zigzag
 channels:
   - conda-forge
-  - pytorch
-  - defaults
 dependencies:
-  - python=3.10
+  - python=3.11
+  # build toolchain (gcc/g++ on Linux, clang/clang++ on macOS)
+  - c-compiler
+  - cxx-compiler
   - cmake>=3.24
   - ninja
-  - eigen>=3.4
-  - suitesparse
+  - git                  # CMake downloads triangle, libigl and googletest
+  - pkg-config
+  # C++ libraries
+  - eigen=3.4          # Eigen 5.x (conda-forge default since 2025) is rejected by find_package(Eigen3 3.3)
+  - suitesparse          # CHOLMOD sparse Cholesky
   - nlohmann_json>=3.11
+  - tbb-devel
+  - vtk>=9.2
+  - gsl
+  - llvm-openmp          # OpenMP runtime for clang on macOS (harmless on Linux)
+  # Python side (shellsim, example notebook)
   - numpy>=1.24
   - scipy>=1.10
   - matplotlib>=3.7
-  - vtk>=9.2
-  - pytorch>=2.2
-  - botorch>=0.10
-  - gpytorch>=1.11
+  - pyvista>=0.40
   - ipykernel
   - ipython
-  - pip
-  - pip:
-      - pyvista>=0.40

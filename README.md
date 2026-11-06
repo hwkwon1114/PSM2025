@@ -18,16 +18,27 @@ A high-performance C++ discrete differential geometry (DDG) thin-shell mechanics
 
 ### 1. Environment Setup
 
-Create and activate the environment using Conda:
+The solver does not need an HPC cluster, Slurm or environment modules. A workstation or laptop with
+[Miniforge](https://github.com/conda-forge/miniforge) (conda/mamba) is enough; `environment.yml` provides the
+compilers and every library from conda-forge:
 ```bash
 conda env create -f environment.yml
 conda activate psm2025-zigzag
 ```
 
-Prerequisites:
-- C++23 compliant compiler (`gcc` $\ge 13$ or `clang` $\ge 16$)
-- CMake ($\ge 3.24$) and Ninja
-- SuiteSparse, Eigen ($\ge 3.4$), and `nlohmann_json`
+| Platform | Status |
+|---|---|
+| Linux x86_64 | Tested: clean Ubuntu 24.04 container with no system compiler (gcc 15.3, SuiteSparse 7.10, VTK 9.6, Eigen 3.4); on two test toolpaths the deformed sheet matches the Quest production binary to within 0.05 µm after rigid alignment (energy agrees to 1e-12). |
+| macOS (Intel / Apple Silicon) | Same `environment.yml` (conda-forge clang + `llvm-openmp`). Not yet run on a Mac. |
+| Windows | Use WSL2 (Ubuntu) and follow the Linux steps; a native MSVC build is not supported. |
+
+Notes:
+- The first `cmake` configure needs internet access: it downloads triangle, libigl and googletest at pinned commits.
+- Keep Eigen at 3.4 (`environment.yml` pins it); Eigen 5 is rejected by the CMake version check and has not been tested.
+- If you use your own compilers/libraries instead of conda: a C++23 compiler (gcc ≥ 12, clang ≥ 16), CMake ≥ 3.24,
+  Ninja, Eigen 3.4, SuiteSparse (CHOLMOD), oneTBB, VTK ≥ 9.2, nlohmann_json, OpenMP; GSL is optional.
+- On macOS outside conda, Apple clang has no OpenMP: install `libomp` (Homebrew) and pass
+  `-DOpenMP_ROOT=$(brew --prefix libomp)` to `cmake`.
 
 ### 2. Building the Solver
 
@@ -40,6 +51,10 @@ cmake --build build_cmake -j 8
 This compiles:
 - `./bin/shell`: The core bilayer shell simulation binary.
 - `./bin/testshell`: C++ unit and regression test suite.
+
+Release builds are tuned for the build machine's CPU (`-march=native`); add `-DSHELL_NATIVE_ARCH=OFF` to build a
+binary that runs on other machines. On a laptop, build with fewer jobs (`-j 4`) if memory is short: the largest
+source file needs a few GB to compile.
 
 ### 3. Verify the Build
 Run the C++ unit test suite:
@@ -55,7 +70,10 @@ Run the C++ unit test suite:
 
 The Python module `shellsim` provides an easy interface to script toolpaths, run the solver, and inspect results.
 
+Run from the repository root (or put it on `PYTHONPATH`):
+
 ```python
+import numpy as np
 from shellsim import toolpath, simulate
 
 # 1. Define a zigzag toolpath sequence
@@ -73,17 +91,22 @@ seq = toolpath.sequence([
 # 2. Run simulation on a 200 x 200 x 0.77 mm sheet
 state = simulate.run(
     seq,
-    casefolder='run/example_case',
-    lx=0.1,          # Half-width in x (meters) -> 200 mm total
-    ly=0.1,          # Half-length in y (meters) -> 200 mm total
-    res=0.01,        # Mesh resolution (meters) -> 10 mm edge length
-    h_total=0.00077  # Total sheet thickness (meters)
+    'run/example_case',  # output folder
+    lx=0.1,          # Half-width (meters) -> 200 mm total
+    ly=0.1,          # Half-length (meters) -> 200 mm total
+    res=0.02,        # Mesh parameter: 0.02 -> ~4 mm mesh on this sheet (about 1 min), 0.01 -> ~2 mm
+    h_total=0.00077, # Total sheet thickness (meters)
+    threads=4        # OpenMP threads; set to your core count
 )
 
-# 3. Extract deformed coordinates and height field
-x, y, z = simulate.height(state)
-print(f"Deformed sheet vertical displacement range: {y.ptp():.3f} mm")
+# 3. Deformed vertices in metres: in-plane solver coordinates (u, v) and height h about its mean
+u, v, h = simulate.height(state)
+print(f"Height range: {np.ptp(h) * 1e3:.3f} mm")
 ```
+
+The sheet is free, so its equilibrium is unique only up to a rigid motion: different builds can return the same
+shape in a slightly different orientation, which changes the raw height range. Compare shapes after rigid alignment
+(or use the energy in `state['proof']`).
 
 See `shellsim/examples/notebooks/simulate_toolpath.ipynb` for an interactive end-to-end demonstration.
 
@@ -199,7 +222,7 @@ The solver reads toolpath geometries and material growth parameters from a struc
 
 ## Coordinate Conventions
 
-- **Internal Solver Coordinates**: $(u, h, v)$, where $(u, v)$ is the in-plane reference coordinates and $h$ is out-of-plane height.
+- **Internal Solver Coordinates**: $(u, v, h)$ (columns of `state['positions']`), where $(u, v)$ are the in-plane reference coordinates and $h$ is out-of-plane height.
 - **Public / Experimental Sheet Axes**:
   - **Width ($x$)**: $x = u \in [-L_x, L_x]$
   - **Length / Feed ($z$)**: $z = v + 65\text{ mm}$
