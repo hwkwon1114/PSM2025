@@ -25,4 +25,4 @@ The following finished pilot campaigns are kept for their recorded evidence. Lat
 | 5 | `run_run9_transfer_expanded.py` (+ `.sbatch`) | Frozen Run 6 optimum evaluated on Run 9 |
 | 6 | `run_transfer.py run7\|run10` (+ `.sbatch`, `RUN=run7\|run10`) | Frozen Attempt 209 evaluated once on Run 7 or Run 10 |
 
-Prepare a transfer sheet first: `python calibration/analysis/prepare_transfer_run.py run7|run10`; plot it afterwards with `calibration/analysis/plot_transfer.py run7|run10`. Solver settings come from `shellsim/configs/default_adaptive_cutback.json` through the run configs.
+Prepare a transfer sheet first: `python calibration/analysis/prepare_transfer_run.py run7|run10`; plotting scripts are kept outside the repository (local only). Solver settings come from `shellsim/configs/default_adaptive_cutback.json` through the run configs.
