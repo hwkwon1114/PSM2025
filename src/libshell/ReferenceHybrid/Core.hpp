@@ -301,6 +301,20 @@ class Engine
     std::function<double()> clock;
     // Deliberately absent from checkpoints: restoration performs a fresh analysis.
     std::unique_ptr<NativeNewtonSymbolicCache> symbolicCache;
+    // Process-local reduced-Hessian CSC map (not checkpointed). Reused only when the full
+    // Hessian CSC pattern and restricted-DOF list are identical. Every value is computed with
+    // the same floating-point expression/order as the triplet path below.
+    struct ReducedHessianPatternCache
+    {
+        // h: index into H values; r,c: original row/col DOFs; t: transposed entry in reduced CSC.
+        struct EntryMap { int h; int r; int c; int t; };
+        int rows=0, cols=0;
+        std::vector<int> hOuter, hInner, freeDofs;
+        Sparse templateA, diff;
+        std::vector<EntryMap> entries;
+        std::vector<double> raw;
+        bool valid=false;
+    } modelPatternCache;
     void sync()
     {
         const double now=clock();
@@ -356,6 +370,39 @@ class Engine
         row["gauge_seconds"]=clock()-gaugeStart;
         const double assemblyStart=clock();
         if(s.free.empty())throw Stop{"no_free_dofs"};
+        const bool canUsePatternCache = modelPatternCache.valid && H.isCompressed() &&
+            H.rows()==modelPatternCache.rows && H.cols()==modelPatternCache.cols &&
+            H.nonZeros()==int(modelPatternCache.hInner.size()) &&
+            s.free==modelPatternCache.freeDofs &&
+            std::equal(modelPatternCache.hOuter.begin(),modelPatternCache.hOuter.end(),H.outerIndexPtr()) &&
+            std::equal(modelPatternCache.hInner.begin(),modelPatternCache.hInner.end(),H.innerIndexPtr());
+        if(canUsePatternCache)
+        {
+            auto& pc=modelPatternCache;
+            const double* const Hval=H.valuePtr();
+            const int hNnz=H.nonZeros();
+            // Same failure set as the triplet path; s.A is untouched if any value is invalid.
+            for(int k=0;k<hNnz;++k)if(!std::isfinite(Hval[k]))throw Stop{"invalid_hessian"};
+            const size_t m=pc.entries.size();
+            for(size_t k=0;k<m;++k)
+            {
+                const auto& e=pc.entries[k];
+                const double a=Hval[e.h]*S[e.r]*S[e.c]/E0; // identical expression order to the triplet path
+                if(!std::isfinite(a))throw Stop{"invalid_hessian"};
+                pc.raw[k]=a;
+            }
+            s.A=pc.templateA;std::copy(pc.raw.begin(),pc.raw.end(),s.A.valuePtr());
+            row["reduced_assembly_seconds"]=clock()-assemblyStart;
+            const double symmetryStart=clock();
+            double* const d=pc.diff.valuePtr();
+            for(size_t k=0;k<m;++k)d[k]=pc.raw[k]-pc.raw[size_t(pc.entries[k].t)];
+            if(pc.diff.norm()>1e-10*s.A.norm())throw Stop{"asymmetric_hessian"};
+            double* const a=s.A.valuePtr();
+            for(size_t k=0;k<m;++k)a[k]=0.5*(pc.raw[k]+pc.raw[size_t(pc.entries[k].t)]);
+            s.cacheValid=true;
+            row["symmetry_seconds"]=clock()-symmetryStart;row["model_nnz"]=s.A.nonZeros();
+            return;
+        }
         std::vector<int> map(n,-1);
         for(size_t j=0;j<s.free.size();++j)
         {const int i=s.free[j];if(i<0 || i>=n || map[i]>=0)throw Stop{"invalid_gauge"};map[i]=j;}
@@ -377,6 +424,43 @@ class Engine
         if(diff.norm()>1e-10*s.A.norm())throw Stop{"asymmetric_hessian"};
         s.A=0.5*(s.A+trans);s.cacheValid=true;
         row["symmetry_seconds"]=clock()-symmetryStart;row["model_nnz"]=s.A.nonZeros();
+        modelPatternCache.valid=false;
+        // Cache only when the symmetrized pattern equals the raw reduced pattern (no union fill).
+        if(H.isCompressed() && int(t.size())==s.A.nonZeros())
+        {
+            const int* const hOuter=H.outerIndexPtr();
+            const int* const hInner=H.innerIndexPtr();
+            const int* const aOuter=s.A.outerIndexPtr();
+            const int* const aInner=s.A.innerIndexPtr();
+            std::vector<ReducedHessianPatternCache::EntryMap> mapped(s.A.nonZeros());
+            bool allFound=true;
+            for(int col=0;col<s.A.cols() && allFound;++col)
+            {
+                const int origCol=s.free[size_t(col)];
+                for(int k=aOuter[col];k<aOuter[col+1];++k)
+                {
+                    const int rowIdx=aInner[k];
+                    const int origRow=s.free[size_t(rowIdx)];
+                    const auto b1=hInner+hOuter[origCol],e1=hInner+hOuter[origCol+1];
+                    const auto it1=std::lower_bound(b1,e1,origRow);
+                    const auto b2=aInner+aOuter[rowIdx],e2=aInner+aOuter[rowIdx+1];
+                    const auto it2=std::lower_bound(b2,e2,col);
+                    if(it1==e1 || *it1!=origRow || it2==e2 || *it2!=col){allFound=false;break;}
+                    mapped[size_t(k)]={int(it1-hInner),origRow,origCol,int(it2-aInner)};
+                }
+            }
+            if(allFound)
+            {
+                modelPatternCache.rows=H.rows();modelPatternCache.cols=H.cols();
+                modelPatternCache.hOuter.assign(hOuter,hOuter+H.cols()+1);
+                modelPatternCache.hInner.assign(hInner,hInner+H.nonZeros());
+                modelPatternCache.freeDofs=s.free;
+                modelPatternCache.templateA=s.A;modelPatternCache.diff=s.A;
+                modelPatternCache.entries=std::move(mapped);
+                modelPatternCache.raw.assign(size_t(s.A.nonZeros()),0.0);
+                modelPatternCache.valid=true;
+            }
+        }
     }
     double curvatureScale() const
     {
@@ -470,20 +554,16 @@ class Engine
         Sparse B=s.A;const Vec diagonal=s.A.diagonal();
         for(int i=0;i<B.rows();++i)B.coeffRef(i,i)=diagonal[i];
         B.makeCompressed();
-        std::unique_ptr<NativeNewtonFactorization> freshFactor;
         NativeNewtonFactorization* selected=nullptr;
         row["factorization_backend"]=config.newtonBackend=="cholmod"?"cholmod_supernodal_external_eigen_amd":"llt_early_nonpositive_pivot";
         timeCheck();const double symbolicStart=clock();bool analyzed=true;
-        if(config.reuseNewtonSymbolic){
-            if(!symbolicCache)symbolicCache=std::make_unique<NativeNewtonSymbolicCache>(config.newtonBackend);
-            analyzed=symbolicCache->prepare(B,s.free);selected=&symbolicCache->get();
-        }else{
-            freshFactor=std::make_unique<NativeNewtonFactorization>(config.newtonBackend);
-            freshFactor->analyzePattern(B);selected=freshFactor.get();
-        }
+        // Symbolic analysis depends only on the exact restricted CSC pattern; numeric factors are
+        // always refreshed, so pattern-identical reuse is value-identical to a fresh analysis.
+        if(!symbolicCache)symbolicCache=std::make_unique<NativeNewtonSymbolicCache>(config.newtonBackend);
+        analyzed=symbolicCache->prepare(B,s.free);selected=&symbolicCache->get();
         NativeNewtonFactorization& factor=*selected;
         row["symbolic_seconds"]=clock()-symbolicStart;row["symbolic_analyses"]=analyzed?1:0;
-        if(config.reuseNewtonSymbolic)row["symbolic_cache_hit"]=!analyzed;
+        row["symbolic_cache_hit"]=!analyzed;
         row["numerical_factorizations"]=0;row["factorization_seconds"]=0.;timeCheck();
         double shift=0;Vec y;bool solved=false;
         for(int attempt=0;attempt<config.maxShiftAttempts;++attempt)

@@ -64,6 +64,7 @@ struct ExtendedTriangleInfo
     
     std::array<ExtendedTriangleInfo *, 3> other_faces;
     Eigen::Vector3i other_face_edge_idx;
+    const ExtendedTriangleInfo * topology_base_ptr = nullptr;
     
     template<int vidx>
     Eigen::Matrix3d get_gradv_normal() const
@@ -271,19 +272,22 @@ struct ExtendedTriangleInfo
         const Real s_alpha_e0 = std::sin(alpha(0));
         const Real s_alpha_e1 = std::sin(alpha(1));
         const Real s_alpha_e2 = std::sin(alpha(2));
+        const Real c_alpha_e0 = std::cos(alpha(0));
+        const Real c_alpha_e1 = std::cos(alpha(1));
+        const Real c_alpha_e2 = std::cos(alpha(2));
         
         QuadraticFormGradientData gradSecondFF;
         
         // gradient with respect to edge directors
-        gradSecondFF.gradphi_e0_11 = -2*height(0)*std::cos(alpha(0))*sign(0);
-        gradSecondFF.gradphi_e0_12 = +2*height(0)*std::cos(alpha(0))*sign(0);
-        gradSecondFF.gradphi_e0_22 = -2*height(0)*std::cos(alpha(0))*sign(0);
+        gradSecondFF.gradphi_e0_11 = -2*height(0)*c_alpha_e0*sign(0);
+        gradSecondFF.gradphi_e0_12 = +2*height(0)*c_alpha_e0*sign(0);
+        gradSecondFF.gradphi_e0_22 = -2*height(0)*c_alpha_e0*sign(0);
         
         gradSecondFF.gradphi_e1_11 =  0.0;
         gradSecondFF.gradphi_e1_12 =  0.0;
-        gradSecondFF.gradphi_e1_22 = -2*height(1)*std::cos(alpha(1))*sign(1);
+        gradSecondFF.gradphi_e1_22 = -2*height(1)*c_alpha_e1*sign(1);
         
-        gradSecondFF.gradphi_e2_11 = -2*height(2)*std::cos(alpha(2))*sign(2);
+        gradSecondFF.gradphi_e2_11 = -2*height(2)*c_alpha_e2*sign(2);
         gradSecondFF.gradphi_e2_12 =  0.0;
         gradSecondFF.gradphi_e2_22 =  0.0;
      
@@ -312,9 +316,9 @@ struct ExtendedTriangleInfo
         gradSecondFF.isInterior_e2 = get_gradv_theta<2>(gradv0_theta_e2, gradv1_theta_e2, gradv2_theta_e2, gradv_other_theta_e2, gradSecondFF.idx_v_other_e2);
         
         // gradient of the bform entries
-        const Real h0_cos_alpha0 = height(0)*std::cos(alpha(0));
-        const Real h1_cos_alpha1 = height(1)*std::cos(alpha(1));
-        const Real h2_cos_alpha2 = height(2)*std::cos(alpha(2));
+        const Real h0_cos_alpha0 = height(0)*c_alpha_e0;
+        const Real h1_cos_alpha1 = height(1)*c_alpha_e1;
+        const Real h2_cos_alpha2 = height(2)*c_alpha_e2;
         
         const Eigen::Vector3d gradv0_n2_dot_e1 = (e2_clamped ? Eigen::Vector3d::Zero() : Eigen::Vector3d(gradv0_h2*s_alpha_e2 + 0.5*h2_cos_alpha2*gradv0_theta_e2));
         const Eigen::Vector3d gradv1_n2_dot_e1 = (e2_clamped ? Eigen::Vector3d(-clamped_normal_e2) : Eigen::Vector3d(gradv1_h2*s_alpha_e2 + 0.5*h2_cos_alpha2*gradv1_theta_e2));

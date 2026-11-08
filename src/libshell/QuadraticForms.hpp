@@ -32,6 +32,8 @@ struct QuadraticForm_WithGradient : QuadraticForm
 template<bool withGradient>
 struct FirstFundamentalForm : std::conditional<withGradient, QuadraticForm_WithGradient_Verts, QuadraticForm>::type
 {
+    FirstFundamentalForm() = default;
+
     FirstFundamentalForm(const ExtendedTriangleInfo & info)
     {
         set(info);
@@ -54,6 +56,8 @@ struct FirstFundamentalForm : std::conditional<withGradient, QuadraticForm_WithG
 template<bool withGradient>
 struct SecondFundamentalForm : std::conditional<withGradient, QuadraticForm_WithGradient, QuadraticForm>::type
 {
+    SecondFundamentalForm() = default;
+
     SecondFundamentalForm(const ExtendedTriangleInfo & info)
     {
         set(info);

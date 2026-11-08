@@ -33,6 +33,16 @@ public:
     using EnergyOperator_DCS<tMesh>::compute;
     typedef typename tMesh::tCurrentConfigData tCurrentConfigData;
 
+    struct CachedRestMetric
+    {
+        Eigen::Matrix2d aform_bar;
+        Eigen::Matrix2d aform_bar_inv;
+        Real area = 0;
+        bool valid = false;
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    };
+    typedef std::vector<CachedRestMetric, Eigen::aligned_allocator<CachedRestMetric>> tCachedRestMetrics;
+
 protected:
     /**
      * A reference to the material properties of the faces
@@ -51,6 +61,9 @@ protected:
      * The last computed bilayer energy term will be stored here
      */
     mutable Real lastEnergy_ab;
+
+    mutable tCachedRestMetrics cached_rest_metrics;
+    mutable Eigen::MatrixXd per_face_gradients_buffer;
 
     /**
      * Computes the energy and, if desired, the gradient

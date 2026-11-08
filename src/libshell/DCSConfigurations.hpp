@@ -409,6 +409,21 @@ struct DCSCurrentConfiguration : DCSBasicConfiguration
     {
         return dcs_ext_data.ext_tinfo[face_idx];
     }
+
+    uint64_t getGeneration() const
+    {
+        return dcs_ext_data.generation;
+    }
+
+    DCSCurrentConfigurationData::CachedDeformedFormsGrad & getCachedDeformedFormsGrad(const int face_idx) const
+    {
+        return dcs_ext_data.cached_forms_grad[face_idx];
+    }
+
+    DCSCurrentConfigurationData::CachedDeformedFormsNoGrad & getCachedDeformedFormsNoGrad(const int face_idx) const
+    {
+        return dcs_ext_data.cached_forms_nograd[face_idx];
+    }
 };
 
 

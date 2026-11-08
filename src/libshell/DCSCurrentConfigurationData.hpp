@@ -12,13 +12,34 @@
 #include "common.hpp"
 #include "ConfigurationData.hpp"
 #include "ExtendedTriangleInfo.hpp"
+#include "QuadraticForms.hpp"
 #include "CreateExtendedTriangleInfos.hpp"
 #include "TopologyData.hpp"
 #include "BoundaryConditionsData.hpp"
+#include <cstdint>
 
 struct DCSCurrentConfigurationData
 {
+    struct CachedDeformedFormsGrad
+    {
+        uint64_t generation = 0;
+        FirstFundamentalForm<true> firstFF;
+        SecondFundamentalForm<true> secondFF;
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    };
+
+    struct CachedDeformedFormsNoGrad
+    {
+        uint64_t generation = 0;
+        FirstFundamentalForm<false> firstFF;
+        SecondFundamentalForm<false> secondFF;
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    };
+
     std::vector<ExtendedTriangleInfo> ext_tinfo;
+    uint64_t generation = 1;
+    mutable std::vector<CachedDeformedFormsGrad, Eigen::aligned_allocator<CachedDeformedFormsGrad>> cached_forms_grad;
+    mutable std::vector<CachedDeformedFormsNoGrad, Eigen::aligned_allocator<CachedDeformedFormsNoGrad>> cached_forms_nograd;
     
     // default constructor
     DCSCurrentConfigurationData()
@@ -26,9 +47,14 @@ struct DCSCurrentConfigurationData
     
     void update(const DCSConfigurationData & meshdata, const TopologyData & topo, const BoundaryConditionsData & boundaryConditions)
     {
+        ++generation;
         const int nFaces = topo.getNumberOfFaces();
         if((int)ext_tinfo.size() != nFaces)
             ext_tinfo.resize(nFaces);
+        if((int)cached_forms_grad.size() != nFaces)
+            cached_forms_grad.resize(nFaces);
+        if((int)cached_forms_nograd.size() != nFaces)
+            cached_forms_nograd.resize(nFaces);
         
         //        CreateExtendedTriangleInfos::create(topo, meshdata, boundaryConditions, ext_tinfo);
         {
@@ -44,7 +70,10 @@ struct DCSCurrentConfigurationData
     
     virtual void clear()
     {
+        ++generation;
         ext_tinfo.clear();
+        cached_forms_grad.clear();
+        cached_forms_nograd.clear();
     }
         
     std::vector<int> getEdgeIndices(const TopologyData & topo, const std::vector<int> & face_indices) const
@@ -65,7 +94,13 @@ struct DCSCurrentConfigurationData
     
     void updateSubSet(const DCSConfigurationData & meshdata, const TopologyData & topo, const BoundaryConditionsData & boundaryConditions, const std::vector<int> & face_indices)
     {
+        ++generation;
         assert((int)ext_tinfo.size() == topo.getNumberOfFaces());
+        const int nFaces = topo.getNumberOfFaces();
+        if((int)cached_forms_grad.size() != nFaces)
+            cached_forms_grad.resize(nFaces);
+        if((int)cached_forms_nograd.size() != nFaces)
+            cached_forms_nograd.resize(nFaces);
         
         // first get the corresponding edge indices
         const std::vector<int> edge_indices = getEdgeIndices(topo, face_indices);

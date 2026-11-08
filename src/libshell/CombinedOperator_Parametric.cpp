@@ -21,11 +21,13 @@ struct ComputeCombined_Parametric
 {
     typedef typename tMesh::tReferenceConfigData tReferenceConfigData;
     typedef typename tMesh::tCurrentConfigData tCurrentConfigData;
+    typedef typename CombinedOperator_Parametric<tMesh, tMaterialType, layer>::tCachedRestMetrics tCachedRestMetrics;
 
     const MaterialProperties<tMaterialType>  & material_properties;
     const tCurrentConfigData & currentState;
     const tReferenceConfigData & restState;
     Eigen::Ref<Eigen::MatrixXd> per_face_gradients;
+    tCachedRestMetrics * cached_rest_metrics;
 
     Real energySum_aa;
     Real energySum_bb;
@@ -38,11 +40,12 @@ struct ComputeCombined_Parametric
         energySum_ab = 0;
     }
 
-    ComputeCombined_Parametric(const MaterialProperties<tMaterialType>  & mat_props_in, const tCurrentConfigData & currentState_in, const tReferenceConfigData & restState_in, Eigen::Ref<Eigen::MatrixXd> per_face_gradients_in):
+    ComputeCombined_Parametric(const MaterialProperties<tMaterialType>  & mat_props_in, const tCurrentConfigData & currentState_in, const tReferenceConfigData & restState_in, Eigen::Ref<Eigen::MatrixXd> per_face_gradients_in, tCachedRestMetrics * cached_rest_metrics_in = nullptr):
     material_properties(mat_props_in),
     currentState(currentState_in),
     restState(restState_in),
-    per_face_gradients(per_face_gradients_in)
+    per_face_gradients(per_face_gradients_in),
+    cached_rest_metrics(cached_rest_metrics_in)
     {
         zeroAllSums();
     }
@@ -52,7 +55,8 @@ struct ComputeCombined_Parametric
     material_properties(c.material_properties),
     currentState(c.currentState),
     restState(c.restState),
-    per_face_gradients(c.per_face_gradients)
+    per_face_gradients(c.per_face_gradients),
+    cached_rest_metrics(c.cached_rest_metrics)
     {
         zeroAllSums();
     }
@@ -150,7 +154,7 @@ struct ComputeCombined_Parametric
         return this->restState.template getFirstFundamentalForm<L>(i);
     }
 
-    template<typename tM = tMaterialType> typename std::enable_if<std::is_same<tM, Material_Isotropic>::value, void>::type
+    template<bool U = withGradient, typename tM = tMaterialType> typename std::enable_if<U && std::is_same<tM, Material_Isotropic>::value, void>::type
     processOneTriangle(const ExtendedTriangleInfo & info, Real & energy_aa, Real & energy_bb, Real & energy_ab)
     {
         const int i = info.face_idx;
@@ -159,14 +163,87 @@ struct ComputeCombined_Parametric
         const Eigen::Matrix2d aform_bar = getFirstFundamentalForm(i);
         const Eigen::Matrix2d bform_bar = this->restState.getSecondFundamentalForm(i);
 
-        SaintVenantEnergy<withGradient, tM, layer> SV_energy(matprop, aform_bar, bform_bar, info);
+        auto & cached_ff = this->currentState.getCachedDeformedFormsGrad(i);
+        const uint64_t gen = this->currentState.getGeneration();
+        if(cached_ff.generation != gen)
+        {
+            cached_ff.firstFF.set(info);
+            cached_ff.secondFF.set(info);
+            cached_ff.generation = gen;
+        }
 
-        SV_energy.compute();
-        energy_aa += SV_energy.stretching_energy;
-        energy_bb += SV_energy.bending_energy;
-        if(layer != single) energy_ab += SV_energy.mixed_energy_ab;
+        if(this->cached_rest_metrics != nullptr)
+        {
+            auto & cached_metric = (*this->cached_rest_metrics)[i];
+            if(!cached_metric.valid || cached_metric.aform_bar != aform_bar)
+            {
+                cached_metric.aform_bar = aform_bar;
+                cached_metric.aform_bar_inv = aform_bar.inverse();
+                cached_metric.area = 0.5*std::sqrt(aform_bar.determinant());
+                cached_metric.valid = true;
+            }
+            SaintVenantEnergy<withGradient, tM, layer> SV_energy(matprop, aform_bar, cached_metric.aform_bar_inv, cached_metric.area, bform_bar, cached_ff.firstFF, cached_ff.secondFF);
+            SV_energy.compute();
+            energy_aa += SV_energy.stretching_energy;
+            energy_bb += SV_energy.bending_energy;
+            if(layer != single) energy_ab += SV_energy.mixed_energy_ab;
+            addGradients(info, SV_energy);
+        }
+        else
+        {
+            SaintVenantEnergy<withGradient, tM, layer> SV_energy(matprop, aform_bar, aform_bar.inverse(), 0.5*std::sqrt(aform_bar.determinant()), bform_bar, cached_ff.firstFF, cached_ff.secondFF);
+            SV_energy.compute();
+            energy_aa += SV_energy.stretching_energy;
+            energy_bb += SV_energy.bending_energy;
+            if(layer != single) energy_ab += SV_energy.mixed_energy_ab;
+            addGradients(info, SV_energy);
+        }
+    }
 
-        addGradients(info, SV_energy);
+    template<bool U = withGradient, typename tM = tMaterialType> typename std::enable_if<!U && std::is_same<tM, Material_Isotropic>::value, void>::type
+    processOneTriangle(const ExtendedTriangleInfo & info, Real & energy_aa, Real & energy_bb, Real & energy_ab)
+    {
+        const int i = info.face_idx;
+
+        const tM matprop = this->material_properties.getFaceMaterial(i);
+        const Eigen::Matrix2d aform_bar = getFirstFundamentalForm(i);
+        const Eigen::Matrix2d bform_bar = this->restState.getSecondFundamentalForm(i);
+
+        auto & cached_ff = this->currentState.getCachedDeformedFormsNoGrad(i);
+        const uint64_t gen = this->currentState.getGeneration();
+        if(cached_ff.generation != gen)
+        {
+            cached_ff.firstFF.set(info);
+            cached_ff.secondFF.set(info);
+            cached_ff.generation = gen;
+        }
+
+        if(this->cached_rest_metrics != nullptr)
+        {
+            auto & cached_metric = (*this->cached_rest_metrics)[i];
+            if(!cached_metric.valid || cached_metric.aform_bar != aform_bar)
+            {
+                cached_metric.aform_bar = aform_bar;
+                cached_metric.aform_bar_inv = aform_bar.inverse();
+                cached_metric.area = 0.5*std::sqrt(aform_bar.determinant());
+                cached_metric.valid = true;
+            }
+            SaintVenantEnergy<withGradient, tM, layer> SV_energy(matprop, aform_bar, cached_metric.aform_bar_inv, cached_metric.area, bform_bar, cached_ff.firstFF, cached_ff.secondFF);
+            SV_energy.compute();
+            energy_aa += SV_energy.stretching_energy;
+            energy_bb += SV_energy.bending_energy;
+            if(layer != single) energy_ab += SV_energy.mixed_energy_ab;
+            addGradients(info, SV_energy);
+        }
+        else
+        {
+            SaintVenantEnergy<withGradient, tM, layer> SV_energy(matprop, aform_bar, aform_bar.inverse(), 0.5*std::sqrt(aform_bar.determinant()), bform_bar, cached_ff.firstFF, cached_ff.secondFF);
+            SV_energy.compute();
+            energy_aa += SV_energy.stretching_energy;
+            energy_bb += SV_energy.bending_energy;
+            if(layer != single) energy_ab += SV_energy.mixed_energy_ab;
+            addGradients(info, SV_energy);
+        }
     }
 
     template<typename tM = tMaterialType> typename std::enable_if<std::is_same<tM, Material_Orthotropic>::value, void>::type
@@ -512,13 +589,14 @@ Real CombinedOperator_Parametric<tMesh, tMaterialType, layer>::computeAll(const 
     const int nFaces = mesh.getNumberOfFaces();
 //    const int grainSize = 10;
 
-    Eigen::MatrixXd per_face_gradients;
+    if((int)cached_rest_metrics.size() != nFaces)
+        cached_rest_metrics.resize(nFaces);
 
     if(not computeGradient)
     {
         this->profiler.push_start("compute energy / gradient");
 
-        ComputeCombined_Parametric<tMesh, tMaterialType, layer, false> compute_tbb(material_properties, currentState, restState, per_face_gradients);
+        ComputeCombined_Parametric<tMesh, tMaterialType, layer, false> compute_tbb(material_properties, currentState, restState, per_face_gradients_buffer, &cached_rest_metrics);
         tbb::parallel_reduce(tbb::blocked_range<int>(0,nFaces), compute_tbb, tbb::auto_partitioner());
 
         this->profiler.pop_stop();
@@ -529,11 +607,12 @@ Real CombinedOperator_Parametric<tMesh, tMaterialType, layer>::computeAll(const 
     }
     else
     {
-        per_face_gradients.resize(nFaces, 21);
+        if(per_face_gradients_buffer.rows() != nFaces || per_face_gradients_buffer.cols() != 21)
+            per_face_gradients_buffer.resize(nFaces, 21);
 
         this->profiler.push_start("compute energy / gradient");
 
-        ComputeCombined_Parametric<tMesh, tMaterialType, layer, true> compute_tbb(material_properties, currentState, restState,  per_face_gradients);
+        ComputeCombined_Parametric<tMesh, tMaterialType, layer, true> compute_tbb(material_properties, currentState, restState, per_face_gradients_buffer, &cached_rest_metrics);
         tbb::parallel_reduce(tbb::blocked_range<int>(0,nFaces), compute_tbb, tbb::auto_partitioner());
 
         this->profiler.pop_stop();
@@ -548,13 +627,13 @@ Real CombinedOperator_Parametric<tMesh, tMaterialType, layer>::computeAll(const 
 
         const int nVertices = currentState.getNumberOfVertices();
         this->profiler.push_start("merge vertices");
-        MergeGradVertices mergevertices(topo, boundaryConditions, per_face_gradients, gradient_vertices);
+        MergeGradVertices mergevertices(topo, boundaryConditions, per_face_gradients_buffer, gradient_vertices);
         tbb::parallel_reduce(tbb::blocked_range<int>(0,nVertices),mergevertices, tbb::auto_partitioner());
         this->profiler.pop_stop();
 
         const int nEdges = topo.getNumberOfEdges();
         this->profiler.push_start("merge edges");
-        MergeGradEdges mergeedges(topo, boundaryConditions, per_face_gradients, gradient_edges);
+        MergeGradEdges mergeedges(topo, boundaryConditions, per_face_gradients_buffer, gradient_edges);
         tbb::parallel_reduce(tbb::blocked_range<int>(0,nEdges),mergeedges, tbb::auto_partitioner());
         this->profiler.pop_stop();
     }

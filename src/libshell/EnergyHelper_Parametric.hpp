@@ -33,6 +33,15 @@ struct EnergyHelper_Parametric
     area(0.5*std::sqrt(aform_bar.determinant()))
     {
     }
+
+    EnergyHelper_Parametric(const Material_Isotropic & matprop, const Eigen::Matrix2d & aform_bar, const Eigen::Matrix2d & aform_bar_inv, const Real area):
+    material_prefac_1(matprop.getStVenantFactor1()),
+    material_prefac_2(matprop.getStVenantFactor2()),
+    aform_bar(aform_bar),
+    aform_bar_inv(aform_bar_inv),
+    area(area)
+    {
+    }
 };
 
 struct StrainData
@@ -459,6 +468,20 @@ typename std::conditional<layer == single, SaintVenantEnergyData_WithGradient, S
     helper(mat_prop_in, aform_bar_in),
     firstFF(info_in),
     secondFF(info_in),
+    straindata_stretching(helper, firstFF),
+    straindata_bending(helper, bform_bar_in, secondFF),
+    energydata_stretching(helper, straindata_stretching),
+    energydata_bending(helper, straindata_bending),
+    energydata_bilayer(helper, energydata_stretching, energydata_bending)
+    {}
+
+    SaintVenantEnergy(const Material_Isotropic & mat_prop_in, const Eigen::Matrix2d & aform_bar_in, const Eigen::Matrix2d & aform_bar_inv_in, const Real area_in, const Eigen::Matrix2d & bform_bar_in, const FirstFundamentalForm<withGradient> & firstFF_in, const SecondFundamentalForm<withGradient> & secondFF_in):
+    h_aa(compute_h_aa(mat_prop_in.getThickness())),
+    h_bb(compute_h_bb(mat_prop_in.getThickness())),
+    h_ab(compute_h_ab(mat_prop_in.getThickness())),
+    helper(mat_prop_in, aform_bar_in, aform_bar_inv_in, area_in),
+    firstFF(firstFF_in),
+    secondFF(secondFF_in),
     straindata_stretching(helper, firstFF),
     straindata_bending(helper, bform_bar_in, secondFF),
     energydata_stretching(helper, straindata_stretching),

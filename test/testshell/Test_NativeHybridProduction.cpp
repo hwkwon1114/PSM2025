@@ -952,4 +952,149 @@ TEST(NativeHybridProduction, MetricStrainJumpCalculationIsCoordinateInvariantAnd
     const double eta_rot = ShellContinuation::compute2DMetricStrainJump(A_rot, dA_rot);
     EXPECT_NEAR(eta_rot, eta1, 1e-14);
 }
+
+TEST(NativeHybridProduction, Tier1PointwiseBilayerOracleAndSymbolicCacheParity)
+{
+    // Tier 1 equivalence gate:
+    // 1. Verifies pointwise energy/gradient parity on a non-planar bilayer shell with
+    //    distinct top/bottom anisotropic target metrics (stretching + bending + mixed terms active).
+    // 2. Verifies that NativeNewtonSymbolicCache (reuseNewtonSymbolic) produces bit-exact (0.0 diff)
+    //    Newton step vectors and CHOLMOD factor values across consecutive Newton updates compared
+    //    to fresh NativeNewtonFactorization symbolic analysis.
+    BilayerMesh mesh;
+    RectangularPlate geometry(.02, .015, .5, {false, false}, {false, false});
+    geometry.setQuiet();
+    mesh.init(geometry, false);
+    const int nv = mesh.getNumberOfVertices();
+    const int nd = 3 * nv + mesh.getNumberOfEdges();
+
+    MaterialProperties_Iso_Constant mat(1., .33, .0006);
+    CombinedOperator_Parametric<BilayerMesh, Material_Isotropic, bottom> bot(mat);
+    CombinedOperator_Parametric<BilayerMesh, Material_Isotropic, top> topEnergy(mat);
+    EnergyOperatorList<BilayerMesh> energy({&bot, &topEnergy});
+
+    auto& abarTop = mesh.getRestConfiguration().getFirstFundamentalForms<top>();
+    auto& abarBot = mesh.getRestConfiguration().getFirstFundamentalForms<bottom>();
+    for(size_t f = 0; f < abarTop.size(); ++f)
+    {
+        Eigen::Matrix2d Gtop, Gbot;
+        Gtop << 1.003, 0.0004, 0.0004, 0.998;
+        Gbot << 1.0005, -0.0002, -0.0002, 1.001;
+        abarTop[f] = Gtop.transpose() * abarTop[f] * Gtop;
+        abarBot[f] = Gbot.transpose() * abarBot[f] * Gbot;
+    }
+
+    ShellProblem<BilayerMesh, decltype(energy)> problem(
+        mesh, energy, 1., .33, .0006, "tier1_bilayer_oracle_parity_v1", "local_dihedral_csc", 1);
+
+    Vec x = Eigen::Map<const Vec>(mesh.getDataPointer(), nd);
+    const auto mask = ShellEquilibrium::constrainedDofMask(mesh);
+    for(int i = 0; i < nd; ++i)
+        if(!mask[i]) x[i] += 1e-4 * std::sin(0.31 * (i + 1));
+
+    const auto val1 = problem.evaluate(x);
+    const auto val2 = problem.evaluate(x);
+    EXPECT_DOUBLE_EQ(val1.energy, val2.energy);
+    EXPECT_DOUBLE_EQ((val1.gradient - val2.gradient).norm(), 0.0);
+
+    const Vec g_ad = problem.adGradient(x);
+    EXPECT_LE((g_ad - val1.gradient).norm(), 1e-18 + 1e-8 * val1.gradient.norm());
+
+#ifdef NONCONVEX_WITH_CHOLMOD
+    // Verify symbolic cache bit-exactness across two different deformed states sharing sparsity
+    const auto free = problem.freeDofs(x, problem.scales());
+    const Vec S = problem.scales();
+    const double E0 = problem.energyReference();
+    auto buildReduced = [&](const Vec& stateVec) -> Sparse {
+        const Sparse H = problem.hessian(stateVec);
+        std::vector<int> map(nd, -1);
+        for(size_t j = 0; j < free.size(); ++j) map[free[j]] = static_cast<int>(j);
+        std::vector<Eigen::Triplet<double>> t;
+        t.reserve(H.nonZeros());
+        for(int j = 0; j < H.outerSize(); ++j)
+            for(Sparse::InnerIterator it(H, j); it; ++it)
+                if(map[it.row()] >= 0 && map[it.col()] >= 0)
+                    t.emplace_back(map[it.row()], map[it.col()], it.value() * S[it.row()] * S[it.col()] / E0);
+        Sparse A(free.size(), free.size());
+        A.setFromTriplets(t.begin(), t.end());
+        const Sparse trans = A.transpose();
+        A = 0.5 * (A + trans);
+        const Vec diag = A.diagonal();
+        double maxDiag = 1.0;
+        for(int i = 0; i < A.rows(); ++i) maxDiag = std::max(maxDiag, std::abs(diag[i]));
+        for(int i = 0; i < A.rows(); ++i) A.coeffRef(i, i) = diag[i] + 10.0 * maxDiag;
+        A.makeCompressed();
+        return A;
+    };
+
+    Vec xNext = x;
+    for(int i = 0; i < nd; ++i)
+        if(!mask[i]) xNext[i] += 5e-5 * std::cos(0.17 * (i + 1));
+
+    const Sparse A1 = buildReduced(x);
+    const Sparse A2 = buildReduced(xNext);
+    Vec rhs(free.size());
+    for(Eigen::Index i = 0; i < rhs.size(); ++i) rhs[i] = std::sin(0.23 * (i + 1));
+
+    NativeNewtonSymbolicCache symCache("cholmod");
+    EXPECT_TRUE(symCache.prepare(A1, free));  // first step analyzes pattern
+    symCache.get().factorize(A1);
+    const Vec y1_cached = symCache.get().solve(-rhs);
+
+    EXPECT_FALSE(symCache.prepare(A2, free)); // second step hits symbolic cache
+    symCache.get().factorize(A2);
+    const Vec y2_cached = symCache.get().solve(-rhs);
+
+    NativeNewtonFactorization fresh2("cholmod");
+    fresh2.analyzePattern(A2);
+    fresh2.factorize(A2);
+    const Vec y2_fresh = fresh2.solve(-rhs);
+
+    EXPECT_EQ(symCache.get().storedValues(), fresh2.storedValues());
+    EXPECT_DOUBLE_EQ((y2_cached - y2_fresh).norm(), 0.0);
+#endif
+}
+
+TEST(NativeHybridProduction, Tier2DeterministicHybridTrajectoryParity)
+{
+    // Tier 2 equivalence gate: two back-to-back single-core solveNativeHybridShell runs
+    // on a perturbed bilayer shell must produce bit-for-bit identical trajectories,
+    // attempt/evaluation/Hessian counts, energies, gradients, and terminal selected states.
+    auto runOnce = []() -> HybridReport {
+        BilayerMesh mesh;
+        RectangularPlate geometry(.02, .015, .5, {false, false}, {false, false});
+        geometry.setQuiet();
+        mesh.init(geometry, false);
+        MaterialProperties_Iso_Constant mat(1., .33, .0006);
+        CombinedOperator_Parametric<BilayerMesh, Material_Isotropic, bottom> bot(mat);
+        CombinedOperator_Parametric<BilayerMesh, Material_Isotropic, top> topEnergy(mat);
+        EnergyOperatorList<BilayerMesh> energy({&bot, &topEnergy});
+
+        auto& abarTop = mesh.getRestConfiguration().getFirstFundamentalForms<top>();
+        for(auto& a : abarTop) a *= 1.002 * 1.002;
+        mesh.getDataPointer()[2 * mesh.getNumberOfVertices()] += 1e-4;
+        mesh.updateDeformedConfiguration();
+
+        auto o = fixtureOptions();
+        o.warmupAttempts = 5;
+        o.maxAttempts = 25;
+        o.maxHessians = 15;
+        o.gradientTolerance = 5e-14;
+        o.physicalGate = 1e-13;
+        return solveNativeHybridShell(mesh, energy, 1., .33, .0006, o);
+    };
+
+    const HybridReport repA = runOnce();
+    const HybridReport repB = runOnce();
+
+    EXPECT_EQ(repA.accepted, repB.accepted);
+    EXPECT_EQ(repA.terminal.status, repB.terminal.status);
+    EXPECT_EQ(repA.curvature, repB.curvature);
+    EXPECT_EQ(repA.terminal.attempts, repB.terminal.attempts);
+    EXPECT_EQ(repA.evaluations(), repB.evaluations());
+    EXPECT_EQ(repA.terminal.hessians, repB.terminal.hessians);
+    EXPECT_DOUBLE_EQ(repA.energy, repB.energy);
+    EXPECT_DOUBLE_EQ(repA.gradientNorm, repB.gradientNorm);
+    EXPECT_DOUBLE_EQ((repA.selected - repB.selected).norm(), 0.0);
+}
 #endif // SHELL_WITH_NATIVE_HYBRID

@@ -62,17 +62,51 @@ struct CreateExtendedTriangleInfos_tbb_base
     void computeVertexData(const int face_idx) const
     {
         ExtendedTriangleInfo & info = vInfos[face_idx];
+        const ExtendedTriangleInfo * const base_ptr = vInfos.data();
         
-        // =============== INDEX INFORMATION ===============//
-        info.face_idx = face_idx;
-        
-        info.idx_v0 = face2vertices(info.face_idx,0);
-        info.idx_v1 = face2vertices(info.face_idx,1);
-        info.idx_v2 = face2vertices(info.face_idx,2);
-        
-        info.idx_e0 = face2edges(info.face_idx, 0);
-        info.idx_e1 = face2edges(info.face_idx, 1);
-        info.idx_e2 = face2edges(info.face_idx, 2);
+        if(info.topology_base_ptr != base_ptr)
+        {
+            // =============== INDEX INFORMATION ===============//
+            info.face_idx = face_idx;
+            
+            info.idx_v0 = face2vertices(info.face_idx,0);
+            info.idx_v1 = face2vertices(info.face_idx,1);
+            info.idx_v2 = face2vertices(info.face_idx,2);
+            
+            info.idx_e0 = face2edges(info.face_idx, 0);
+            info.idx_e1 = face2edges(info.face_idx, 1);
+            info.idx_e2 = face2edges(info.face_idx, 2);
+            
+            // =============== TOPOLOGY INFORMATION ===============//
+            // get the sign (does not matter as long as its consistent for each of the two faces around an edge)
+            info.sign(0) = (edge2faces(info.idx_e0,0) == face_idx ? +1 : -1);
+            info.sign(1) = (edge2faces(info.idx_e1,0) == face_idx ? +1 : -1);
+            info.sign(2) = (edge2faces(info.idx_e2,0) == face_idx ? +1 : -1);
+            
+            // precompute the other (opposite) face indices to each edge (no need to store them : we store other_faces which has the face_idx in there)
+            const int other_face_idx_e0 = edge2faces(info.idx_e0,0) == face_idx ? edge2faces(info.idx_e0,1) : edge2faces(info.idx_e0,0);
+            const int other_face_idx_e1 = edge2faces(info.idx_e1,0) == face_idx ? edge2faces(info.idx_e1,1) : edge2faces(info.idx_e1,0);
+            const int other_face_idx_e2 = edge2faces(info.idx_e2,0) == face_idx ? edge2faces(info.idx_e2,1) : edge2faces(info.idx_e2,0);
+            
+            // also precompute the relative index of each edge from the perspective of the opposite face (we need that when computing gradients of bform)
+            info.other_faces = {nullptr, nullptr, nullptr};
+            if(other_face_idx_e0 >= 0)
+            {
+                info.other_face_edge_idx(0) = (face2edges(other_face_idx_e0,0) == info.idx_e0 ? 0 : (face2edges(other_face_idx_e0,1) == info.idx_e0 ? 1 : 2) );
+                info.other_faces[0] = &vInfos[other_face_idx_e0];
+            }
+            if(other_face_idx_e1 >= 0)
+            {
+                info.other_face_edge_idx(1) = (face2edges(other_face_idx_e1,0) == info.idx_e1 ? 0 : (face2edges(other_face_idx_e1,1) == info.idx_e1 ? 1 : 2) );
+                info.other_faces[1] = &vInfos[other_face_idx_e1];
+            }
+            if(other_face_idx_e2 >= 0)
+            {
+                info.other_face_edge_idx(2) = (face2edges(other_face_idx_e2,0) == info.idx_e2 ? 0 : (face2edges(other_face_idx_e2,1) == info.idx_e2 ? 1 : 2) );
+                info.other_faces[2] = &vInfos[other_face_idx_e2];
+            }
+            info.topology_base_ptr = base_ptr;
+        }
         
         // =============== RAW DATA ===============//
         info.v0 = data.getVertexData().row(info.idx_v0);
@@ -86,34 +120,6 @@ struct CreateExtendedTriangleInfos_tbb_base
         info.e0 = info.v1 - info.v0;
         info.e1 = info.v2 - info.v1;
         info.e2 = info.v0 - info.v2;
-        
-        // =============== TOPOLOGY INFORMATION ===============//
-        // get the sign (does not matter as long as its consistent for each of the two faces around an edge)
-        info.sign(0) = (edge2faces(info.idx_e0,0) == face_idx ? +1 : -1);
-        info.sign(1) = (edge2faces(info.idx_e1,0) == face_idx ? +1 : -1);
-        info.sign(2) = (edge2faces(info.idx_e2,0) == face_idx ? +1 : -1);
-        
-        // precompute the other (opposite) face indices to each edge (no need to store them : we store other_faces which has the face_idx in there)
-        const int other_face_idx_e0 = edge2faces(info.idx_e0,0) == face_idx ? edge2faces(info.idx_e0,1) : edge2faces(info.idx_e0,0);
-        const int other_face_idx_e1 = edge2faces(info.idx_e1,0) == face_idx ? edge2faces(info.idx_e1,1) : edge2faces(info.idx_e1,0);
-        const int other_face_idx_e2 = edge2faces(info.idx_e2,0) == face_idx ? edge2faces(info.idx_e2,1) : edge2faces(info.idx_e2,0);
-        
-        // also precompute the relative index of each edge from the perspective of the opposite face (we need that when computing gradients of bform)
-        if(other_face_idx_e0 >= 0)
-        {
-            info.other_face_edge_idx(0) = (face2edges(other_face_idx_e0,0) == info.idx_e0 ? 0 : (face2edges(other_face_idx_e0,1) == info.idx_e0 ? 1 : 2) );
-            info.other_faces[0] = &vInfos[other_face_idx_e0];
-        }
-        if(other_face_idx_e1 >= 0)
-        {
-            info.other_face_edge_idx(1) = (face2edges(other_face_idx_e1,0) == info.idx_e1 ? 0 : (face2edges(other_face_idx_e1,1) == info.idx_e1 ? 1 : 2) );
-            info.other_faces[1] = &vInfos[other_face_idx_e1];
-        }
-        if(other_face_idx_e2 >= 0)
-        {
-            info.other_face_edge_idx(2) = (face2edges(other_face_idx_e2,0) == info.idx_e2 ? 0 : (face2edges(other_face_idx_e2,1) == info.idx_e2 ? 1 : 2) );
-            info.other_faces[2] = &vInfos[other_face_idx_e2];
-        }
         
         // =============== DERIVED INFORMATION ===============//
         
@@ -208,22 +214,19 @@ struct CreateExtendedTriangleInfos_tbb_base
         
         if(face_idx_0 < 0 or face_idx_1 < 0) return; // this edge is on the boundary
         
+        ExtendedTriangleInfo & info_0 = vInfos[face_idx_0];
+        ExtendedTriangleInfo & info_1 = vInfos[face_idx_1];
+        
         // get the normal vectors
-        const Eigen::Vector3d normal_0 = vInfos[face_idx_0].face_normal;
-        const Eigen::Vector3d normal_1 = vInfos[face_idx_1].face_normal;
+        const Eigen::Vector3d normal_0 = info_0.face_normal;
+        const Eigen::Vector3d normal_1 = info_1.face_normal;
         
         // face 0 lies to the left of the edge and has the edge in its counter clock-wise orientation: so we assume the perspective of face 0 for this
-        const int start = face2edges(face_idx_0,0) == edge_idx ? 0 : (face2edges(face_idx_0,1) == edge_idx ? 1 : (face2edges(face_idx_0,2) == edge_idx ? 2 : -1));
+        const int start = info_0.idx_e0 == edge_idx ? 0 : (info_0.idx_e1 == edge_idx ? 1 : (info_0.idx_e2 == edge_idx ? 2 : -1));
         assert(start>=0);
-        const int v0_idx = face2vertices(face_idx_0,start);
-        const int v1_idx = face2vertices(face_idx_0,(start+1)%3);
-        
-        assert((v0_idx == edge2vertices(edge_idx,0) && v1_idx == edge2vertices(edge_idx,1)) or (v0_idx == edge2vertices(edge_idx,1) && v1_idx == edge2vertices(edge_idx,0)));
         
         // compute edge
-        const Eigen::Vector3d v0 = data.getVertexData().row(v0_idx);
-        const Eigen::Vector3d v1 = data.getVertexData().row(v1_idx);
-        const Eigen::Vector3d edge = v1 - v0;
+        const Eigen::Vector3d & edge = (start == 0 ? info_0.e0 : (start == 1 ? info_0.e1 : info_0.e2));
         
         const Real signTheta = ( normal_0.cross(normal_1) ).dot(edge) > 0.0 ? 1.0 : -1.0; // theta has same sign as (n1 cross n2) dot e0 --> positive if the normals points away from each other when the edge points out of the plane
         
@@ -231,9 +234,9 @@ struct CreateExtendedTriangleInfos_tbb_base
         const Real theta = 2.0 * signTheta * std::atan2((normal_0 - normal_1).norm(), denum); // use atan2 because we are doing numerics
         
         // store them in the triangle infos
-        vInfos[face_idx_0].setTheta(start, theta); // is this thread-safe?
-        const int start_1 = face2edges(face_idx_1,0) == edge_idx ? 0 : (face2edges(face_idx_1,1) == edge_idx ? 1 : (face2edges(face_idx_1,2) == edge_idx ? 2 : -1));
-        vInfos[face_idx_1].setTheta(start_1, theta); // is this thread-safe?
+        info_0.setTheta(start, theta); // is this thread-safe?
+        const int start_1 = info_0.other_face_edge_idx(start);
+        info_1.setTheta(start_1, theta); // is this thread-safe?
     }
 };
 
