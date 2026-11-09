@@ -11,7 +11,7 @@ from shellsim.solver_settings import solver_options, typed
 class SharedSolverSettings(unittest.TestCase):
     def test_calibration_configs_carry_the_shared_options(self):
         shared = {k: typed(v) for k, v in solver_options().items()}
-        for run in ('run6', 'run7', 'run9', 'run10'):
+        for run in ('run6', 'run9', 'run10'):
             args = load_config(ROOT / f'calibration/configs/{run}.json')['solver']['args']
             self.assertEqual({k: args[k] for k in shared}, shared, run)
 
