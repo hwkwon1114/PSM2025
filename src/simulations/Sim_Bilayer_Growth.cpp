@@ -1433,7 +1433,7 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
         const int continuation_post_cutback_streak =
             parser.parse<int>("-sequence_post_cutback_streak", 2);
         const Real continuation_target_strain_jump =
-            parser.parse<Real>("-sequence_target_strain_jump", 0.0);
+            parser.parse<Real>("-sequence_target_strain_jump", 0.0062);
         if(!std::isfinite(continuation_initial_step) ||
            !std::isfinite(continuation_max_step) ||
            !std::isfinite(continuation_min_step) ||

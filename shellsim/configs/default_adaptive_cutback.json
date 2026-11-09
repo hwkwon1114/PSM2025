@@ -8,6 +8,8 @@
     "-sequence_min_step": "0.015625",
     "-sequence_step_growth": "2.0",
     "-sequence_max_retries": "8",
+    "-sequence_post_cutback_streak": "2",
+    "-sequence_target_strain_jump": "0.0062",
     "-sequence_warm_start": "true",
     "-sequence_minimize_every": "1",
     "-sequence_slope_feedback": "0",
