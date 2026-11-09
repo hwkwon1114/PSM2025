@@ -572,6 +572,18 @@ typename std::conditional<layer == single, SaintVenantEnergyData_WithGradient, S
     energydata_bending(helper, straindata_bending),
     energydata_bilayer(helper, energydata_stretching, energydata_bending)
     {}
+
+    SaintVenantEnergy(const Material_Orthotropic & mat_prop_in, const Eigen::Matrix2d & aform_bar_d1_in, const Eigen::Matrix2d & aform_bar_d2_in, const Eigen::Matrix2d & bform_bar_in, const FirstFundamentalForm<withGradient> & firstFF_in, const SecondFundamentalForm<withGradient> & secondFF_in):
+    h_aa(compute_h_aa(mat_prop_in.getThickness())),
+    h_bb(compute_h_bb(mat_prop_in.getThickness())),
+    h_ab(compute_h_ab(mat_prop_in.getThickness())),
+    helper(mat_prop_in, aform_bar_d1_in, aform_bar_d2_in),
+    straindata_stretching(helper, firstFF_in),
+    straindata_bending(helper, bform_bar_in, secondFF_in),
+    energydata_stretching(helper, straindata_stretching),
+    energydata_bending(helper, straindata_bending),
+    energydata_bilayer(helper, energydata_stretching, energydata_bending)
+    {}
     
     void compute()
     {

@@ -1430,10 +1430,15 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
             parser.parse<Real>("-sequence_step_growth", 2.0);
         const int continuation_max_retries =
             parser.parse<int>("-sequence_max_retries", 8);
+        const int continuation_post_cutback_streak =
+            parser.parse<int>("-sequence_post_cutback_streak", 2);
+        const Real continuation_target_strain_jump =
+            parser.parse<Real>("-sequence_target_strain_jump", 0.0);
         if(!std::isfinite(continuation_initial_step) ||
            !std::isfinite(continuation_max_step) ||
            !std::isfinite(continuation_min_step) ||
            !std::isfinite(continuation_growth) ||
+           !std::isfinite(continuation_target_strain_jump) ||
            continuation_initial_step <= 0.0 ||
            continuation_max_step <= 0.0 ||
            continuation_initial_step > continuation_max_step ||
@@ -1441,7 +1446,9 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
            continuation_min_step <= 0.0 ||
            continuation_max_step > 1.0 ||
            continuation_growth < 1.0 ||
-           continuation_max_retries < 0)
+           continuation_max_retries < 0 ||
+           continuation_post_cutback_streak < 1 ||
+           continuation_target_strain_jump < 0.0)
             throw std::runtime_error(
                 "zigzag_sequence: invalid adaptive-continuation controls.");
         const bool track_sequence_stability =
@@ -2771,8 +2778,19 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                     Real acceptedLambda = 0.0;
                     Real stepSize = adaptive_continuation ?
                         continuation_initial_step : 1.0;
+                    if(adaptive_continuation && continuation_target_strain_jump > 0.0)
+                    {
+                        const Real fullStepStrainJump = ShellContinuation::computeMaxMetricStrainJump(
+                            pathStartAformsTop, pathEndAformsTop, pathStartAformsBot, pathEndAformsBot,
+                            0.0, 1.0);
+                        stepSize = ShellContinuation::computeInitialStepFromStrainJump(
+                            continuation_initial_step, continuation_min_step,
+                            fullStepStrainJump, continuation_target_strain_jump);
+                    }
                     int retries = 0;
                     int attempt = 0;
+                    int consecutiveSuccesses = 0;
+                    bool hadCutbackThisCycle = false;
                     Eigen::VectorXd acceptedState = pathStartState;
                     totalPassCount = pathStartPassCount;
                     setPathLoad(0.0);
@@ -2839,10 +2857,20 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                             acceptedLambda = trialLambda;
                             acceptedState = pathState;
                             retries = 0;
+                            ++consecutiveSuccesses;
                             if(adaptive_continuation)
-                                stepSize = std::min(
-                                    continuation_max_step,
-                                    stepSize * continuation_growth);
+                            {
+                                const int requiredStreak = hadCutbackThisCycle ? continuation_post_cutback_streak : 1;
+                                const Real nextStep = ShellContinuation::computeNextStepOnSuccess(
+                                    stepSize, continuation_max_step, continuation_growth,
+                                    consecutiveSuccesses, requiredStreak,
+                                    metricStrainJump, continuation_target_strain_jump);
+                                if(nextStep > stepSize)
+                                {
+                                    stepSize = nextStep;
+                                    consecutiveSuccesses = 0;
+                                }
+                            }
                             continue;
                         }
 
@@ -2850,6 +2878,8 @@ void Sim_Bilayer_Growth::TestCustomGrowth()
                         mesh.updateDeformedConfiguration();
                         setPathLoad(acceptedLambda);
                         ++retries;
+                        hadCutbackThisCycle = true;
+                        consecutiveSuccesses = 0;
                         const Real actualAttemptedStep = trialLambda - acceptedLambda;
                         if(!adaptive_continuation ||
                            retries > continuation_max_retries ||

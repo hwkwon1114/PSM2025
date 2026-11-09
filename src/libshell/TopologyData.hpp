@@ -15,6 +15,22 @@
 
 struct TopologyData
 {
+    struct VertexGradGatherEntry
+    {
+        int face_idx = -1;
+        int col_offset = 0;
+        int opp_face_idx = -1;
+        int opp_col_offset = 0;
+    };
+
+    struct EdgeGradGatherEntry
+    {
+        int face_idx_0 = -1;
+        int col_0 = 0;
+        int face_idx_1 = -1;
+        int col_1 = 0;
+    };
+
     // logical information
     Eigen::MatrixXi face2vertices;
     Eigen::MatrixXi edge2vertices;
@@ -22,6 +38,8 @@ struct TopologyData
     Eigen::MatrixXi edge2faces;
     Eigen::MatrixXi face2edges;
     std::vector<std::vector<int> > vertex2faces;
+    std::vector<std::vector<VertexGradGatherEntry>> vertex_grad_gather;
+    std::vector<EdgeGradGatherEntry> edge_grad_gather;
     
     void clear()
     {
@@ -31,6 +49,8 @@ struct TopologyData
         edge2faces.resize(0,0);
         face2edges.resize(0,0);
         vertex2faces.clear();
+        vertex_grad_gather.clear();
+        edge_grad_gather.clear();
     }
     
     int getNumberOfFaces() const
@@ -56,6 +76,59 @@ struct TopologyData
         igl::vertex_triangle_adjacency(vertices_in.rows(), face2vertices, vertex2faces, dummy);
         
         updateOppositeVertices();
+        updateGradGatherTables();
+    }
+
+    void updateGradGatherTables()
+    {
+        const int nVertices = (int)vertex2faces.size();
+        vertex_grad_gather.resize(nVertices);
+        for(int i = 0; i < nVertices; ++i)
+        {
+            const std::vector<int> & faces = vertex2faces[i];
+            auto & entries = vertex_grad_gather[i];
+            entries.resize(faces.size());
+            for(size_t f = 0; f < faces.size(); ++f)
+            {
+                const int face_idx = faces[f];
+                const int idx_v_rel = face2vertices(face_idx,0) == i ? 0 : (face2vertices(face_idx,1) == i ? 1 : 2);
+                const int idx_opp_edge_rel = (idx_v_rel + 1) % 3;
+                const int idx_opp_edge = face2edges(face_idx, idx_opp_edge_rel);
+                const int idx_opp_face_rel = (edge2faces(idx_opp_edge,0) == face_idx ? 1 : 0);
+                const int idx_opp_face = edge2faces(idx_opp_edge, idx_opp_face_rel);
+
+                VertexGradGatherEntry entry;
+                entry.face_idx = face_idx;
+                entry.col_offset = 3 * idx_v_rel;
+                entry.opp_face_idx = idx_opp_face;
+                if(idx_opp_face >= 0)
+                {
+                    const int idx_opp_edge_rel_other = (face2edges(idx_opp_face,0) == idx_opp_edge ? 0 : (face2edges(idx_opp_face,1) == idx_opp_edge ? 1 : 2));
+                    entry.opp_col_offset = 3 * (idx_opp_edge_rel_other + 3);
+                }
+                entries[f] = entry;
+            }
+        }
+
+        const int nEdges = edge2faces.rows();
+        edge_grad_gather.resize(nEdges);
+        for(int i = 0; i < nEdges; ++i)
+        {
+            EdgeGradGatherEntry entry;
+            entry.face_idx_0 = edge2faces(i,0);
+            entry.face_idx_1 = edge2faces(i,1);
+            if(entry.face_idx_0 >= 0)
+            {
+                const int edge_idx_rel = face2edges(entry.face_idx_0,0) == i ? 0 : (face2edges(entry.face_idx_0,1) == i ? 1 : 2);
+                entry.col_0 = 3 * 6 + edge_idx_rel;
+            }
+            if(entry.face_idx_1 >= 0)
+            {
+                const int edge_idx_rel = face2edges(entry.face_idx_1,0) == i ? 0 : (face2edges(entry.face_idx_1,1) == i ? 1 : 2);
+                entry.col_1 = 3 * 6 + edge_idx_rel;
+            }
+            edge_grad_gather[i] = entry;
+        }
     }
     
     void updateOppositeVertices()
@@ -127,6 +200,16 @@ struct TopologyData
     const std::vector<std::vector<int>> & getVertex2Faces() const
     {
         return vertex2faces;
+    }
+
+    const std::vector<std::vector<VertexGradGatherEntry>> & getVertexGradGather() const
+    {
+        return vertex_grad_gather;
+    }
+
+    const std::vector<EdgeGradGatherEntry> & getEdgeGradGather() const
+    {
+        return edge_grad_gather;
     }
 };
 

@@ -44,11 +44,41 @@ struct MergeGradVertices
     
     void operator () (const tbb::blocked_range<int>& vertex_range)
     {
+        const auto vertices_bc = boundaryConditions.getVertexBoundaryConditions();
+        const auto & vertex_gather = topo.getVertexGradGather();
+        const auto & vertex2faces = topo.getVertex2Faces();
+
+        if(vertex_gather.size() == vertex2faces.size())
+        {
+            for (int i=vertex_range.begin(); i != vertex_range.end(); ++i)
+            {
+                const bool bc0 = vertices_bc(i,0);
+                const bool bc1 = vertices_bc(i,1);
+                const bool bc2 = vertices_bc(i,2);
+                if(bc0 && bc1 && bc2) continue;
+
+                const auto & entries = vertex_gather[i];
+                for(size_t f=0;f<entries.size();++f)
+                {
+                    const auto & entry = entries[f];
+                    if(not bc0) gradient_vertices(i,0) += per_face_gradients(entry.face_idx, entry.col_offset + 0);
+                    if(not bc1) gradient_vertices(i,1) += per_face_gradients(entry.face_idx, entry.col_offset + 1);
+                    if(not bc2) gradient_vertices(i,2) += per_face_gradients(entry.face_idx, entry.col_offset + 2);
+
+                    if(entry.opp_face_idx >= 0)
+                    {
+                        if(not bc0) gradient_vertices(i,0) += per_face_gradients(entry.opp_face_idx, entry.opp_col_offset + 0);
+                        if(not bc1) gradient_vertices(i,1) += per_face_gradients(entry.opp_face_idx, entry.opp_col_offset + 1);
+                        if(not bc2) gradient_vertices(i,2) += per_face_gradients(entry.opp_face_idx, entry.opp_col_offset + 2);
+                    }
+                }
+            }
+            return;
+        }
+
         const auto face2edges = topo.getFace2Edges();
         const auto edge2faces = topo.getEdge2Faces();
         const auto face2vertices = topo.getFace2Vertices();
-        const auto vertices_bc = boundaryConditions.getVertexBoundaryConditions();
-        const auto & vertex2faces = topo.getVertex2Faces();
         
         for (int i=vertex_range.begin(); i != vertex_range.end(); ++i)
         {
@@ -117,9 +147,25 @@ struct MergeGradEdges
     
     void operator () (const tbb::blocked_range<int>& edge_range)
     {
-        const auto face2edges = topo.getFace2Edges();
-        const auto edge2faces = topo.getEdge2Faces();
         const auto edges_bc = boundaryConditions.getEdgeBoundaryConditions();
+        const auto & edge_gather = topo.getEdgeGradGather();
+        const auto edge2faces = topo.getEdge2Faces();
+
+        if((int)edge_gather.size() == edge2faces.rows())
+        {
+            for (int i=edge_range.begin(); i != edge_range.end(); ++i)
+            {
+                if(edges_bc(i)) continue;
+                const auto & entry = edge_gather[i];
+                if(entry.face_idx_0 >= 0)
+                    gradient_edges(i) += per_face_gradients(entry.face_idx_0, entry.col_0);
+                if(entry.face_idx_1 >= 0)
+                    gradient_edges(i) += per_face_gradients(entry.face_idx_1, entry.col_1);
+            }
+            return;
+        }
+
+        const auto face2edges = topo.getFace2Edges();
         
         for (int i=edge_range.begin(); i != edge_range.end(); ++i)
         {

@@ -28,6 +28,10 @@ public:
     
     virtual Real compute(const tMesh & mesh) const = 0;
     virtual Real compute(const tMesh & mesh, Eigen::Ref<Eigen::VectorXd> gradient) const = 0;
+    virtual bool tryComputeFusedPair(const tMesh & /*mesh*/, const EnergyOperator<tMesh> * /*second*/, Eigen::Ref<Eigen::VectorXd> /*gradient*/, const bool /*computeGradient*/, Real & /*energyOut*/) const
+    {
+        return false;
+    }
     virtual Real computeSubsetEnergies(const tMesh & /*mesh*/, const std::vector<int> & /*face_indices*/) const
     {return 0;}
     virtual bool isSubsetImplemented() const {return false;}

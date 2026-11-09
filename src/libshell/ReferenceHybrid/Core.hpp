@@ -309,7 +309,7 @@ class Engine
         // h: index into H values; r,c: original row/col DOFs; t: transposed entry in reduced CSC.
         struct EntryMap { int h; int r; int c; int t; };
         int rows=0, cols=0;
-        std::vector<int> hOuter, hInner, freeDofs;
+        std::vector<int> hOuter, hInner, freeDofs, diagOffsets;
         Sparse templateA, diff;
         std::vector<EntryMap> entries;
         std::vector<double> raw;
@@ -433,6 +433,7 @@ class Engine
             const int* const aOuter=s.A.outerIndexPtr();
             const int* const aInner=s.A.innerIndexPtr();
             std::vector<ReducedHessianPatternCache::EntryMap> mapped(s.A.nonZeros());
+            std::vector<int> diagOffsets(size_t(s.A.cols()),-1);
             bool allFound=true;
             for(int col=0;col<s.A.cols() && allFound;++col)
             {
@@ -440,6 +441,7 @@ class Engine
                 for(int k=aOuter[col];k<aOuter[col+1];++k)
                 {
                     const int rowIdx=aInner[k];
+                    if(rowIdx==col)diagOffsets[size_t(col)]=k;
                     const int origRow=s.free[size_t(rowIdx)];
                     const auto b1=hInner+hOuter[origCol],e1=hInner+hOuter[origCol+1];
                     const auto it1=std::lower_bound(b1,e1,origRow);
@@ -448,6 +450,7 @@ class Engine
                     if(it1==e1 || *it1!=origRow || it2==e2 || *it2!=col){allFound=false;break;}
                     mapped[size_t(k)]={int(it1-hInner),origRow,origCol,int(it2-aInner)};
                 }
+                if(diagOffsets[size_t(col)]<0)allFound=false;
             }
             if(allFound)
             {
@@ -455,6 +458,7 @@ class Engine
                 modelPatternCache.hOuter.assign(hOuter,hOuter+H.cols()+1);
                 modelPatternCache.hInner.assign(hInner,hInner+H.nonZeros());
                 modelPatternCache.freeDofs=s.free;
+                modelPatternCache.diagOffsets=std::move(diagOffsets);
                 modelPatternCache.templateA=s.A;modelPatternCache.diff=s.A;
                 modelPatternCache.entries=std::move(mapped);
                 modelPatternCache.raw.assign(size_t(s.A.nonZeros()),0.0);
@@ -552,8 +556,30 @@ class Engine
         // All shifts at this base state share a pattern. Explicit zero diagonals
         // are essential when the original Hessian has off-diagonal-only curvature.
         Sparse B=s.A;const Vec diagonal=s.A.diagonal();
-        for(int i=0;i<B.rows();++i)B.coeffRef(i,i)=diagonal[i];
-        B.makeCompressed();
+        const int* diagPtr=nullptr;
+        std::vector<int> fallbackDiagOffsets;
+        if(modelPatternCache.valid && B.isCompressed() &&
+           B.rows()==int(modelPatternCache.diagOffsets.size()) &&
+           B.nonZeros()==modelPatternCache.templateA.nonZeros())
+        {
+            diagPtr=modelPatternCache.diagOffsets.data();
+            double* const bVal=B.valuePtr();
+            for(int i=0;i<B.rows();++i)bVal[diagPtr[i]]=diagonal[i];
+        }
+        else
+        {
+            for(int i=0;i<B.rows();++i)B.coeffRef(i,i)=diagonal[i];
+            B.makeCompressed();
+            fallbackDiagOffsets.resize(size_t(B.rows()));
+            const int* const bOuter=B.outerIndexPtr();
+            const int* const bInner=B.innerIndexPtr();
+            for(int i=0;i<B.rows();++i)
+            {
+                const auto it=std::lower_bound(bInner+bOuter[i],bInner+bOuter[i+1],i);
+                fallbackDiagOffsets[size_t(i)]=int(it-bInner);
+            }
+            diagPtr=fallbackDiagOffsets.data();
+        }
         NativeNewtonFactorization* selected=nullptr;
         row["factorization_backend"]=config.newtonBackend=="cholmod"?"cholmod_supernodal_external_eigen_amd":"llt_early_nonpositive_pivot";
         timeCheck();const double symbolicStart=clock();bool analyzed=true;
@@ -569,7 +595,8 @@ class Engine
         for(int attempt=0;attempt<config.maxShiftAttempts;++attempt)
         {
             timeCheck();
-            for(int i=0;i<B.rows();++i)B.coeffRef(i,i)=diagonal[i]+shift;
+            double* const bVal=B.valuePtr();
+            for(int i=0;i<B.rows();++i)bVal[diagPtr[i]]=diagonal[i]+shift;
             const double factorStart=clock();factor.factorize(B);
             const double factorSeconds=clock()-factorStart;
             const bool acceptable=factor.acceptable(config.pivotFloor*scale);

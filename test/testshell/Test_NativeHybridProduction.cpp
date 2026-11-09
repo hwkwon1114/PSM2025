@@ -1097,4 +1097,97 @@ TEST(NativeHybridProduction, Tier2DeterministicHybridTrajectoryParity)
     EXPECT_DOUBLE_EQ(repA.gradientNorm, repB.gradientNorm);
     EXPECT_DOUBLE_EQ((repA.selected - repB.selected).norm(), 0.0);
 }
+
+TEST(NativeHybridProduction, FusedBilayerEnergyAndGradientParity)
+{
+    BilayerMesh mesh;
+    RectangularPlate geometry(.02, .015, .5, {false, false}, {false, false});
+    geometry.setQuiet();
+    mesh.init(geometry, false);
+    MaterialProperties_Iso_Constant mat(1., .33, .0006);
+    CombinedOperator_Parametric<BilayerMesh, Material_Isotropic, bottom> bot(mat);
+    CombinedOperator_Parametric<BilayerMesh, Material_Isotropic, top> topEnergy(mat);
+    EnergyOperatorList<BilayerMesh> energyList({&bot, &topEnergy});
+
+    auto& abarTop = mesh.getRestConfiguration().getFirstFundamentalForms<top>();
+    for(auto& a : abarTop) a *= 1.002 * 1.002;
+    mesh.getDataPointer()[2 * mesh.getNumberOfVertices()] += 1e-4;
+    mesh.updateDeformedConfiguration();
+
+    const int totalDOFs = 3 * mesh.getNumberOfVertices() + mesh.getNumberOfEdges();
+    Eigen::VectorXd gradSeparate = Eigen::VectorXd::Zero(totalDOFs);
+    Eigen::VectorXd gradFused = Eigen::VectorXd::Zero(totalDOFs);
+
+    // 1. Separate evaluation (fused disabled)
+    energyList.setFusedBilayerEvaluation(false);
+    const Real energySeparate = energyList.compute(mesh, gradSeparate);
+    const Real bot_aa_sep = bot.getLastStretchingEnergy();
+    const Real bot_bb_sep = bot.getLastBendingEnergy();
+    const Real bot_ab_sep = bot.getLastABEnergy();
+    const Real top_aa_sep = topEnergy.getLastStretchingEnergy();
+    const Real top_bb_sep = topEnergy.getLastBendingEnergy();
+    const Real top_ab_sep = topEnergy.getLastABEnergy();
+
+    // 2. Fused evaluation (fused enabled)
+    energyList.setFusedBilayerEvaluation(true);
+    const Real energyFused = energyList.compute(mesh, gradFused);
+    const Real bot_aa_fused = bot.getLastStretchingEnergy();
+    const Real bot_bb_fused = bot.getLastBendingEnergy();
+    const Real bot_ab_fused = bot.getLastABEnergy();
+    const Real top_aa_fused = topEnergy.getLastStretchingEnergy();
+    const Real top_bb_fused = topEnergy.getLastBendingEnergy();
+    const Real top_ab_fused = topEnergy.getLastABEnergy();
+
+    // Energy parity
+    EXPECT_DOUBLE_EQ(energySeparate, energyFused);
+    EXPECT_DOUBLE_EQ(bot_aa_sep, bot_aa_fused);
+    EXPECT_DOUBLE_EQ(bot_bb_sep, bot_bb_fused);
+    EXPECT_DOUBLE_EQ(bot_ab_sep, bot_ab_fused);
+    EXPECT_DOUBLE_EQ(top_aa_sep, top_aa_fused);
+    EXPECT_DOUBLE_EQ(top_bb_sep, top_bb_fused);
+    EXPECT_DOUBLE_EQ(top_ab_sep, top_ab_fused);
+
+    // Gradient parity
+    const double gradDiffNorm = (gradSeparate - gradFused).norm();
+    EXPECT_LT(gradDiffNorm, 1e-14 * std::max(1.0, gradSeparate.norm()));
+
+    // Evaluation without gradient parity
+    energyList.setFusedBilayerEvaluation(false);
+    const Real energyNoGradSeparate = energyList.compute(mesh);
+    energyList.setFusedBilayerEvaluation(true);
+    const Real energyNoGradFused = energyList.compute(mesh);
+    EXPECT_DOUBLE_EQ(energyNoGradSeparate, energyNoGradFused);
+    EXPECT_DOUBLE_EQ(energySeparate, energyNoGradFused);
+}
+
+TEST(NativeHybridProduction, ContinuationStepHysteresisAndStrainJump)
+{
+    // 1. computeInitialStepFromStrainJump
+    const double initStep = 1.0;
+    const double minStep = 0.015625; // 1/64
+    // Target strain jump inactive (<= 0.0) -> returns initialStep
+    EXPECT_DOUBLE_EQ(ShellContinuation::computeInitialStepFromStrainJump(initStep, minStep, 0.08, 0.0), 1.0);
+    // Strain jump already below target -> returns initialStep
+    EXPECT_DOUBLE_EQ(ShellContinuation::computeInitialStepFromStrainJump(initStep, minStep, 0.005, 0.01), 1.0);
+    // Strain jump 0.08 with target 0.01 -> dyadic halving: 1.0 -> 0.5 -> 0.25 -> 0.125
+    EXPECT_DOUBLE_EQ(ShellContinuation::computeInitialStepFromStrainJump(initStep, minStep, 0.08, 0.01), 0.125);
+    // Severe strain jump clamped to minStep
+    EXPECT_DOUBLE_EQ(ShellContinuation::computeInitialStepFromStrainJump(initStep, minStep, 10.0, 0.0001), minStep);
+
+    // 2. computeNextStepOnSuccess with hysteresis
+    const double maxStep = 1.0;
+    const double growth = 2.0;
+    // With streak = 1 (normal behavior without prior cutback):
+    EXPECT_DOUBLE_EQ(ShellContinuation::computeNextStepOnSuccess(0.125, maxStep, growth, 1, 1), 0.25);
+
+    // With streak = 2 (hysteresis active after cutback):
+    // 1st success: step does not grow
+    EXPECT_DOUBLE_EQ(ShellContinuation::computeNextStepOnSuccess(0.125, maxStep, growth, 1, 2), 0.125);
+    // 2nd success: step grows by growth factor
+    EXPECT_DOUBLE_EQ(ShellContinuation::computeNextStepOnSuccess(0.125, maxStep, growth, 2, 2), 0.25);
+
+    // Target strain jump clamp: if current strain jump * growth > target, do not grow
+    EXPECT_DOUBLE_EQ(ShellContinuation::computeNextStepOnSuccess(0.125, maxStep, growth, 2, 2, 0.008, 0.01), 0.125);
+    EXPECT_DOUBLE_EQ(ShellContinuation::computeNextStepOnSuccess(0.125, maxStep, growth, 2, 2, 0.004, 0.01), 0.25);
+}
 #endif // SHELL_WITH_NATIVE_HYBRID

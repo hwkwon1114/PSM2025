@@ -29,6 +29,7 @@
 template<typename tMesh, typename tMaterialType = Material_Isotropic, MeshLayer layer = single>
 class CombinedOperator_Parametric : public EnergyOperator_DCS<tMesh>
 {
+    template<typename, typename, MeshLayer> friend class CombinedOperator_Parametric;
 public:
     using EnergyOperator_DCS<tMesh>::compute;
     typedef typename tMesh::tCurrentConfigData tCurrentConfigData;
@@ -120,6 +121,8 @@ public:
     Real computePerFaceEnergies(const tMesh & mesh, Eigen::Ref<Eigen::MatrixXd> per_face_energies) const;
     void computePerFaceStresses(const tMesh & mesh, Eigen::Ref<Eigen::MatrixXd> per_face_stretch_stress, Eigen::Ref<Eigen::MatrixXd> per_face_bend_stress) const;
     void computePerFaceStrains(const tMesh & mesh, Eigen::Ref<Eigen::MatrixXd> per_face_stretch_strain, Eigen::Ref<Eigen::MatrixXd> per_face_bend_strain) const;
+
+    bool tryComputeFusedPair(const tMesh & mesh, const EnergyOperator<tMesh> * second, Eigen::Ref<Eigen::VectorXd> gradient, const bool computeGradient, Real & energyOut) const override;
 
     bool isSubsetImplemented() const override {return true;}
 

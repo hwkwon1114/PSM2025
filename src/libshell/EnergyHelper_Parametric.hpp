@@ -480,10 +480,8 @@ typename std::conditional<layer == single, SaintVenantEnergyData_WithGradient, S
     h_bb(compute_h_bb(mat_prop_in.getThickness())),
     h_ab(compute_h_ab(mat_prop_in.getThickness())),
     helper(mat_prop_in, aform_bar_in, aform_bar_inv_in, area_in),
-    firstFF(firstFF_in),
-    secondFF(secondFF_in),
-    straindata_stretching(helper, firstFF),
-    straindata_bending(helper, bform_bar_in, secondFF),
+    straindata_stretching(helper, firstFF_in),
+    straindata_bending(helper, bform_bar_in, secondFF_in),
     energydata_stretching(helper, straindata_stretching),
     energydata_bending(helper, straindata_bending),
     energydata_bilayer(helper, energydata_stretching, energydata_bending)

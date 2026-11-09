@@ -43,12 +43,31 @@ template<typename tMesh>
 class NativeHybridHessian_Bilayer
 {
     const Real E, nu, h;
+    struct FaceTopologyCache
+    {
+        int ownIdx[3] = {0, 0, 0};
+        bool interior[3] = {false, false, false};
+        int sgn[3] = {1, 1, 1};
+        int eIdx[3] = {0, 0, 0};
+        int oppGlobal[3] = {-1, -1, -1};
+        int nbrMap[3][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
+    };
+    struct CachedLayerMetric
+    {
+        Eigen::Matrix2d abar = Eigen::Matrix2d::Zero();
+        Eigen::Matrix2d abar_inv = Eigen::Matrix2d::Zero();
+        double area = 0.0;
+        bool valid = false;
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    };
     struct Pattern
     {
         const tMesh* mesh=nullptr;
         Eigen::MatrixXi F,F2E,E2F;
         std::vector<char> bc;
         std::vector<std::array<int,21>> stencil;
+        std::vector<FaceTopologyCache> faceTopo;
+        std::vector<CachedLayerMetric, Eigen::aligned_allocator<CachedLayerMetric>> metricsBot, metricsTop;
         // CSC valuePtr offsets in face/r/c order; -1 denotes a masked DOF.
         std::vector<std::array<int,21*21>> offsets;
         std::vector<int> bcDiagonalOffsets;
@@ -67,11 +86,17 @@ class NativeHybridHessian_Bilayer
     template<typename ADouble>
     ADouble computeFaceEnergyAD(
         const int f,
-        const Eigen::MatrixXi & F, const Eigen::MatrixXi & F2E, const Eigen::MatrixXi & E2F,
-        const Eigen::MatrixXd & V, const Eigen::VectorXd & phi,
+        const Eigen::Ref<const Eigen::MatrixXi> & F,
+        const Eigen::Ref<const Eigen::MatrixXi> & F2E,
+        const Eigen::Ref<const Eigen::MatrixXi> & E2F,
+        const Eigen::Ref<const Eigen::MatrixXd> & V,
+        const Eigen::Ref<const Eigen::VectorXd> & phi,
         const tVecMat2d & abarsBot, const tVecMat2d & abarsTop,
         const Eigen::Matrix2d & bbar,
-        const int nV, int gidx[21]) const
+        const int nV, int gidx[21],
+        const FaceTopologyCache * cachedTopo = nullptr,
+        const CachedLayerMetric * cachedBot = nullptr,
+        const CachedLayerMetric * cachedTop = nullptr) const
     {
         typedef Eigen::Matrix<ADouble, 3, 1> Vec3A;
 
@@ -82,60 +107,80 @@ class NativeHybridHessian_Bilayer
         const Real h_ab_bot = +h * h / 8.0;                  // bilayer compute_h_ab (bottom)
         const Real h_ab_top = -h * h / 8.0;                  // bilayer compute_h_ab (top)
 
-        const int i0 = F(f, 0), i1 = F(f, 1), i2 = F(f, 2);
-        const int ownIdx[3] = {i0, i1, i2};
-
+        int i0, i1, i2;
         bool interior[3];
         int  sgn[3];
         int  eIdx[3];
         int  oppGlobal[3];
         int  nbrMap[3][3];
 
-        for(int i = 0; i < 3; ++i)
+        if(cachedTopo != nullptr && pattern_ != nullptr)
         {
-            const int e = F2E(f, i);
-            eIdx[i] = e;
-            const int fA = E2F(e, 0), fB = E2F(e, 1);
-            sgn[i] = (fA == f ? +1 : -1);
-            oppGlobal[i] = -1;
-            if(fA < 0 || fB < 0) { interior[i] = false; continue; }
-            interior[i] = true;
-            const int nbr = (fA == f ? fB : fA);
-            const int nv[3] = {F(nbr, 0), F(nbr, 1), F(nbr, 2)};
-            for(int k = 0; k < 3; ++k)
+            i0 = cachedTopo->ownIdx[0];
+            i1 = cachedTopo->ownIdx[1];
+            i2 = cachedTopo->ownIdx[2];
+            for(int i = 0; i < 3; ++i)
             {
-                const int gg = nv[k];
-                if(gg == i0)      nbrMap[i][k] = 0;
-                else if(gg == i1) nbrMap[i][k] = 1;
-                else if(gg == i2) nbrMap[i][k] = 2;
-                else { nbrMap[i][k] = 3; oppGlobal[i] = gg; }
+                interior[i] = cachedTopo->interior[i];
+                sgn[i] = cachedTopo->sgn[i];
+                eIdx[i] = cachedTopo->eIdx[i];
+                oppGlobal[i] = cachedTopo->oppGlobal[i];
+                for(int k = 0; k < 3; ++k) nbrMap[i][k] = cachedTopo->nbrMap[i][k];
             }
+            const auto & st = pattern_->stencil[f];
+            for(int j = 0; j < 21; ++j) gidx[j] = st[j];
         }
+        else
+        {
+            i0 = F(f, 0); i1 = F(f, 1); i2 = F(f, 2);
+            const int ownIdx[3] = {i0, i1, i2};
 
-        for(int a = 0; a < 3; ++a)
-        {
-            gidx[3 * a + 0] = 0 * nV + ownIdx[a];
-            gidx[3 * a + 1] = 1 * nV + ownIdx[a];
-            gidx[3 * a + 2] = 2 * nV + ownIdx[a];
-        }
-        for(int i = 0; i < 3; ++i)
-        {
-            if(interior[i])
+            for(int i = 0; i < 3; ++i)
             {
-                gidx[9 + 3 * i + 0] = 0 * nV + oppGlobal[i];
-                gidx[9 + 3 * i + 1] = 1 * nV + oppGlobal[i];
-                gidx[9 + 3 * i + 2] = 2 * nV + oppGlobal[i];
+                const int e = F2E(f, i);
+                eIdx[i] = e;
+                const int fA = E2F(e, 0), fB = E2F(e, 1);
+                sgn[i] = (fA == f ? +1 : -1);
+                oppGlobal[i] = -1;
+                if(fA < 0 || fB < 0) { interior[i] = false; continue; }
+                interior[i] = true;
+                const int nbr = (fA == f ? fB : fA);
+                const int nv[3] = {F(nbr, 0), F(nbr, 1), F(nbr, 2)};
+                for(int k = 0; k < 3; ++k)
+                {
+                    const int gg = nv[k];
+                    if(gg == i0)      nbrMap[i][k] = 0;
+                    else if(gg == i1) nbrMap[i][k] = 1;
+                    else if(gg == i2) nbrMap[i][k] = 2;
+                    else { nbrMap[i][k] = 3; oppGlobal[i] = gg; }
+                }
             }
-            else
+
+            for(int a = 0; a < 3; ++a)
             {
-                gidx[9 + 3 * i + 0] = -1;
-                gidx[9 + 3 * i + 1] = -1;
-                gidx[9 + 3 * i + 2] = -1;
+                gidx[3 * a + 0] = 0 * nV + ownIdx[a];
+                gidx[3 * a + 1] = 1 * nV + ownIdx[a];
+                gidx[3 * a + 2] = 2 * nV + ownIdx[a];
             }
+            for(int i = 0; i < 3; ++i)
+            {
+                if(interior[i])
+                {
+                    gidx[9 + 3 * i + 0] = 0 * nV + oppGlobal[i];
+                    gidx[9 + 3 * i + 1] = 1 * nV + oppGlobal[i];
+                    gidx[9 + 3 * i + 2] = 2 * nV + oppGlobal[i];
+                }
+                else
+                {
+                    gidx[9 + 3 * i + 0] = -1;
+                    gidx[9 + 3 * i + 1] = -1;
+                    gidx[9 + 3 * i + 2] = -1;
+                }
+            }
+            gidx[18] = 3 * nV + eIdx[0];
+            gidx[19] = 3 * nV + eIdx[1];
+            gidx[20] = 3 * nV + eIdx[2];
         }
-        gidx[18] = 3 * nV + eIdx[0];
-        gidx[19] = 3 * nV + eIdx[1];
-        gidx[20] = 3 * nV + eIdx[2];
 
         Eigen::Matrix<double, 21, 1> x0;
         x0.setZero();
@@ -237,13 +282,13 @@ class NativeHybridHessian_Bilayer
         const ADouble d12 = b12 - bb12;
         const ADouble d22 = b22 - bb22;
 
-        auto layerEnergy = [&](const Eigen::Matrix2d & abarL, const Real h_ab_L) -> ADouble
+        auto layerEnergy = [&](const Eigen::Matrix2d & abarL, const CachedLayerMetric * cachedMetric, const Real h_ab_L) -> ADouble
         {
-            const Eigen::Matrix2d abar_inv = abarL.inverse();
+            const Eigen::Matrix2d abar_inv = (cachedMetric != nullptr && cachedMetric->valid) ? cachedMetric->abar_inv : abarL.inverse();
             const double ai11 = abar_inv(0, 0);
             const double ai12 = abar_inv(0, 1);
             const double ai22 = abar_inv(1, 1);
-            const double area = 0.5 * std::sqrt(abarL.determinant());
+            const double area = (cachedMetric != nullptr && cachedMetric->valid) ? cachedMetric->area : 0.5 * std::sqrt(abarL.determinant());
 
             const ADouble Ea11 = ai11 * aF11 + ai12 * aF12 - 1.0;
             const ADouble Ea12 = ai11 * aF12 + ai12 * aF22;
@@ -267,8 +312,8 @@ class NativeHybridHessian_Bilayer
             return stretch + bend + mixed;
         };
 
-        const ADouble e_bot = layerEnergy(abarsBot[f], h_ab_bot);
-        const ADouble e_top = layerEnergy(abarsTop[f], h_ab_top);
+        const ADouble e_bot = layerEnergy(abarsBot[f], cachedBot, h_ab_bot);
+        const ADouble e_top = layerEnergy(abarsTop[f], cachedTop, h_ab_top);
         return e_bot + e_top;
     }
 
@@ -315,9 +360,9 @@ public:
         mesh.updateDeformedConfiguration();
         const int nv=mesh.getNumberOfVertices(),nf=mesh.getNumberOfFaces();
         const auto& topo=mesh.getTopology();
-        const Eigen::MatrixXi F=topo.getFace2Vertices(),F2E=topo.getFace2Edges(),E2F=topo.getEdge2Faces();
-        const Eigen::MatrixXd V=mesh.getCurrentConfiguration().getVertices();
-        const Eigen::VectorXd phi=mesh.getCurrentConfiguration().getEdgeDirectors();
+        const Eigen::Ref<const Eigen::MatrixXi> F=topo.getFace2Vertices(),F2E=topo.getFace2Edges(),E2F=topo.getEdge2Faces();
+        const Eigen::Ref<const Eigen::MatrixXd> V=mesh.getCurrentConfiguration().getVertices();
+        const Eigen::Ref<const Eigen::VectorXd> phi=mesh.getCurrentConfiguration().getEdgeDirectors();
         const tVecMat2d& abB=mesh.getRestConfiguration().template getFirstFundamentalForms<bottom>();
         const tVecMat2d& abT=mesh.getRestConfiguration().template getFirstFundamentalForms<top>();
         using ADg=TinyAD::Double<21,false>;
@@ -325,7 +370,7 @@ public:
         for(int f=0;f<nf;++f)
         {
             int gidx[21];
-            const auto bbar=mesh.getRestConfiguration().getSecondFundamentalForm(f);
+            const auto& bbar=mesh.getRestConfiguration().getSecondFundamentalForm(f);
             sum+=computeFaceEnergyAD<ADg>(f,F,F2E,E2F,V,phi,abB,abT,bbar,nv,gidx).val;
         }
         return sum;
@@ -343,11 +388,11 @@ public:
         const int nF = mesh.getNumberOfFaces();
         const int nD = nDofs(mesh);
         const auto & topo = mesh.getTopology();
-        const Eigen::MatrixXi F   = topo.getFace2Vertices();
-        const Eigen::MatrixXi F2E = topo.getFace2Edges();
-        const Eigen::MatrixXi E2F = topo.getEdge2Faces();
-        const Eigen::MatrixXd V   = mesh.getCurrentConfiguration().getVertices();
-        const Eigen::VectorXd phi = mesh.getCurrentConfiguration().getEdgeDirectors();
+        const Eigen::Ref<const Eigen::MatrixXi> F   = topo.getFace2Vertices();
+        const Eigen::Ref<const Eigen::MatrixXi> F2E = topo.getFace2Edges();
+        const Eigen::Ref<const Eigen::MatrixXi> E2F = topo.getEdge2Faces();
+        const Eigen::Ref<const Eigen::MatrixXd> V   = mesh.getCurrentConfiguration().getVertices();
+        const Eigen::Ref<const Eigen::VectorXd> phi = mesh.getCurrentConfiguration().getEdgeDirectors();
         const tVecMat2d & abB = mesh.getRestConfiguration().template getFirstFundamentalForms<bottom>();
         const tVecMat2d & abT = mesh.getRestConfiguration().template getFirstFundamentalForms<top>();
         const std::vector<char> bcMask = constrainedDofMask(mesh);
@@ -357,7 +402,7 @@ public:
         for(int f = 0; f < nF; ++f)
         {
             int gidx[21];
-            const Eigen::Matrix2d bbar = mesh.getRestConfiguration().getSecondFundamentalForm(f);
+            const Eigen::Matrix2d & bbar = mesh.getRestConfiguration().getSecondFundamentalForm(f);
             const ADg e = computeFaceEnergyAD<ADg>(f, F, F2E, E2F, V, phi, abB, abT, bbar, nV, gidx);
             for(int j = 0; j < 21; ++j)
                 if(gidx[j] >= 0 && !bcMask[gidx[j]]) g(gidx[j]) += e.grad(j);
@@ -375,11 +420,11 @@ public:
         if(v.size() != nD)
             throw std::invalid_argument("TinyADHessian_Bilayer::hessianVectorProduct: wrong length");
         const auto & topo = mesh.getTopology();
-        const Eigen::MatrixXi F   = topo.getFace2Vertices();
-        const Eigen::MatrixXi F2E = topo.getFace2Edges();
-        const Eigen::MatrixXi E2F = topo.getEdge2Faces();
-        const Eigen::MatrixXd V   = mesh.getCurrentConfiguration().getVertices();
-        const Eigen::VectorXd phi = mesh.getCurrentConfiguration().getEdgeDirectors();
+        const Eigen::Ref<const Eigen::MatrixXi> F   = topo.getFace2Vertices();
+        const Eigen::Ref<const Eigen::MatrixXi> F2E = topo.getFace2Edges();
+        const Eigen::Ref<const Eigen::MatrixXi> E2F = topo.getEdge2Faces();
+        const Eigen::Ref<const Eigen::MatrixXd> V   = mesh.getCurrentConfiguration().getVertices();
+        const Eigen::Ref<const Eigen::VectorXd> phi = mesh.getCurrentConfiguration().getEdgeDirectors();
         const tVecMat2d & abB = mesh.getRestConfiguration().template getFirstFundamentalForms<bottom>();
         const tVecMat2d & abT = mesh.getRestConfiguration().template getFirstFundamentalForms<top>();
         const std::vector<char> bcMask = constrainedDofMask(mesh);
@@ -389,7 +434,7 @@ public:
         for(int f = 0; f < nF; ++f)
         {
             int gidx[21];
-            const Eigen::Matrix2d bbar = mesh.getRestConfiguration().getSecondFundamentalForm(f);
+            const Eigen::Matrix2d & bbar = mesh.getRestConfiguration().getSecondFundamentalForm(f);
             const ADouble e = computeFaceEnergyAD<ADouble>(f, F, F2E, E2F, V, phi, abB, abT, bbar, nV, gidx);
             Eigen::Matrix<double, 21, 1> v_local; v_local.setZero();
             for(int j = 0; j < 21; ++j)
@@ -404,35 +449,54 @@ public:
     }
 
 private:
-    void initializePattern(tMesh& mesh,const Eigen::MatrixXi& F,
-                           const Eigen::MatrixXi& F2E,const Eigen::MatrixXi& E2F,
+    void initializePattern(tMesh& mesh,const Eigen::Ref<const Eigen::MatrixXi>& F,
+                           const Eigen::Ref<const Eigen::MatrixXi>& F2E,const Eigen::Ref<const Eigen::MatrixXi>& E2F,
                            const std::vector<char>& mask)
     {
         auto next=std::make_unique<Pattern>();
         next->mesh=&mesh;next->F=F;next->F2E=F2E;next->E2F=E2F;next->bc=mask;
         const int nv=mesh.getNumberOfVertices(),nd=nDofs(mesh),nf=mesh.getNumberOfFaces();
         next->stencil.resize(nf);
+        next->faceTopo.resize(nf);
+        next->metricsBot.resize(nf);
+        next->metricsTop.resize(nf);
         std::vector<Eigen::Triplet<double>> trips;
         trips.reserve(std::size_t(nf)*21*21);
         for(int f=0;f<nf;++f)
         {
             auto& g=next->stencil[f];
+            auto& ft=next->faceTopo[f];
             const int own[3]={F(f,0),F(f,1),F(f,2)};
-            for(int a=0;a<3;++a)for(int d=0;d<3;++d)g[3*a+d]=d*nv+own[a];
+            for(int a=0;a<3;++a)
+            {
+                ft.ownIdx[a]=own[a];
+                for(int d=0;d<3;++d)g[3*a+d]=d*nv+own[a];
+            }
             for(int i=0;i<3;++i)
             {
                 const int edge=F2E(f,i),fa=E2F(edge,0),fb=E2F(edge,1);
+                ft.eIdx[i]=edge;
+                ft.sgn[i]=(fa==f?+1:-1);
                 int opp=-1;
                 if(fa>=0 && fb>=0)
                 {
+                    ft.interior[i]=true;
                     const int other=fa==f?fb:fa;
                     for(int k=0;k<3;++k)
                     {
                         const int v=F(other,k);
-                        if(v!=own[0] && v!=own[1] && v!=own[2])opp=v;
+                        if(v==own[0])ft.nbrMap[i][k]=0;
+                        else if(v==own[1])ft.nbrMap[i][k]=1;
+                        else if(v==own[2])ft.nbrMap[i][k]=2;
+                        else {ft.nbrMap[i][k]=3;opp=v;}
                     }
                     if(opp<0)throw std::invalid_argument("invalid face neighbor in cached Hessian");
                 }
+                else
+                {
+                    ft.interior[i]=false;
+                }
+                ft.oppGlobal[i]=opp;
                 for(int d=0;d<3;++d)g[9+3*i+d]=opp<0?-1:d*nv+opp;
                 g[18+i]=3*nv+edge;
             }
@@ -478,21 +542,40 @@ public:
         mesh.updateDeformedConfiguration();
         const int nv=mesh.getNumberOfVertices(),nf=mesh.getNumberOfFaces();
         const auto& topo=mesh.getTopology();
-        const Eigen::MatrixXi F=topo.getFace2Vertices(),F2E=topo.getFace2Edges(),E2F=topo.getEdge2Faces();
+        const Eigen::Ref<const Eigen::MatrixXi> F=topo.getFace2Vertices(),F2E=topo.getFace2Edges(),E2F=topo.getEdge2Faces();
         const std::vector<char> mask=constrainedDofMask(mesh);
         if(!pattern_)initializePattern(mesh,F,F2E,E2F,mask);
-        const auto& cache=*pattern_;
-        const auto same=[](const Eigen::MatrixXi& a,const Eigen::MatrixXi& b){
+        auto& cache=*pattern_;
+        const auto same=[](const Eigen::MatrixXi& a,const Eigen::Ref<const Eigen::MatrixXi>& b){
             return a.rows()==b.rows() && a.cols()==b.cols() && (a.array()==b.array()).all();
         };
         if(cache.mesh!=&mesh || cache.structure.rows()!=nDofs(mesh) ||
            cache.stencil.size()!=std::size_t(nf) || cache.bc!=mask ||
            !same(cache.F,F) || !same(cache.F2E,F2E) || !same(cache.E2F,E2F))
             throw std::invalid_argument("cached Hessian topology or constraint mask changed");
-        const Eigen::MatrixXd V=mesh.getCurrentConfiguration().getVertices();
-        const Eigen::VectorXd phi=mesh.getCurrentConfiguration().getEdgeDirectors();
+        const Eigen::Ref<const Eigen::MatrixXd> V=mesh.getCurrentConfiguration().getVertices();
+        const Eigen::Ref<const Eigen::VectorXd> phi=mesh.getCurrentConfiguration().getEdgeDirectors();
         const tVecMat2d& abB=mesh.getRestConfiguration().template getFirstFundamentalForms<bottom>();
         const tVecMat2d& abT=mesh.getRestConfiguration().template getFirstFundamentalForms<top>();
+        for(int f=0;f<nf;++f)
+        {
+            auto& mb=cache.metricsBot[f];
+            if(!mb.valid || mb.abar!=abB[f])
+            {
+                mb.abar=abB[f];
+                mb.abar_inv=abB[f].inverse();
+                mb.area=0.5*std::sqrt(abB[f].determinant());
+                mb.valid=true;
+            }
+            auto& mt=cache.metricsTop[f];
+            if(!mt.valid || mt.abar!=abT[f])
+            {
+                mt.abar=abT[f];
+                mt.abar_inv=abT[f].inverse();
+                mt.area=0.5*std::sqrt(abT[f].determinant());
+                mt.valid=true;
+            }
+        }
         Eigen::SparseMatrix<double> H=cache.structure;
         std::fill_n(H.valuePtr(),H.nonZeros(),0.0);
         using ADouble=TinyAD::Double<21>;
@@ -503,8 +586,10 @@ public:
             for(int f=0;f<nf;++f)
             {
                 int gidx[21];
-                const Eigen::Matrix2d bbar=mesh.getRestConfiguration().getSecondFundamentalForm(f);
-                const ADouble e=computeFaceEnergyAD<ADouble>(f,F,F2E,E2F,V,phi,abB,abT,bbar,nv,gidx);
+                const Eigen::Matrix2d& bbar=mesh.getRestConfiguration().getSecondFundamentalForm(f);
+                const ADouble e=computeFaceEnergyAD<ADouble>(
+                    f,F,F2E,E2F,V,phi,abB,abT,bbar,nv,gidx,
+                    &cache.faceTopo[f],&cache.metricsBot[f],&cache.metricsTop[f]);
                 const auto& positions=cache.offsets[f];
                 for(int r=0;r<21;++r)
                 {
@@ -521,7 +606,7 @@ public:
         else
         {
             // No mesh access or global sparse writes inside the worker loop.
-            const tVecMat2d bbars=mesh.getRestConfiguration().getSecondFundamentalForms();
+            const tVecMat2d& bbars=mesh.getRestConfiguration().getSecondFundamentalForms();
             faceHessians_.resize(nf);
             std::vector<std::exception_ptr> errors(nf);
 #pragma omp parallel num_threads(assemblyThreads_)
@@ -536,7 +621,9 @@ public:
                     try
                     {
                         int gidx[21];
-                        const ADouble e=computeFaceEnergyAD<ADouble>(f,F,F2E,E2F,V,phi,abB,abT,bbars[f],nv,gidx);
+                        const ADouble e=computeFaceEnergyAD<ADouble>(
+                            f,F,F2E,E2F,V,phi,abB,abT,bbars[f],nv,gidx,
+                            &cache.faceTopo[f],&cache.metricsBot[f],&cache.metricsTop[f]);
                         for(int r=0;r<21;++r)
                         {
                             if(gidx[r]!=cache.stencil[f][r])throw std::logic_error("cached Hessian stencil mismatch");

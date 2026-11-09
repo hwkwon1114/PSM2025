@@ -142,13 +142,13 @@ struct ComputeCombined_Parametric
         // do nothing
     }
 
-    template<MeshLayer L = layer> typename std::enable_if<L==single, Eigen::Matrix2d>::type
+    template<MeshLayer L = layer> typename std::enable_if<L==single, const Eigen::Matrix2d &>::type
     getFirstFundamentalForm(const int i) const
     {
         return this->restState.getFirstFundamentalForm(i);
     }
 
-    template<MeshLayer L = layer> typename std::enable_if<L!=single, Eigen::Matrix2d>::type
+    template<MeshLayer L = layer> typename std::enable_if<L!=single, const Eigen::Matrix2d &>::type
     getFirstFundamentalForm(const int i) const
     {
         return this->restState.template getFirstFundamentalForm<L>(i);
@@ -160,8 +160,8 @@ struct ComputeCombined_Parametric
         const int i = info.face_idx;
 
         const tM matprop = this->material_properties.getFaceMaterial(i);
-        const Eigen::Matrix2d aform_bar = getFirstFundamentalForm(i);
-        const Eigen::Matrix2d bform_bar = this->restState.getSecondFundamentalForm(i);
+        const Eigen::Matrix2d & aform_bar = getFirstFundamentalForm(i);
+        const Eigen::Matrix2d & bform_bar = this->restState.getSecondFundamentalForm(i);
 
         auto & cached_ff = this->currentState.getCachedDeformedFormsGrad(i);
         const uint64_t gen = this->currentState.getGeneration();
@@ -206,8 +206,8 @@ struct ComputeCombined_Parametric
         const int i = info.face_idx;
 
         const tM matprop = this->material_properties.getFaceMaterial(i);
-        const Eigen::Matrix2d aform_bar = getFirstFundamentalForm(i);
-        const Eigen::Matrix2d bform_bar = this->restState.getSecondFundamentalForm(i);
+        const Eigen::Matrix2d & aform_bar = getFirstFundamentalForm(i);
+        const Eigen::Matrix2d & bform_bar = this->restState.getSecondFundamentalForm(i);
 
         auto & cached_ff = this->currentState.getCachedDeformedFormsNoGrad(i);
         const uint64_t gen = this->currentState.getGeneration();
@@ -246,18 +246,57 @@ struct ComputeCombined_Parametric
         }
     }
 
-    template<typename tM = tMaterialType> typename std::enable_if<std::is_same<tM, Material_Orthotropic>::value, void>::type
+    template<bool U = withGradient, typename tM = tMaterialType> typename std::enable_if<U && std::is_same<tM, Material_Orthotropic>::value, void>::type
     processOneTriangle(const ExtendedTriangleInfo & info, Real & energy_aa, Real & energy_bb, Real & energy_ab)
     {
         const int i = info.face_idx;
 
         const tM matprop = this->material_properties.getFaceMaterial(i);
-        const Eigen::Matrix2d aform_bar = getFirstFundamentalForm(i);
+        const Eigen::Matrix2d & aform_bar = getFirstFundamentalForm(i);
         const Eigen::Matrix2d aform_bar_d1 = matprop.get_aform_bar_d1();
         const Eigen::Matrix2d aform_bar_d2 = aform_bar - aform_bar_d1;
-        const Eigen::Matrix2d bform_bar = this->restState.getSecondFundamentalForm(i);
+        const Eigen::Matrix2d & bform_bar = this->restState.getSecondFundamentalForm(i);
 
-        SaintVenantEnergy<withGradient, tM, layer> SV_energy(matprop, aform_bar_d1, aform_bar_d2, bform_bar, info);
+        auto & cached_ff = this->currentState.getCachedDeformedFormsGrad(i);
+        const uint64_t gen = this->currentState.getGeneration();
+        if(cached_ff.generation != gen)
+        {
+            cached_ff.firstFF.set(info);
+            cached_ff.secondFF.set(info);
+            cached_ff.generation = gen;
+        }
+
+        SaintVenantEnergy<withGradient, tM, layer> SV_energy(matprop, aform_bar_d1, aform_bar_d2, bform_bar, cached_ff.firstFF, cached_ff.secondFF);
+
+        SV_energy.compute();
+        energy_aa += SV_energy.stretching_energy;
+        energy_bb += SV_energy.bending_energy;
+        if(layer != single) energy_ab += SV_energy.mixed_energy_ab;
+
+        addGradients(info, SV_energy);
+    }
+
+    template<bool U = withGradient, typename tM = tMaterialType> typename std::enable_if<!U && std::is_same<tM, Material_Orthotropic>::value, void>::type
+    processOneTriangle(const ExtendedTriangleInfo & info, Real & energy_aa, Real & energy_bb, Real & energy_ab)
+    {
+        const int i = info.face_idx;
+
+        const tM matprop = this->material_properties.getFaceMaterial(i);
+        const Eigen::Matrix2d & aform_bar = getFirstFundamentalForm(i);
+        const Eigen::Matrix2d aform_bar_d1 = matprop.get_aform_bar_d1();
+        const Eigen::Matrix2d aform_bar_d2 = aform_bar - aform_bar_d1;
+        const Eigen::Matrix2d & bform_bar = this->restState.getSecondFundamentalForm(i);
+
+        auto & cached_ff = this->currentState.getCachedDeformedFormsNoGrad(i);
+        const uint64_t gen = this->currentState.getGeneration();
+        if(cached_ff.generation != gen)
+        {
+            cached_ff.firstFF.set(info);
+            cached_ff.secondFF.set(info);
+            cached_ff.generation = gen;
+        }
+
+        SaintVenantEnergy<withGradient, tM, layer> SV_energy(matprop, aform_bar_d1, aform_bar_d2, bform_bar, cached_ff.firstFF, cached_ff.secondFF);
 
         SV_energy.compute();
         energy_aa += SV_energy.stretching_energy;
@@ -639,6 +678,306 @@ Real CombinedOperator_Parametric<tMesh, tMaterialType, layer>::computeAll(const 
     }
 
     return lastEnergy_aa + lastEnergy_bb + lastEnergy_ab;
+}
+
+template<typename tMesh, typename tMaterialType, bool withGradient>
+struct ComputeCombined_Parametric_BilayerFused
+{
+    typedef typename tMesh::tReferenceConfigData tReferenceConfigData;
+    typedef typename tMesh::tCurrentConfigData tCurrentConfigData;
+    typedef typename CombinedOperator_Parametric<tMesh, tMaterialType, bottom>::tCachedRestMetrics tCachedRestMetricsBot;
+    typedef typename CombinedOperator_Parametric<tMesh, tMaterialType, top>::tCachedRestMetrics tCachedRestMetricsTop;
+
+    const MaterialProperties<tMaterialType> & mat_props_bot;
+    const MaterialProperties<tMaterialType> & mat_props_top;
+    const tCurrentConfigData & currentState;
+    const tReferenceConfigData & restState;
+    Eigen::Ref<Eigen::MatrixXd> per_face_gradients;
+    tCachedRestMetricsBot * cached_metrics_bot;
+    tCachedRestMetricsTop * cached_metrics_top;
+
+    Real bot_energySum_aa, bot_energySum_bb, bot_energySum_ab;
+    Real top_energySum_aa, top_energySum_bb, top_energySum_ab;
+
+    void zeroAllSums()
+    {
+        bot_energySum_aa = 0; bot_energySum_bb = 0; bot_energySum_ab = 0;
+        top_energySum_aa = 0; top_energySum_bb = 0; top_energySum_ab = 0;
+    }
+
+    ComputeCombined_Parametric_BilayerFused(
+        const MaterialProperties<tMaterialType> & mat_bot_in,
+        const MaterialProperties<tMaterialType> & mat_top_in,
+        const tCurrentConfigData & currentState_in,
+        const tReferenceConfigData & restState_in,
+        Eigen::Ref<Eigen::MatrixXd> per_face_gradients_in,
+        tCachedRestMetricsBot * cached_bot_in,
+        tCachedRestMetricsTop * cached_top_in):
+    mat_props_bot(mat_bot_in),
+    mat_props_top(mat_top_in),
+    currentState(currentState_in),
+    restState(restState_in),
+    per_face_gradients(per_face_gradients_in),
+    cached_metrics_bot(cached_bot_in),
+    cached_metrics_top(cached_top_in)
+    {
+        zeroAllSums();
+    }
+
+    ComputeCombined_Parametric_BilayerFused(const ComputeCombined_Parametric_BilayerFused & c, tbb::split):
+    mat_props_bot(c.mat_props_bot),
+    mat_props_top(c.mat_props_top),
+    currentState(c.currentState),
+    restState(c.restState),
+    per_face_gradients(c.per_face_gradients),
+    cached_metrics_bot(c.cached_metrics_bot),
+    cached_metrics_top(c.cached_metrics_top)
+    {
+        zeroAllSums();
+    }
+
+    void join(const ComputeCombined_Parametric_BilayerFused & j)
+    {
+        bot_energySum_aa += j.bot_energySum_aa;
+        bot_energySum_bb += j.bot_energySum_bb;
+        bot_energySum_ab += j.bot_energySum_ab;
+        top_energySum_aa += j.top_energySum_aa;
+        top_energySum_bb += j.top_energySum_bb;
+        top_energySum_ab += j.top_energySum_ab;
+    }
+
+    template<bool U = withGradient> typename std::enable_if<U, void>::type
+    addFusedGradients(const ExtendedTriangleInfo & info,
+                      SaintVenantEnergy<U, tMaterialType, bottom> & SV_bot,
+                      SaintVenantEnergy<U, tMaterialType, top> & SV_top)
+    {
+        SV_bot.compute_gradients();
+        SV_top.compute_gradients();
+
+        const int i = info.face_idx;
+
+        for(int j=0;j<3;++j)
+        {
+            per_face_gradients(i, 3*0+j) = (SV_bot.gradv0_aa(j) + SV_bot.gradv0_bb(j) + SV_bot.gradv0_ab(j))
+                                         + (SV_top.gradv0_aa(j) + SV_top.gradv0_bb(j) + SV_top.gradv0_ab(j));
+            per_face_gradients(i, 3*1+j) = (SV_bot.gradv1_aa(j) + SV_bot.gradv1_bb(j) + SV_bot.gradv1_ab(j))
+                                         + (SV_top.gradv1_aa(j) + SV_top.gradv1_bb(j) + SV_top.gradv1_ab(j));
+            per_face_gradients(i, 3*2+j) = (SV_bot.gradv2_aa(j) + SV_bot.gradv2_bb(j) + SV_bot.gradv2_ab(j))
+                                         + (SV_top.gradv2_aa(j) + SV_top.gradv2_bb(j) + SV_top.gradv2_ab(j));
+        }
+
+        if(info.other_faces[0] != nullptr)
+            for(int j=0;j<3;++j)
+                per_face_gradients(i, 3*3+j) = (SV_bot.gradv_other_e0_bb(j) + SV_bot.gradv_other_e0_ab(j))
+                                             + (SV_top.gradv_other_e0_bb(j) + SV_top.gradv_other_e0_ab(j));
+
+        if(info.other_faces[1] != nullptr)
+            for(int j=0;j<3;++j)
+                per_face_gradients(i, 3*4+j) = (SV_bot.gradv_other_e1_bb(j) + SV_bot.gradv_other_e1_ab(j))
+                                             + (SV_top.gradv_other_e1_bb(j) + SV_top.gradv_other_e1_ab(j));
+
+        if(info.other_faces[2] != nullptr)
+            for(int j=0;j<3;++j)
+                per_face_gradients(i, 3*5+j) = (SV_bot.gradv_other_e2_bb(j) + SV_bot.gradv_other_e2_ab(j))
+                                             + (SV_top.gradv_other_e2_bb(j) + SV_top.gradv_other_e2_ab(j));
+
+        per_face_gradients(i, 3*6+0) = (SV_bot.gradphi_e0_bb + SV_bot.gradphi_e0_ab)
+                                     + (SV_top.gradphi_e0_bb + SV_top.gradphi_e0_ab);
+        per_face_gradients(i, 3*6+1) = (SV_bot.gradphi_e1_bb + SV_bot.gradphi_e1_ab)
+                                     + (SV_top.gradphi_e1_bb + SV_top.gradphi_e1_ab);
+        per_face_gradients(i, 3*6+2) = (SV_bot.gradphi_e2_bb + SV_bot.gradphi_e2_ab)
+                                     + (SV_top.gradphi_e2_bb + SV_top.gradphi_e2_ab);
+    }
+
+    template<bool U = withGradient> typename std::enable_if<!U, void>::type
+    addFusedGradients(const ExtendedTriangleInfo &,
+                      SaintVenantEnergy<U, tMaterialType, bottom> &,
+                      SaintVenantEnergy<U, tMaterialType, top> &)
+    {
+    }
+
+    void operator()(const tbb::blocked_range<int> & face_range)
+    {
+        Real b_aa = 0.0, b_bb = 0.0, b_ab = 0.0;
+        Real t_aa = 0.0, t_bb = 0.0, t_ab = 0.0;
+        const uint64_t gen = this->currentState.getGeneration();
+
+        for (int i=face_range.begin(); i != face_range.end(); ++i)
+        {
+            const ExtendedTriangleInfo & info = this->currentState.getTriangleInfo(i);
+            const tMaterialType mat_bot = this->mat_props_bot.getFaceMaterial(i);
+            const tMaterialType mat_top = this->mat_props_top.getFaceMaterial(i);
+            const Eigen::Matrix2d & aform_bot = this->restState.template getFirstFundamentalForm<bottom>(i);
+            const Eigen::Matrix2d & aform_top = this->restState.template getFirstFundamentalForm<top>(i);
+            const Eigen::Matrix2d & bform_bar = this->restState.getSecondFundamentalForm(i);
+
+            auto & cached_ff = [&]() -> auto & {
+                if constexpr (withGradient) return this->currentState.getCachedDeformedFormsGrad(i);
+                else return this->currentState.getCachedDeformedFormsNoGrad(i);
+            }();
+            if(cached_ff.generation != gen)
+            {
+                cached_ff.firstFF.set(info);
+                cached_ff.secondFF.set(info);
+                cached_ff.generation = gen;
+            }
+
+            if constexpr (std::is_same<tMaterialType, Material_Isotropic>::value)
+            {
+                auto & mb = (*this->cached_metrics_bot)[i];
+                if(!mb.valid || mb.aform_bar != aform_bot)
+                {
+                    mb.aform_bar = aform_bot;
+                    mb.aform_bar_inv = aform_bot.inverse();
+                    mb.area = 0.5*std::sqrt(aform_bot.determinant());
+                    mb.valid = true;
+                }
+                auto & mt = (*this->cached_metrics_top)[i];
+                if(!mt.valid || mt.aform_bar != aform_top)
+                {
+                    mt.aform_bar = aform_top;
+                    mt.aform_bar_inv = aform_top.inverse();
+                    mt.area = 0.5*std::sqrt(aform_top.determinant());
+                    mt.valid = true;
+                }
+
+                SaintVenantEnergy<withGradient, tMaterialType, bottom> SV_bot(
+                    mat_bot, aform_bot, mb.aform_bar_inv, mb.area, bform_bar, cached_ff.firstFF, cached_ff.secondFF);
+                SV_bot.compute();
+                b_aa += SV_bot.stretching_energy;
+                b_bb += SV_bot.bending_energy;
+                b_ab += SV_bot.mixed_energy_ab;
+
+                SaintVenantEnergy<withGradient, tMaterialType, top> SV_top(
+                    mat_top, aform_top, mt.aform_bar_inv, mt.area, bform_bar, cached_ff.firstFF, cached_ff.secondFF);
+                SV_top.compute();
+                t_aa += SV_top.stretching_energy;
+                t_bb += SV_top.bending_energy;
+                t_ab += SV_top.mixed_energy_ab;
+
+                addFusedGradients(info, SV_bot, SV_top);
+            }
+            else
+            {
+                const Eigen::Matrix2d aform_bot_d1 = mat_bot.get_aform_bar_d1();
+                const Eigen::Matrix2d aform_bot_d2 = aform_bot - aform_bot_d1;
+                SaintVenantEnergy<withGradient, tMaterialType, bottom> SV_bot(
+                    mat_bot, aform_bot_d1, aform_bot_d2, bform_bar, cached_ff.firstFF, cached_ff.secondFF);
+                SV_bot.compute();
+                b_aa += SV_bot.stretching_energy;
+                b_bb += SV_bot.bending_energy;
+                b_ab += SV_bot.mixed_energy_ab;
+
+                const Eigen::Matrix2d aform_top_d1 = mat_top.get_aform_bar_d1();
+                const Eigen::Matrix2d aform_top_d2 = aform_top - aform_top_d1;
+                SaintVenantEnergy<withGradient, tMaterialType, top> SV_top(
+                    mat_top, aform_top_d1, aform_top_d2, bform_bar, cached_ff.firstFF, cached_ff.secondFF);
+                SV_top.compute();
+                t_aa += SV_top.stretching_energy;
+                t_bb += SV_top.bending_energy;
+                t_ab += SV_top.mixed_energy_ab;
+
+                addFusedGradients(info, SV_bot, SV_top);
+            }
+        }
+
+        this->bot_energySum_aa += b_aa;
+        this->bot_energySum_bb += b_bb;
+        this->bot_energySum_ab += b_ab;
+        this->top_energySum_aa += t_aa;
+        this->top_energySum_bb += t_bb;
+        this->top_energySum_ab += t_ab;
+    }
+};
+
+template<typename tMesh, typename tMaterialType, MeshLayer layer>
+bool CombinedOperator_Parametric<tMesh, tMaterialType, layer>::tryComputeFusedPair(
+    const tMesh & mesh,
+    const EnergyOperator<tMesh> * second,
+    Eigen::Ref<Eigen::VectorXd> gradient,
+    const bool computeGradient,
+    Real & energyOut) const
+{
+    if constexpr (layer != bottom)
+    {
+        (void)mesh; (void)second; (void)gradient; (void)computeGradient; (void)energyOut;
+        return false;
+    }
+    else
+    {
+        const auto * topOp = dynamic_cast<const CombinedOperator_Parametric<tMesh, tMaterialType, top>*>(second);
+        if(topOp == nullptr) return false;
+
+        const auto & currentState = mesh.getCurrentConfiguration();
+        const auto & restState = mesh.getRestConfiguration();
+        const int nFaces = mesh.getNumberOfFaces();
+
+        if((int)cached_rest_metrics.size() != nFaces)
+            cached_rest_metrics.resize(nFaces);
+        if((int)topOp->cached_rest_metrics.size() != nFaces)
+            topOp->cached_rest_metrics.resize(nFaces);
+
+        if(not computeGradient)
+        {
+            this->profiler.push_start("compute fused bilayer energy");
+            ComputeCombined_Parametric_BilayerFused<tMesh, tMaterialType, false> compute_tbb(
+                material_properties, topOp->material_properties, currentState, restState,
+                per_face_gradients_buffer, &cached_rest_metrics, &topOp->cached_rest_metrics);
+            tbb::parallel_reduce(tbb::blocked_range<int>(0, nFaces), compute_tbb, tbb::auto_partitioner());
+            this->profiler.pop_stop();
+
+            lastEnergy_aa = compute_tbb.bot_energySum_aa;
+            lastEnergy_bb = compute_tbb.bot_energySum_bb;
+            lastEnergy_ab = compute_tbb.bot_energySum_ab;
+            topOp->lastEnergy_aa = compute_tbb.top_energySum_aa;
+            topOp->lastEnergy_bb = compute_tbb.top_energySum_bb;
+            topOp->lastEnergy_ab = compute_tbb.top_energySum_ab;
+        }
+        else
+        {
+            const int nVertices = mesh.getNumberOfVertices();
+            const int nEdges = mesh.getNumberOfEdges();
+            assert(nVertices > 0);
+            assert(gradient.rows() >= 3 * nVertices + nEdges);
+
+            if(per_face_gradients_buffer.rows() != nFaces || per_face_gradients_buffer.cols() != 21)
+                per_face_gradients_buffer.resize(nFaces, 21);
+
+            this->profiler.push_start("compute fused bilayer energy / gradient");
+            ComputeCombined_Parametric_BilayerFused<tMesh, tMaterialType, true> compute_tbb(
+                material_properties, topOp->material_properties, currentState, restState,
+                per_face_gradients_buffer, &cached_rest_metrics, &topOp->cached_rest_metrics);
+            tbb::parallel_reduce(tbb::blocked_range<int>(0, nFaces), compute_tbb, tbb::auto_partitioner());
+            this->profiler.pop_stop();
+
+            lastEnergy_aa = compute_tbb.bot_energySum_aa;
+            lastEnergy_bb = compute_tbb.bot_energySum_bb;
+            lastEnergy_ab = compute_tbb.bot_energySum_ab;
+            topOp->lastEnergy_aa = compute_tbb.top_energySum_aa;
+            topOp->lastEnergy_bb = compute_tbb.top_energySum_bb;
+            topOp->lastEnergy_ab = compute_tbb.top_energySum_ab;
+
+            Eigen::Map<Eigen::MatrixXd> grad_vertices(gradient.data(), nVertices, 3);
+            Eigen::Map<Eigen::VectorXd> grad_edges(gradient.data() + 3 * nVertices, nEdges);
+
+            const auto & topo = mesh.getTopology();
+            const auto & boundaryConditions = mesh.getBoundaryConditions();
+
+            this->profiler.push_start("merge vertices");
+            MergeGradVertices mergevertices(topo, boundaryConditions, per_face_gradients_buffer, grad_vertices);
+            tbb::parallel_reduce(tbb::blocked_range<int>(0, nVertices), mergevertices, tbb::auto_partitioner());
+            this->profiler.pop_stop();
+
+            this->profiler.push_start("merge edges");
+            MergeGradEdges mergeedges(topo, boundaryConditions, per_face_gradients_buffer, grad_edges);
+            tbb::parallel_reduce(tbb::blocked_range<int>(0, nEdges), mergeedges, tbb::auto_partitioner());
+            this->profiler.pop_stop();
+        }
+
+        energyOut = (lastEnergy_aa + lastEnergy_bb + lastEnergy_ab)
+                  + (topOp->lastEnergy_aa + topOp->lastEnergy_bb + topOp->lastEnergy_ab);
+        return true;
+    }
 }
 
 template<typename tMesh, typename tMaterialType, MeshLayer layer>

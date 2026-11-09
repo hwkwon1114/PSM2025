@@ -25,6 +25,44 @@ inline double computeNextStepOnFailure(const double trialLambda, const double ac
     return std::max(minStep, 0.5 * actualAttempted);
 }
 
+inline double computeInitialStepFromStrainJump(
+    const double initialStep,
+    const double minStep,
+    const double fullStepStrainJump,
+    const double targetStrainJump)
+{
+    if(targetStrainJump <= 0.0 || fullStepStrainJump <= targetStrainJump)
+        return initialStep;
+
+    double step = initialStep;
+    while(step * (fullStepStrainJump / initialStep) > targetStrainJump && 0.5 * step >= minStep)
+    {
+        step *= 0.5;
+    }
+    return std::max(minStep, std::min(step, initialStep));
+}
+
+inline double computeNextStepOnSuccess(
+    const double currentStep,
+    const double maxStep,
+    const double growthFactor,
+    const int consecutiveSuccesses,
+    const int requiredSuccessStreak = 1,
+    const double currentStrainJump = 0.0,
+    const double targetStrainJump = 0.0)
+{
+    if(consecutiveSuccesses < requiredSuccessStreak)
+        return currentStep;
+
+    if(targetStrainJump > 0.0 && currentStrainJump > 0.0)
+    {
+        if(currentStrainJump * growthFactor > targetStrainJump)
+            return currentStep;
+    }
+
+    return std::min(maxStep, currentStep * growthFactor);
+}
+
 inline double compute2DMetricStrainJump(const Eigen::Matrix2d& A_acc, const Eigen::Matrix2d& dA)
 {
     if(dA.squaredNorm() <= 1e-28) return 0.0;

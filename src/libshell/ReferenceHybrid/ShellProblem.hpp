@@ -85,12 +85,10 @@ public:
     {
         if(!x.allFinite())throw std::runtime_error("nonfinite shell state");
         for(int i=0;i<size();++i)if(mask[i] && x[i]!=fixed[i])throw std::runtime_error("physical constraint violation");
-        restore(x);const auto V=mesh.getCurrentConfiguration().getVertices();const auto F=mesh.getTopology().getFace2Vertices();
+        restore(x);const auto& cur=mesh.getCurrentConfiguration();
         for(int f=0;f<mesh.getNumberOfFaces();++f)
         {
-            const Eigen::Vector3d a=(V.row(F(f,1))-V.row(F(f,0))).transpose();
-            const Eigen::Vector3d b=(V.row(F(f,2))-V.row(F(f,0))).transpose();
-            const double ratio=0.5*a.cross(b).norm()/restArea[f];
+            const double ratio=(0.5*cur.getTriangleInfo(f).double_face_area)/restArea[f];
             if(!std::isfinite(ratio) || ratio<=1e-8)throw std::runtime_error("degenerate shell trial");
         }
         Vec g=Vec::Zero(size());const double f=energy.compute(mesh,g);return {f,g};

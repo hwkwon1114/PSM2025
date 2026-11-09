@@ -479,12 +479,12 @@ struct DCSRestConfiguration : DCSBasicConfiguration
         return bform;
     }
 
-    Eigen::Matrix2d getFirstFundamentalForm(const int face_idx) const
+    const Eigen::Matrix2d & getFirstFundamentalForm(const int face_idx) const
     {
         return aform[face_idx];
     }
 
-    Eigen::Matrix2d getSecondFundamentalForm(const int face_idx) const
+    const Eigen::Matrix2d & getSecondFundamentalForm(const int face_idx) const
     {
         return bform[face_idx];
     }
@@ -582,13 +582,13 @@ struct DCSBilayerRestConfiguration : DCSBasicConfiguration
     }
 
     template<MeshLayer layer>
-    Eigen::Matrix2d getFirstFundamentalForm(const int face_idx) const
+    const Eigen::Matrix2d & getFirstFundamentalForm(const int face_idx) const
     {
         static_assert(layer != single, "Can not use DCSBilayerRestConfiguration with single layer type");
         return (layer == bottom ? aform_bot[face_idx] : aform_top[face_idx]); // compile-time conditional
     }
 
-    Eigen::Matrix2d getSecondFundamentalForm(const int face_idx) const
+    const Eigen::Matrix2d & getSecondFundamentalForm(const int face_idx) const
     {
         return bform[face_idx];
     }

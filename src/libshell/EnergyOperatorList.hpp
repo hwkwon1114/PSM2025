@@ -23,6 +23,7 @@ class EnergyOperatorList : public EnergyOperator<tMesh>
 {
 protected:
     std::vector<EnergyOperator<tMesh>*> operators;
+    bool fused_bilayer_evaluation = true;
 
 public:
 
@@ -34,9 +35,26 @@ public:
             operators.push_back(elem);
     }
 
+    void setFusedBilayerEvaluation(const bool enabled)
+    {
+        fused_bilayer_evaluation = enabled;
+    }
+
+    bool getFusedBilayerEvaluation() const
+    {
+        return fused_bilayer_evaluation;
+    }
 
     Real compute(const tMesh & mesh) const override
     {
+        if(fused_bilayer_evaluation && operators.size() == 2 && operators[0] != nullptr && operators[1] != nullptr)
+        {
+            Eigen::VectorXd dummy;
+            Real fused_energy = 0.0;
+            if(operators[0]->tryComputeFusedPair(mesh, operators[1], dummy, false, fused_energy))
+                return fused_energy;
+        }
+
         Real energy = 0.0;
         for(size_t i=0;i<operators.size();++i)
             energy += operators[i]->compute(mesh);
@@ -46,6 +64,13 @@ public:
 
     Real compute(const tMesh & mesh, Eigen::Ref<Eigen::VectorXd> gradient) const override
     {
+        if(fused_bilayer_evaluation && operators.size() == 2 && operators[0] != nullptr && operators[1] != nullptr)
+        {
+            Real fused_energy = 0.0;
+            if(operators[0]->tryComputeFusedPair(mesh, operators[1], gradient, true, fused_energy))
+                return fused_energy;
+        }
+
         Real energy = 0.0;
 
         for(size_t i=0;i<operators.size();++i)
