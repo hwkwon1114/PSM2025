@@ -1,0 +1,23 @@
+{
+  "arm": "success",
+  "base": "run/run1_clean_24lhs",
+  "case": "run6",
+  "active": ["gtop", "gbot", "ortho_top", "ortho_bottom"],
+  "fixed": {
+    "beta": 0.2231435513142097,
+    "floor": 0.0
+  },
+  "gtop": [5e-5, 0.01],
+  "gbot": [1e-5, 0.001],
+  "ortho_top": [-1.0, 1.0],
+  "ortho_bottom": [-1.0, 1.0],
+  "seed": 20261030,
+  "design_waves": 6,
+  "waves": 31,
+  "min_separation": 0.05,
+  "early_from": 16,
+  "early_window": 6,
+  "early_rel": 0.005,
+  "case_label": "Run 1",
+  "historical_case": "run6"
+}
