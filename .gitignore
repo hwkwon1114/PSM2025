@@ -38,6 +38,8 @@ bin/*
 
 # Ignore data files
 *.dat
+*.ply
+shape_design/data/*.ply
 
 # Ignore Mac specific files
 .DS_Store
@@ -90,6 +92,8 @@ docs/**/compile.stdout
 # Plotting modules still imported by tracked analysis/tests remain tracked.
 legacy/analysis/plots/
 legacy/notebooks/*.png
+legacy/notebooks/**/*.png
+legacy/notebooks/*_outputs/
 legacy/notebooks/*.pdf
 legacy/notebooks/*.html
 legacy/notebooks/*.svg
